@@ -63,6 +63,18 @@ trap finish EXIT
 trap 'exit 143' TERM
 trap 'exit 130' INT
 
+device_window_ready() {
+  local boot=$1 windows=$2
+  # API 33 omits mDisplayFrozen when normal. Require observable screen/draw
+  # readiness instead; an explicit frozen display still fails this sample.
+  [ "$boot" = 1 ] &&
+    [[ "$windows" == *"mAwake=true"* &&
+       "$windows" == *"mScreenOnFully=true"* &&
+       "$windows" == *"mWindowManagerDrawComplete=true"* &&
+       "$windows" != *"mDisplayFrozen=true"* ]] &&
+    printf '%s\n' "$windows" | grep -E 'mCurrentFocus=Window\{[^}]+ (com.google.android.apps.nexuslauncher|com.android.launcher3)/' > /dev/null
+}
+
 wait_for_device_window() {
   local deadline=$((SECONDS + 60)) boot windows stable=0
   while [ "$SECONDS" -lt "$deadline" ]; do
@@ -75,7 +87,7 @@ wait_for_device_window() {
       echo 'Device setup blocked by an ANR/crash window; see setup-windows.txt' >&2
       return 1
     fi
-    if [ "$boot" = 1 ] && [[ "$windows" == *"mDisplayFrozen=false"* ]] && printf '%s\n' "$windows" | grep -E 'mCurrentFocus=Window\{[^}]+ (com.google.android.apps.nexuslauncher|com.android.launcher3)/' > /dev/null; then
+    if device_window_ready "$boot" "$windows"; then
       stable=$((stable + 1))
       if [ "$stable" -ge 2 ]; then return 0; fi
     else

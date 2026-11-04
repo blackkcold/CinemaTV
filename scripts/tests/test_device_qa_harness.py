@@ -16,6 +16,40 @@ matrix = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(matrix)
 
 
+# Exact relevant lines from the failed API 33 4K setup-windows.txt, before
+# resize. A healthy full dumpsys window has no mDisplayFrozen=false field.
+API33_READY_WINDOW = """    mSafeMode=false mSystemReady=true mSystemBooted=true
+  mCurrentFocus=Window{73af1b9 u0 com.google.android.apps.nexuslauncher/com.google.android.apps.nexuslauncher.NexusLauncherActivity}
+    mAwake=true mScreenOnEarly=true mScreenOnFully=true
+    mKeyguardDrawComplete=true mWindowManagerDrawComplete=true
+"""
+
+
+class DeviceWindowReadinessTest(unittest.TestCase):
+    def ready(self, window, boot="1"):
+        source = (SCRIPTS / "run-device-qa.sh").read_text()
+        predicate = source.split("device_window_ready() {", 1)[1].split("\nwait_for_device_window()", 1)[0]
+        result = subprocess.run(["bash", "-euo", "pipefail", "-c",
+                                 "device_window_ready() {" + predicate +
+                                 '\ndevice_window_ready "$1" "$2"', "test", boot, window],
+                                capture_output=True, text=True, timeout=2)
+        return result.returncode == 0
+
+    def test_api33_ready_without_display_frozen_field(self):
+        self.assertNotIn("mDisplayFrozen", API33_READY_WINDOW)
+        self.assertTrue(self.ready(API33_READY_WINDOW))
+        self.assertTrue(self.ready(API33_READY_WINDOW + "mDisplayFrozen=false\n"))
+
+    def test_explicit_freeze_or_missing_positive_readiness_is_rejected(self):
+        self.assertFalse(self.ready(API33_READY_WINDOW + "mDisplayFrozen=true\n"))
+        self.assertFalse(self.ready(API33_READY_WINDOW, boot="0"))
+        for field in ("mAwake", "mScreenOnFully", "mWindowManagerDrawComplete"):
+            for replacement in ("", field + "=false"):
+                with self.subTest(field=field, replacement=replacement):
+                    self.assertFalse(self.ready(API33_READY_WINDOW.replace(field + "=true", replacement)))
+        self.assertFalse(self.ready(API33_READY_WINDOW.replace("mCurrentFocus=", "mPreviousFocus=")))
+
+
 class DeviceMatrixTest(unittest.TestCase):
     def test_default_retains_all_acceptance_targets_and_classes(self):
         self.assertEqual(matrix.select("all"), {"include": [
@@ -59,6 +93,12 @@ name = Path(sys.argv[0]).name
 args = sys.argv[1:]
 with Path(name + "-calls.jsonl").open("a") as log:
     log.write(json.dumps(args) + "\n")
+if name == "sleep":
+    # Only virtualize the shell readiness sample interval. Python log/Gradle
+    # waits and the real timeout executable retain their real clocks.
+    if args != ["1"]:
+        sys.exit("Unexpected readiness sleep: " + repr(args))
+    sys.exit(0)
 if name == "timeout":
     if os.environ.get("MOCK_REAL_TIMEOUT") == "1" and "gradle" in args:
         args[args.index("12m")] = "0.1s"
@@ -67,7 +107,7 @@ if name == "adb":
     if args == ["shell", "getprop", "sys.boot_completed"]:
         print("1")
     if args == ["shell", "dumpsys", "window"]:
-        print(os.environ.get("MOCK_WINDOW", "mCurrentFocus=Window{123 u0 com.google.android.apps.nexuslauncher/.NexusLauncherActivity}\nmDisplayFrozen=false"))
+        print(os.environ.get("MOCK_WINDOW", "mCurrentFocus=Window{123 u0 com.google.android.apps.nexuslauncher/.NexusLauncherActivity}\nmAwake=true mScreenOnFully=true mWindowManagerDrawComplete=true"))
         sys.exit(0)
     if args == ["get-state"]:
         print("device")
@@ -124,7 +164,7 @@ class DeviceRunnerTest(unittest.TestCase):
             scripts = root / "scripts"
             scripts.mkdir()
             shutil.copy(SCRIPTS / "run-device-qa.sh", scripts)
-            for name in ("adb", "gradle", "timeout", "free", "sudo", "ps"):
+            for name in ("adb", "gradle", "timeout", "free", "sudo", "ps", "sleep"):
                 path = binaries / name
                 path.write_text(f"#!{sys.executable}\n" + STUB)
                 path.chmod(0o755)
@@ -151,7 +191,7 @@ class DeviceRunnerTest(unittest.TestCase):
             self.files = {str(path.relative_to(root)): path.read_text()
                           for path in root.rglob("*") if path.is_file() and "bin" not in path.parts}
             self.calls = {name: [json.loads(line) for line in self.files.get(name + "-calls.jsonl", "").splitlines()]
-                          for name in ("adb", "gradle", "timeout", "free", "sudo", "ps")}
+                          for name in ("adb", "gradle", "timeout", "free", "sudo", "ps", "sleep")}
             stages = self.files["qa/stages.tsv"]
             return result.returncode, stages, "qa/device.log" in self.files, bool(self.calls["gradle"])
 
@@ -233,14 +273,21 @@ class DeviceRunnerTest(unittest.TestCase):
         size = calls.index(["shell", "wm", "size", "1920x1080"])
         checks = [i for i, args in enumerate(calls) if args == ["shell", "getprop", "sys.boot_completed"]]
         self.assertEqual(len(checks), 4)
+        self.assertEqual(self.calls["sleep"], [["1"], ["1"]])
         self.assertLess(wake, checks[0])
         self.assertLess(checks[0], size)
         self.assertLess(size, checks[2])
         self.assertFalse(any(args[:2] == ["shell", "input"] for args in calls))
 
+    def test_actual_api33_ready_snapshot_reaches_instrumentation(self):
+        code, _, _, invoked = self.run_harness(window=API33_READY_WINDOW)
+        self.assertEqual(code, 0)
+        self.assertTrue(invoked)
+        self.assertEqual(self.calls["sleep"], [["1"], ["1"]])
+
     def test_large_window_dump_does_not_sigpipe_under_pipefail(self):
         window = ("mCurrentFocus=Window{123 u0 com.android.launcher3/.Launcher}\n"
-                  "mDisplayFrozen=false\n" + "window detail\n" * 6000)
+                  "mAwake=true mScreenOnFully=true mWindowManagerDrawComplete=true\n" + "window detail\n" * 6000)
         code, _, _, invoked = self.run_harness(window=window)
         self.assertEqual(code, 0)
         self.assertTrue(invoked)
