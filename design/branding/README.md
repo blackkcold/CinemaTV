@@ -16,6 +16,13 @@ The in-app `CinemaBrandLockup` uses native VectorDrawable paths with transparent
 
 To rebuild the three motion layers, run `python scripts/branding/render-motion-layers.py` (Inkscape or librsvg). The extractor retains only the original named trail group and its definitions.
 
-To re-render static raster resources, use `bash scripts/render-branding.sh` with librsvg installed. SVG filter renderer differences may slightly affect streak softness; review rendered pixels before replacing the approved banner export. Do not flatten the wordmark to platform text.
+To re-render static raster resources, use `bash scripts/render-branding.sh /tmp/cinematv-brand-candidates` with librsvg installed. The output directory is required and cannot be inside Android resources. SVG filter renderer differences may slightly affect streak softness; review rendered pixels before replacing the approved banner export. Do not flatten the wordmark to platform text.
 
 Checks: `python -m unittest discover -s scripts/tests -p 'test_brand_resources.py'`. After Android build, check masked icons on round/squircle launchers, TV banner centering at 320 × 180, TalkBack label, TV header/phone header fit, and unchanged navigation focus and Back behavior. Source tests do not replace device QA.
+
+
+## Reviewed bytes and CI
+
+`approved-raster-sha256.json` pins the six reviewed runtime PNGs. The banner is the exact approved pack export; the square/background and three motion layers are documented integration derivatives. A renderer change can alter subtle Gaussian blur, fringe brightness, or antialiasing even when geometry is unchanged. A regenerated banner must not be described as the exact pack export.
+
+The branding workflow is validation-only on pull requests, main pushes, and manual runs: read-only checkout, resource contracts, approved hashes, and clean-worktree check. It cannot render, commit, or push new assets. In particular, automatic bot regeneration previously replaced three reviewed PNGs after merge; those renderer outputs are not the approved originals. Any deliberate replacement requires pixel review, an explicit manifest update, and the normal Android build/test PR gate. Never update hashes just to make a drift failure green.

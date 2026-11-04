@@ -1,5 +1,8 @@
 """Source/resource contract for the approved original A1 identity (stdlib only)."""
 import math
+import hashlib
+import json
+import subprocess
 from pathlib import Path
 import struct
 import unittest
@@ -81,6 +84,29 @@ class BrandResourcesTest(unittest.TestCase):
             code = (ROOT / 'app/src/main/java/dev/cinematv' / relative).read_text()
             self.assertIn('CinemaBrandStartup(', code)
             self.assertNotIn('CinemaBrandSession(', code)
+
+    def test_reviewed_raster_hashes(self):
+        manifest = json.loads((ROOT / 'design/branding/approved-raster-sha256.json').read_text())
+        self.assertEqual(len(manifest['files']), 6)
+        for relative, expected in manifest['files'].items():
+            with self.subTest(asset=relative):
+                self.assertEqual(hashlib.sha256((ROOT / relative).read_bytes()).hexdigest(), expected,
+                                 'Raster drift: review pixels and explicitly approve replacement; do not auto-update hashes.')
+
+    def test_brand_workflow_cannot_write_or_rerender_assets(self):
+        workflow = (ROOT / '.github/workflows/brand-assets.yml').read_text()
+        self.assertIn('contents: read', workflow)
+        self.assertIn('persist-credentials: false', workflow)
+        self.assertIn('pull_request:', workflow)
+        self.assertIn("test_brand_resources.py", workflow)
+        for forbidden in ('contents: write', 'git push', 'git commit', 'run: bash scripts/render-branding.sh'):
+            self.assertNotIn(forbidden, workflow)
+
+    def test_manual_renderer_requires_separate_review_destination(self):
+        script = ROOT / 'scripts/render-branding.sh'
+        for args in ([], [str(RES / 'drawable-nodpi')]):
+            result = subprocess.run(['bash', str(script), *args], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 2)
 
 
 if __name__ == '__main__':
