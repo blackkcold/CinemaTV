@@ -32,6 +32,7 @@ import coil3.compose.AsyncImage
 import dev.cinematv.CinemaViewModel
 import dev.cinematv.Page
 import dev.cinematv.data.MediaItem
+import dev.cinematv.data.LibraryStatus
 
 private val margin = 66.dp
 
@@ -287,6 +288,7 @@ fun SearchPage(model: CinemaViewModel) {
 @Composable
 fun DetailPage(model: CinemaViewModel) {
     val item = model.selected ?: return
+    var showShelfPicker by remember(item.id) { mutableStateOf(false) }
     Box(Modifier.fillMaxSize()) {
         HeroBackground(item)
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = margin, end = margin, top = 90.dp)) {
@@ -306,6 +308,19 @@ fun DetailPage(model: CinemaViewModel) {
                 GlassAction("▶ 立即播放", Modifier.width(168.dp).height(52.dp), prominent = true) { model.playEpisode(item.lastEpisode.coerceIn(0, (item.episodes.size - 1).coerceAtLeast(0))) }
                 GlassAction("加入 / 取消收藏", Modifier.width(196.dp).height(52.dp)) { model.toggleFavorite() }
                 GlassAction("更换片源", Modifier.width(165.dp).height(52.dp)) { model.findAlternatives() }
+                GlassAction("片库状态", Modifier.width(145.dp).height(52.dp)) {
+                    showShelfPicker = !showShelfPicker
+                }
+            }
+            if (showShelfPicker) {
+                Spacer(Modifier.height(12.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(11.dp)) {
+                    LibraryStatus.entries.forEach { status ->
+                        GlassAction(status.title, Modifier.width(110.dp).height(44.dp)) {
+                            model.setLibraryStatus(status); showShelfPicker = false
+                        }
+                    }
+                }
             }
             if (model.alternatives.isNotEmpty()) {
                 Spacer(Modifier.height(24.dp))
@@ -471,14 +486,22 @@ private fun epgTime(timeMs: Long): String =
 @Composable
 fun LibraryPage(model: CinemaViewModel) {
     val tick = model.libraryVersion
-    Column(Modifier.fillMaxSize().padding(top = 116.dp)) {
-        PageHeading("我的片库", "最近观看与收藏",).let { }
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+        .padding(top = 116.dp)) {
+        PageHeading("我的片库", "继续观看 · 想看 · 在看 · 看过 · 收藏 · 弃剧")
         Spacer(Modifier.height(18.dp))
         MediaRail("继续观看", model.history(), model)
-        MediaRail("我的收藏", model.favorites(), model)
-        if (model.history().isEmpty() && model.favorites().isEmpty()) EmptyMessage(
-            "播放影视作品或添加收藏后将显示在这里", Modifier.fillMaxWidth().height(180.dp)
-        )
+        LibraryStatus.entries.forEach { status ->
+            val items = if (status == LibraryStatus.FAVORITE) model.favorites()
+                else model.libraryByStatus(status)
+            MediaRail(status.title, items, model)
+        }
+        if (model.history().isEmpty() && LibraryStatus.entries.all {
+            model.libraryByStatus(it).isEmpty()
+        } && model.favorites().isEmpty()) {
+            EmptyMessage("尚无片库内容，请从影视详情页添加", Modifier.fillMaxWidth().height(180.dp))
+        }
+        Spacer(Modifier.height(60.dp))
     }
 }
 

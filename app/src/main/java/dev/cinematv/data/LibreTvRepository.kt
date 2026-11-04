@@ -403,15 +403,47 @@ class LibreTvRepository(context: Context) {
         .put("year", it.year).put("source", it.source?.let(::sourceJson))
         .put("positionMs", it.positionMs).put("lastEpisode", it.lastEpisode)
 
-    fun toggleFavorite(item: MediaItem) {
-        val current = favorites()
-        val updated = if (current.any { it.id == item.id && it.source?.url == item.source?.url })
-            current.filterNot { it.id == item.id && it.source?.url == item.source?.url }
-        else listOf(item) + current
-        prefs.edit().putString("favorites", JSONArray(updated.map(::itemJson)).toString()).apply()
+    private fun libraryEntries(): List<Pair<LibraryStatus, MediaItem>> = runCatching {
+        parseArray(JSONArray(prefs.getString("library_entries", "[]") ?: "[]")) { obj ->
+            val status = runCatching { LibraryStatus.valueOf(obj.optString("state")) }.getOrNull()
+                ?: return@parseArray null
+            val media = MediaItem(
+                id = obj.optString("id"), title = obj.optString("title"),
+                poster = obj.optString("poster"), year = obj.optString("year"),
+                source = obj.optJSONObject("source")?.let(::sourceFrom),
+                positionMs = obj.optLong("positionMs"),
+                lastEpisode = obj.optInt("lastEpisode", 0)
+            )
+            status to media
+        }
+    }.getOrDefault(emptyList())
+
+    fun libraryStatus(item: MediaItem): LibraryStatus? = libraryEntries()
+        .firstOrNull { LibraryIdentity.key(it.second) == LibraryIdentity.key(item) }?.first
+
+    fun setLibraryStatus(item: MediaItem, status: LibraryStatus?) {
+        require(item.id.isNotBlank())
+        val entries = libraryEntries().filterNot { LibraryIdentity.key(it.second) == LibraryIdentity.key(item) }
+        val updated = if (status == null) entries else listOf(status to item) + entries
+        val json = JSONArray(updated.take(500).map { (state, media) ->
+            itemJson(media).put("state", state.name)
+        })
+        prefs.edit().putString("library_entries", json.toString()).apply()
     }
 
-    fun favorites(): List<MediaItem> = runCatching {
+    fun libraryByStatus(status: LibraryStatus): List<MediaItem> =
+        libraryEntries().filter { it.first == status }.map { it.second }
+
+    fun toggleFavorite(item: MediaItem) {
+        val current = libraryStatus(item)
+        if (current == LibraryStatus.FAVORITE) setLibraryStatus(item, null)
+        else setLibraryStatus(item, LibraryStatus.FAVORITE)
+    }
+
+    fun favorites(): List<MediaItem> = (libraryByStatus(LibraryStatus.FAVORITE) + legacyFavorites())
+        .distinctBy(LibraryIdentity::key)
+
+    private fun legacyFavorites(): List<MediaItem> = runCatching {
         parseArray(JSONArray(prefs.getString("favorites", "[]") ?: "[]")) { j ->
             MediaItem(
                 id = j.optString("id"), title = j.optString("title"), poster = j.optString("poster"),

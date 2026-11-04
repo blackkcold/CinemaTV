@@ -298,6 +298,7 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
             return
         }
         playerReturnPage = Page.DETAIL
+        if (repo.libraryStatus(item) == null) repo.setLibraryStatus(item, LibraryStatus.WATCHING)
         playbackUrl = url
         playbackTitle = item.title + if (item.episodes.size > 1) " · 第${index + 1}集" else ""
         playbackPosition = if (index == item.lastEpisode) item.positionMs else 0L
@@ -378,8 +379,9 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
 
     fun playerEnded() {
         val entry = selected ?: return
-        if (playerReturnPage == Page.DETAIL && playingEpisode + 1 < entry.episodes.size) {
-            playEpisode(playingEpisode + 1)
+        if (playerReturnPage == Page.DETAIL) {
+            if (playingEpisode + 1 < entry.episodes.size) playEpisode(playingEpisode + 1)
+            else { repo.setLibraryStatus(entry, LibraryStatus.WATCHED); libraryVersion++ }
         }
     }
 
@@ -398,6 +400,16 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
     fun toggleFavorite() {
         selected?.let { repo.toggleFavorite(it); libraryVersion++; message = "收藏已更新" }
     }
+
+    fun setLibraryStatus(status: LibraryStatus) {
+        selected?.let {
+            repo.setLibraryStatus(it, status)
+            libraryVersion++
+            message = "已加入：${status.title}"
+        }
+    }
+
+    fun libraryByStatus(status: LibraryStatus): List<MediaItem> = repo.libraryByStatus(status)
 
     fun favorites() = repo.favorites()
     fun history() = repo.history()
