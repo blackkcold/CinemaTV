@@ -76,6 +76,8 @@ fun SearchScreen(model: CinemaViewModel) {
         }
         Text(if (model.searchFilters.ratingSource == "Douban") "豆瓣筛选仅显示有效授权目录；未配置时不会替代为其他评分。" else model.searchStage,
             color = TvColors.Secondary, fontSize = 11.sp, modifier = Modifier.padding(horizontal = layout.gutter, vertical = 5.dp))
+        if (model.catalogStatus.isNotBlank()) Text(model.catalogStatus, color = TvColors.Secondary,
+            fontSize = 11.sp, modifier = Modifier.padding(horizontal = layout.gutter, vertical = 4.dp))
         if (model.catalogAttribution.isNotBlank()) Text(model.catalogAttribution, color = TvColors.Secondary,
             fontSize = 10.sp, modifier = Modifier.padding(horizontal = layout.gutter))
         Text(if (model.busy || model.chartLoading) "正在搜索 · 已找到 ${model.results.size} 部作品" else if (model.results.isNotEmpty()) "找到 ${model.results.size} 部作品" else "从一个片名，开始一段旅程。",

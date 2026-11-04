@@ -25,7 +25,7 @@ previews. Physical TV certification and production signing remain tracked in
 | Playback | Media3, episode resume and measured duration, floating TV controls, track/speed panels, background pause |
 | Live | M3U subscriptions, channel groups, XMLTV current/next and scrollable future guide |
 | Phone | Five tabs, separate touch screens and fitted portrait/landscape playback with rotation continuity |
-| Service | Direct LibreTV adapter; optional licensed-catalog/TMDB BFF with explicit attribution/expiry and graceful fallback |
+| Service | Direct LibreTV adapter; optional licensed-catalog/TMDB BFF and separately gated Douban Top 250 acquisition with explicit source, expiry and snapshot state |
 
 The APK contains no public content feeds, credentials, catalog dataset or copyrighted posters. It includes an approved [TMDB brand asset](docs/THIRD_PARTY_ASSETS.md) under TMDB attribution rules.
 UI QA uses fictional titles, original vector artwork and a synthetic H.264/AAC
@@ -54,7 +54,7 @@ metrics accompany the preview. Missing evidence or failed comparisons block publ
 1. Install on Android 8.0 / API 26 or later.
 2. Open Settings and connect your self-hosted LibreTV instance; sign in when required.
 3. Use the server's configured sources or add your authorized CMS / M3U sources.
-4. Optionally configure a TV BFF with an operator-managed TMDB token for matched landscape art.
+4. Optionally configure a TV BFF with an operator-managed TMDB token for matched landscape art and an authorized metadata catalog. Douban acquisition has a separate [permission and activation gate](docs/DOUBAN_ACQUISITION.md).
 
 [Full installation and device QA guide](docs/INSTALL.md).
 
@@ -74,8 +74,11 @@ metrics accompany the preview. Missing evidence or failed comparisons block publ
 
 The preview is not a physical-device or production-signing certification. True
 framebuffer optical refraction, four-hour playback/codec/HDR hardware coverage,
-Room migration, cross-device sync, QR pairing and additional playback engines remain
-outside this UI release. Still-image glass never samples a video Surface.
+cross-device sync, QR pairing and additional playback engines remain outside this
+preview. Legacy preferences import into Room is implemented; future Room schema
+versions still require explicit migrations. Still-image glass never samples a video Surface.
+Douban acquisition is fixture-tested and disabled by default; applicable written
+permission and permitted live endpoint validation have not been established.
 
 ## Original branding
 

@@ -292,6 +292,8 @@ private fun MobileSearch(model: CinemaViewModel) {
         }
         if (model.searchFilters.ratingSource == "Douban") Text("仅使用有效授权目录；未配置时无豆瓣结果。", color = Muted,
             fontSize = 11.sp, modifier = Modifier.padding(horizontal = 20.dp))
+        if (model.catalogStatus.isNotBlank()) Text(model.catalogStatus, color = Muted,
+            fontSize = 11.sp, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
         if (model.catalogAttribution.isNotBlank()) Text(model.catalogAttribution, color = Muted,
             fontSize = 10.sp, modifier = Modifier.padding(horizontal = 20.dp))
         if (model.searchHistory.isNotEmpty()) {

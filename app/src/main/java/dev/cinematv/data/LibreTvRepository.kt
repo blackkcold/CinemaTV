@@ -68,6 +68,30 @@ class LibreTvRepository(context: Context, val library: LocalMediaLibrary = Local
         else -> emptyList()
     }.distinct().take(50)
 
+    private fun acquisition(value: JSONObject?): CatalogAcquisition? = value?.let { data ->
+        fun text(name: String) = data.optString(name).trim().takeUnless { it.isBlank() || it == "null" }
+        fun timestamp(name: String) = text(name)?.let { runCatching { Instant.parse(it).toEpochMilli() }.getOrNull() }
+        CatalogAcquisition(
+            source = text("source")?.takeIf { it in setOf("network", "cache", "stale-cache") },
+            fetchedAt = timestamp("fetchedAt"), stale = data.optBoolean("stale", false),
+            complete = data.optBoolean("complete", false),
+            expectedTotal = 250, // This acquisition contract is specifically Douban Top 250.
+            availableTotal = data.optInt("availableTotal", 0).coerceIn(0, 250),
+            warnings = strings(data.opt("warnings")), blocked = data.optBoolean("blocked", false),
+            retryAt = timestamp("retryAt"), snapshotId = text("snapshotId"),
+            refreshing = data.optBoolean("refreshing", false),
+            state = when (text("state")) {
+                "fresh" -> CatalogAcquisitionState.FRESH
+                "refreshing" -> CatalogAcquisitionState.REFRESHING
+                "partial" -> CatalogAcquisitionState.PARTIAL
+                "rate_limited" -> CatalogAcquisitionState.RATE_LIMITED
+                "access_blocked" -> CatalogAcquisitionState.ACCESS_BLOCKED
+                "disabled" -> CatalogAcquisitionState.DISABLED
+                else -> CatalogAcquisitionState.UNAVAILABLE
+            }
+        )
+    }
+
     /** Only the configured BFF receives the explicit query. Viewing history stays on device. */
     suspend fun catalog(query: String = "", isTv: Boolean = false, offset: Int = 0, topOnly: Boolean = false): MetadataCatalog = withContext(Dispatchers.IO) {
         if (!hasMetadataCatalog) return@withContext MetadataCatalog()
@@ -94,10 +118,14 @@ class LibreTvRepository(context: Context, val library: LocalMediaLibrary = Local
                 output.toByteArray()
             }
             val root = JSONObject(String(body, Charsets.UTF_8))
+            val acquisition = acquisition(root.optJSONObject("acquisition"))
+            val provider = root.optString("provider").takeUnless { it == "null" }.orEmpty()
+            val attribution = root.optString("attribution").takeUnless { it == "null" }.orEmpty()
             val license = root.optJSONObject("license")
             val expiry = runCatching { Instant.parse(license?.optString("expiresAt")).toEpochMilli() }.getOrDefault(0L)
             val licensed = license != null && expiry > System.currentTimeMillis()
-            if (license != null && !licensed) return@withContext MetadataCatalog()
+            if (license != null && !licensed) return@withContext MetadataCatalog(provider = provider,
+                attribution = attribution, acquisition = acquisition, licenseExpiresAt = expiry, licenseRejected = true)
             val items = parseArray(root.optJSONArray("items")) { item ->
                 val title = item.optString("title").trim()
                 val provider = item.optString("provider").ifBlank { root.optString("provider") }
@@ -125,9 +153,9 @@ class LibreTvRepository(context: Context, val library: LocalMediaLibrary = Local
                         mapOf(provider.lowercase() to item.optString("providerId")) else emptyMap()
                 )
             }
-            MetadataCatalog(items, root.optString("provider").takeUnless { it == "null" }.orEmpty(),
-                root.optString("attribution").takeUnless { it == "null" }.orEmpty(), root.optString("status") == "available",
-                if (root.isNull("nextOffset")) null else root.optInt("nextOffset", -1).takeIf { it > offset && it <= 4950 })
+            MetadataCatalog(items, provider, attribution, root.optString("status") == "available",
+                if (root.isNull("nextOffset")) null else root.optInt("nextOffset", -1).takeIf { it > offset && it <= 4950 },
+                acquisition = acquisition, licenseExpiresAt = if (licensed) expiry else 0L)
         } finally { conn.disconnect() }
     }
 

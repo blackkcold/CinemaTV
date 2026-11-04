@@ -41,8 +41,10 @@ profiles keep provider order, and catalogs remain unpersonalized for browsing.
 
 The BFF's licensed catalog is off by default. It requires a bounded operator
 file or fixed URL, attribution, license reference and future expiry. This is a
-technical declaration, not verification of rights. No Douban dataset, scraper,
-public stream or account is supplied. See the BFF README for the full contract.
+technical declaration, not verification of rights. No Douban dataset,
+public stream or account is supplied. A separate acquisition module remains
+disabled pending applicable written permission and permitted live validation.
+See the BFF README and [acquisition scope](DOUBAN_ACQUISITION.md) for the full contract.
 
 Douban filters require explicit Douban provenance and an unexpired license.
 Top means a supplied valid Top 250 rank, never an inferred popular ordering.

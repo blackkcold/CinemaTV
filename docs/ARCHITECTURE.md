@@ -86,4 +86,7 @@ provider order. Capacity tiers also bound playback buffers and adjacent-art pref
 
 The optional BFF catalog is disabled by default. Operator-declared licensed data needs
 attribution and future expiry; that declaration is not proof of rights. TMDB remains
-labeled TMDB and LibreTV scores remain labeled LibreTV. No dataset or scraping is shipped.
+labeled TMDB and LibreTV scores remain labeled LibreTV. No dataset is shipped. A separate,
+disabled-by-default BFF Top 250 acquisition module implements fixed-origin HTML parsing,
+persistent request control and snapshot caching. Its activation requires applicable written
+permission; synthetic tests are not live-access verification. See [scope and activation](DOUBAN_ACQUISITION.md).

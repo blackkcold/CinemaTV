@@ -202,11 +202,12 @@ The declaration is **not evidence of legal licensing**. The operator, not the
 configuration parser, must verify that the license is genuine, covers every
 supplied field and image, permits distribution to clients, and remains in force.
 Do not set a distant expiry to circumvent an actual license term. CinemaTV ships
-no real catalog, Douban dataset, scraper, purchased data or permission to use
+no real catalog, Douban dataset, purchased data or permission to use
 third-party metadata. Tests use invented titles and scores only. The BFF rejects
 an entire malformed or expired catalog, does not cache it, and rereads it on each
 request. Clients retaining licensed results must enforce `license.expiresAt` and
 show the supplied attribution; availability of a JSON file alone grants no rights.
+The separately gated acquisition implementation below does not change this rights requirement.
 
 ### TMDB fallback, privacy and operational limits
 
@@ -240,3 +241,146 @@ unavailable can take up to twice the per-provider timeout. Restrict endpoint
 access and apply ordinary reverse-proxy request/rate limits for your deployment.
 `TMDB_API_URL` is an operator-only override, mainly for mocks/proxies; never expose
 it to clients or point it at an untrusted service, since it receives the TMDB token.
+
+## Optional direct Douban Top250 acquisition (disabled until rights are verified)
+
+This is a **functional clean-room implementation**, with transport, HTML parser,
+all ten Top250 pages, persistent request controls and cache. It is **not verified
+against live Douban access**. No live acquisition was performed during development;
+all regression fixtures contain invented titles and ratings. No DpadTV GPL source,
+assets or bundled metadata were copied. We have no evidence of written permission
+for CinemaTV, so **live activation remains blocked pending verified rights**.
+
+[Douban's legal notice](https://www.douban.com/about/legal), section II.1–3,
+requires written permission for the relevant metadata/ratings, derivative apps
+and data collection. Public accessibility is not permission. Before enabling,
+the operator must obtain and verify written authorization covering acquisition,
+caching and distribution to these clients, and follow its scope/expiry. These
+configuration declarations are required safeguards, **not proof of a license**.
+
+Only after that verification, configure server-side:
+
+```bash
+export DOUBAN_ACQUISITION_ENABLED=true
+export DOUBAN_WRITTEN_PERMISSION=true
+export DOUBAN_LICENSE_NAME='The actual written authorization name'
+export DOUBAN_LICENSE_URL='https://your-rights-record.example/authorization'
+export DOUBAN_LICENSE_EXPIRES_AT='YYYY-MM-DDTHH:MM:SSZ'
+export DOUBAN_ATTRIBUTION='The actual required rights-holder attribution'
+export DOUBAN_STATE_DIR='/var/lib/cinematv/douban'
+```
+
+The expiry placeholder is intentionally invalid and does not enable anything.
+The authorization URL must be HTTPS without credentials; license name,
+attribution and a valid future UTC expiry are mandatory. Expired/missing rights
+prevent acquisition **and serving any cached/stale acquired data**. Rights are
+checked before each outbound attempt, after its response and before returning
+cached records. Renewing/changing declarations does not reset request controls;
+cached snapshots are bound to the exact declaration that authorized acquisition.
+
+### Routing and fast responses
+
+Only `GET /v1/catalog?chart=douban-top250&type=movie` uses the acquisition provider.
+It takes precedence over the static feed when explicitly enabled. If its rights
+or storage are invalid, the endpoint fails closed rather than silently switching
+that acquisition request to another source. Disable acquisition to use the
+operator-supplied static catalog instead. Ordinary query/type requests retain the
+existing static-catalog/TMDB chain. TV chart requests do not start acquisition or
+reuse movie acquisition status. Chart requests never fall back to TMDB/LibreTV.
+
+The HTTP handler does **not wait for the entire download**. A cold request returns
+`status: "empty"`, `items: []`, the declared license/attribution and
+`acquisition.refreshing: true`. One background fill obtains starts 0,25,...,225.
+Subsequent requests return a validated cached/partial snapshot immediately. User
+queries, aliases, actors and pagination are filtered locally and are never sent
+to Douban. Only the fixed Top250 page offsets are outbound.
+
+An acquisition result adds:
+
+```json
+{
+  "acquisition": {
+    "source": "cache",
+    "fetchedAt": "2026-11-04T00:00:30.000Z",
+    "stale": false,
+    "complete": true,
+    "expectedTotal": 250,
+    "availableTotal": 250,
+    "warnings": [],
+    "blocked": false,
+    "retryAt": null,
+    "snapshotId": "opaque-snapshot-id",
+    "refreshing": false,
+    "state": "fresh"
+  }
+}
+```
+
+- `source`: `network`, `cache`, `stale-cache`, or null. This asynchronous adapter
+  serves stored snapshots and reports `cache`/`stale-cache`, never labels a later
+  read as a new network refresh. `fetchedAt` is the last
+  successfully acquired page time in that snapshot, not the time the cache was
+  read. Missing data is never assigned a fabricated timestamp, year, score or cast.
+- `state`: `fresh`, `refreshing`, `partial`, `rate_limited`, `access_blocked`,
+  `disabled`, or `unavailable`. Always show partial/stale/blocked warnings and the
+  actual count/time instead of claiming a complete, freshly refreshed Top250.
+- `complete` requires all ten pages and 250 unique subject IDs/contiguous ranks
+  with valid scores. Parser changes, duplicate/missing ranks, missing scores or
+  page failures cannot silently turn a partial result into a complete chart.
+  Missing year stays blank; missing scores stay null and are excluded by the
+  existing score-qualified chart filter. Thus `availableTotal` can differ from
+  the post-filter `total`. Unknown actors stay empty.
+- `snapshotId` identifies one acquisition generation. Normal partial append is
+  rank-ordered; ambiguity that removes earlier rows changes the identifier. A
+  previous complete snapshot is preferred while a new one fills. Never append
+  pages with different snapshot IDs. Restart paging once on a change, and keep
+  partial results explicitly labeled if a stable full snapshot is unavailable.
+- Clients may poll only while `refreshing` is true, within a bounded observation
+  window. Do not automatically retry a rate limit or access block. `retryAt`
+  identifies a persisted cooldown expiry; it is not permission to bypass access
+  controls. A completed/failed background attempt sets refreshing false.
+
+### Shared gate, durable cache and stop conditions
+
+Every acquisition request, including failures, goes through one serialized gate:
+minimum 3 seconds plus 0–900ms jitter, and at most 20 attempts in a rolling ten
+minutes. The attempt reservation and next allowed time are persisted **before**
+network access. All query/page callers share the same in-flight fill. The gate,
+rolling budget, exponential failure cooldown and snapshots survive process restarts.
+Both numeric and HTTP-date `Retry-After` values are honored. Server-requested long
+waits are never shortened to the local backoff cap. Cooldowns stop the fill instead
+of occupying a catalog response or sleeping/retrying through a ten-minute block.
+
+403, 418 and recognized CAPTCHA/access-denial pages open a **persistent sticky
+circuit**. There is no automated retry/reset, CAPTCHA handling, cookie import,
+login, rotating identity, rotating user agent, proxy rotation or access-limit
+bypass. Resolve permission/access with the provider before any operator-led
+re-enablement; do not erase state or rotate deployments to evade a block. A
+transparent fixed CinemaTV user agent is used. No poster/backdrop URLs are exposed
+from acquired pages, so Android image loading cannot bypass this metadata gate.
+There is no synthetic/shuffled “Douban hot” or “popular” endpoint or claim.
+
+The only permitted origin is `https://movie.douban.com`; `DOUBAN_ORIGIN`, if set,
+must equal it exactly. No request-selected hosts, paths, credentials or source
+URLs are accepted. Redirects are rejected, each response is bounded to 1 MiB of
+decoded bytes, and the transport timeout defaults to five seconds
+(`DOUBAN_TIMEOUT_MS`, 100–10000ms). HTML parsing additionally bounds token/depth
+counts and fails closed on malformed/ambiguous data.
+
+Fresh complete snapshots default to seven days (`DOUBAN_CACHE_TTL_MS`, 1000ms to
+seven days). Stale fallback defaults to at most 30 days
+(`DOUBAN_STALE_MAX_MS`, at least the fresh TTL and at most 90 days), remains visibly
+stale, and never overrides rights expiry. Partial snapshots never qualify as a
+fresh complete cache. A failed refresh retains an older complete snapshot within
+that stale/rights window rather than mixing old and new ranks.
+
+Mount `DOUBAN_STATE_DIR` as a persistent, local, writable directory belonging to
+the BFF service user. Do not use an ephemeral container directory, network pipe or
+special file. Files are written atomically with restrictive permissions. Corrupt,
+missing-rights, inaccessible or conflicting-owner state fails closed with no
+outbound request. A process-owner lock prevents two BFF processes sharing one
+state directory; dead process ownership can be recovered without resetting the
+budget. This is a **single-BFF-instance control**, not a distributed global rate
+limit: do not run independent replicas against the same authorized account/site
+without a separately coordinated shared gate. Keep the persistent volume through
+upgrades/restarts. Configuration changes require restarting that BFF instance.

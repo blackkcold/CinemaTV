@@ -1,5 +1,6 @@
 import { open } from 'node:fs/promises';
 import { constants } from 'node:fs';
+import { createDoubanProvider } from './douban-provider.mjs';
 
 export const CATALOG_MAX_BYTES = 1024 * 1024;
 export const CATALOG_MAX_ITEMS = 5000;
@@ -182,7 +183,8 @@ export function normalizeTmdbCatalogItem(item, type) {
 }
 
 /** Configuration is operator-only; request parameters can never select a URL/file or upstream headers. */
-export function createCatalogService(env = process.env, fetchImpl = fetch) {
+export function createCatalogService(env = process.env, fetchImpl = fetch, dependencies = {}) {
+  const douban = dependencies.doubanProvider || createDoubanProvider(env, { fetchImpl });
   const enabled = env.LICENSED_CATALOG_ENABLED === 'true';
   const catalogFile = String(env.LICENSED_CATALOG_FILE || '');
   const catalogUrl = String(env.LICENSED_CATALOG_URL || '');
@@ -204,6 +206,24 @@ export function createCatalogService(env = process.env, fetchImpl = fetch) {
     const unavailable = () => ({ status: 'unavailable', provider: null, items: [], attribution: null,
       license: null, attempts, fallback: chartOnly ? null : 'libretv' });
     let emptyResult = null;
+    if (chartOnly && request.type === 'movie' && douban.enabled) {
+      const { document, acquisition } = await douban.load();
+      if (!document) {
+        attempts.push({ provider: 'Douban', status: 'unavailable' });
+        return { ...unavailable(), acquisition };
+      }
+      try {
+        const result = validateLicensedCatalog(document);
+        const page = selectCatalogPage(result.items, request);
+        const status = page.items.length ? 'available' : 'empty';
+        attempts.push({ provider: 'Douban', status });
+        return { ...result, ...page, status, attempts, fallback: null, acquisition };
+      } catch {
+        attempts.push({ provider: 'Douban', status: 'unavailable' });
+        return { ...unavailable(), acquisition: { ...acquisition, refreshing: false, state: 'unavailable',
+          warnings: [...acquisition.warnings, 'invalid_or_expired_acquired_catalog'] } };
+      }
+    }
     if (enabled) {
       try {
         if (Boolean(catalogFile) === Boolean(catalogUrl)) invalid();
@@ -221,7 +241,12 @@ export function createCatalogService(env = process.env, fetchImpl = fetch) {
         attempts.push({ provider: 'licensed', status: 'unavailable' });
       }
     } else attempts.push({ provider: 'licensed', status: 'disabled' });
-    if (chartOnly) return unavailable();
+    if (chartOnly) {
+      if (request.type === 'movie' && !enabled) {
+        return { ...unavailable(), acquisition: (await douban.load()).acquisition };
+      }
+      return unavailable();
+    }
     if (offset > 0 && tmdbEnabled) {
       attempts.push({ provider: 'TMDB', status: 'unavailable' });
       return { ...unavailable(), reason: 'tmdb_offset_unsupported' };

@@ -1,6 +1,6 @@
 FROM node:22-alpine
 WORKDIR /app
-COPY package.json server.mjs catalog.mjs ./
+COPY package.json server.mjs catalog.mjs douban-provider.mjs douban-parser.mjs ./
 RUN addgroup -S cinema && adduser -S cinema -G cinema
 USER cinema
 EXPOSE 8787

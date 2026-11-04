@@ -125,6 +125,11 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
         private set
     var catalogAttribution by mutableStateOf("")
         private set
+    var catalogStatus by mutableStateOf("")
+        private set
+    private var movieChart = CatalogChartSnapshot()
+    private var seriesChart = CatalogChartSnapshot()
+    private var chartNotice = ""
     var recommendationReasons by mutableStateOf<Map<String, String>>(emptyMap())
         private set
     var searchHits by mutableStateOf<List<SearchHit>>(emptyList())
@@ -135,7 +140,7 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
     private var chartGeneration = 0L
     var chartLoading by mutableStateOf(false)
         private set
-    val searchYears: List<String> get() = (catalogMovies + catalogSeries + queryCatalog + remoteSearch +
+    val searchYears: List<String> get() = (catalogMovies + catalogSeries + queryCatalog + movieChart.items + seriesChart.items + remoteSearch +
         repo.library.snapshot.records.map { it.item }).map { it.year }.filter { it.matches(Regex("\\d{4}")) }.distinct().sortedDescending()
 
     fun cycleSearchYear() {
@@ -159,7 +164,7 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
             repo.library.snapshots.collect {
                 libraryVersion++
                 rebuildRecommendations()
-                if (completedSearchQuery.isNotBlank()) rebuildSearch()
+                if (completedSearchQuery.isNotBlank() || searchFilters.doubanTopOnly) rebuildSearch()
             }
         }
         viewModelScope.launch {
@@ -170,11 +175,12 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             while (true) {
                 val now = System.currentTimeMillis()
-                val expiry = (catalogMovies + catalogSeries + queryCatalog + repo.localItems() + listOfNotNull(selected))
+                val expiry = (catalogMovies + catalogSeries + queryCatalog + movieChart.items + seriesChart.items +
+                    repo.localItems() + listOfNotNull(selected))
                     .map { it.catalogLicenseExpiresAt }.filter { it > now }.minOrNull()
                 delay(((expiry ?: now + 60000) - now + 1).coerceIn(1000, 60000))
                 rebuildRecommendations()
-                if (completedSearchQuery.isNotBlank()) rebuildSearch()
+                if (completedSearchQuery.isNotBlank() || searchFilters.doubanTopOnly) rebuildSearch()
                 focused = focused?.usableMetadata()
                 selected?.takeIf { it.catalogLicenseExpiresAt > 0 && it.catalogLicenseExpiresAt <= System.currentTimeMillis() }?.let {
                     selected = it.usableMetadata() ?: it.copy(title = "目录授权已过期", poster = "", backdrop = "", description = "本地片库记录已保留，请刷新元数据目录。", rating = "", aliases = emptyList(), actors = emptyList())
@@ -434,49 +440,98 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
         searchFilters = filters
         rebuildSearch()
         if (filters.doubanTopOnly && !wasTop) loadLicensedChart()
-        else if (!filters.doubanTopOnly) { chartGeneration++; chartJob?.cancel(); chartLoading = false }
+        else if (!filters.doubanTopOnly) {
+            chartGeneration++; chartJob?.cancel(); chartLoading = false; catalogStatus = ""
+        }
     }
 
     private fun loadLicensedChart() {
         chartJob?.cancel()
         val request = ++chartGeneration
+        chartNotice = ""
         if (!repo.hasMetadataCatalog) {
             chartLoading = false
-            searchStage = "未配置授权目录；豆瓣筛选不会使用其他来源替代。"
+            chartNotice = "未配置授权目录；豆瓣筛选不会使用其他来源替代。"
+            rebuildSearch()
             return
         }
         val generation = searchGeneration
         val keyword = completedSearchQuery
         chartJob = viewModelScope.launch {
             chartLoading = true
+            val deadline = System.currentTimeMillis() + CatalogRefreshPolicy.WINDOW_MS
             try {
-                for (tv in listOf(false, true)) {
-                    var offset = 0
-                    for (pageIndex in 0 until 5) {
-                        val page = repo.catalog(keyword, tv, offset, topOnly = true)
-                        ensureActive()
-                        if (generation != searchGeneration || request != chartGeneration) return@launch
-                        // A chart refresh owns the latest complete metadata/expiry bundle.
-                        queryCatalog = (queryCatalog + page.items).associateBy { it.presentationKey }.values.toList()
-                        rebuildSearch()
-                        offset = page.nextOffset ?: break
+                var firstPass = true
+                val nextChecks = mutableMapOf<Boolean, Long>()
+                while (true) {
+                    if (!firstPass && System.currentTimeMillis() >= deadline) break
+                    for (tv in listOf(false, true)) {
+                        // Movie acquisition owns its own refresh state. An empty TV
+                        // response cannot replace it or trigger movie polling.
+                        if (!firstPass && (nextChecks[tv] ?: Long.MAX_VALUE) > System.currentTimeMillis()) continue
+                        nextChecks.remove(tv)
+                        if (!firstPass && CatalogRefreshPolicy.nextDelay((if (tv) seriesChart else movieChart).catalog,
+                                System.currentTimeMillis(), Long.MAX_VALUE) == null) continue
+                        try {
+                            CatalogChartPaging.load(fetch = { offset ->
+                                val page = repo.catalog(keyword, tv, offset, topOnly = true)
+                                ensureActive()
+                                if (generation != searchGeneration || request != chartGeneration)
+                                    throw CancellationException("Chart request replaced")
+                                page
+                            }, onSnapshot = { snapshot ->
+                                if (tv) seriesChart = snapshot else movieChart = snapshot
+                                rebuildSearch()
+                            })
+                            val now = System.currentTimeMillis()
+                            CatalogRefreshPolicy.nextDelay((if (tv) seriesChart else movieChart).catalog, now, deadline)
+                                ?.let { nextChecks[tv] = now + it }
+                        } catch (cancelled: CancellationException) { throw cancelled }
+                        catch (_: Exception) {
+                            chartNotice = "${if (tv) "剧集" else "电影"}榜单暂未更新完成，已保留成功读取的结果。"
+                        }
                     }
+                    firstPass = false
+                    val now = System.currentTimeMillis()
+                    val nextCheck = nextChecks.values.minOrNull() ?: break
+                    if (now >= deadline || nextCheck > deadline) break
+                    val wait = (nextCheck - now).coerceAtLeast(0)
+                    delay(wait)
+                    ensureActive()
+                    if (generation != searchGeneration || request != chartGeneration) return@launch
                 }
-                searchStage = "授权 TOP250 目录 · 仅显示有效许可记录"
+                if (listOf(movieChart, seriesChart).any {
+                        CatalogRefreshPolicy.nextDelay(it.catalog, System.currentTimeMillis(), Long.MAX_VALUE) != null
+                    }) chartNotice = "后台仍在更新，可稍后重新选择榜单查看进度。"
             } catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) { searchStage = "授权 TOP250 目录暂不可用，已保留现有结果。" }
-            finally { if (request == chartGeneration) chartLoading = false }
+            catch (_: Exception) { chartNotice = "榜单更新暂未完成，已保留本次成功读取的结果。" }
+            finally {
+                if (request == chartGeneration) {
+                    chartLoading = false
+                    rebuildSearch()
+                }
+            }
         }
     }
 
     private fun rebuildSearch() {
+        val chartOnly = searchFilters.doubanTopOnly
         searchHits = SearchIndex.search(completedSearchQuery,
-            library = repo.localItems(),
-            catalog = catalogMovies + catalogSeries + queryCatalog,
+            // Saved titles can still contribute aliases/source alternatives, but an
+            // old saved rank must not reappear in a newly fetched chart snapshot.
+            library = repo.localItems().let { if (chartOnly) it.map { item -> item.copy(doubanTopRank = null) } else it },
+            catalog = if (chartOnly) movieChart.items + seriesChart.items else catalogMovies + catalogSeries + queryCatalog,
             remote = remoteSearch, filters = searchFilters)
         results = searchHits.map { it.item }
-        catalogAttribution = (featured + tvShows + results).map { it.catalogAttribution }
+        catalogAttribution = (if (chartOnly) results else featured + tvShows + results).map { it.catalogAttribution }
             .filter(String::isNotBlank).distinct().joinToString("\n")
+        catalogStatus = if (!chartOnly) "" else buildList {
+            if (repo.hasMetadataCatalog) {
+                add("电影：${CatalogStatus.message(movieChart)}")
+                if (seriesChart.items.isNotEmpty()) add("剧集：${CatalogStatus.message(seriesChart)}")
+            }
+            if (chartNotice.isNotBlank()) add(chartNotice)
+        }.joinToString("\n")
     }
 
     fun search() {
@@ -485,6 +540,11 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
         navigate(Page.SEARCH)
         searchJob?.cancel()
         chartJob?.cancel()
+        chartGeneration++
+        chartLoading = false
+        movieChart = CatalogChartSnapshot()
+        seriesChart = CatalogChartSnapshot()
+        chartNotice = ""
         val generation = ++searchGeneration
         completedSearchQuery = wd
         remoteSearch = emptyList()

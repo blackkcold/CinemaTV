@@ -140,6 +140,7 @@ class RepositoryContractTest {
         val item = catalog.items.single()
 
         assertTrue(catalog.available)
+        assertNull("Old BFF responses remain supported without invented acquisition status", catalog.acquisition)
         assertEquals(provider, catalog.provider)
         assertEquals(attribution, catalog.attribution)
         assertEquals(provider, item.catalogProvider)
@@ -215,6 +216,124 @@ class RepositoryContractTest {
         assertNull(RatingPolicy.score(item))
         assertFalse(SearchFilters(ratingSource = "Douban", minRating = 8.0).matches(item))
     }
+
+    @Test fun partialAcquisitionKeepsSnapshotCountsDatesAndLegalAttributionSeparate() = runBlocking {
+        val now = System.currentTimeMillis()
+        val expiry = now + TimeUnit.DAYS.toMillis(1)
+        val fetched = now - TimeUnit.HOURS.toMillis(2)
+        val retry = now + 60_000
+        val response = catalogResponse(provider = "Douban", license = license(Instant.ofEpochMilli(expiry).toString()))
+            .put("nextOffset", 50).put("acquisition", acquisitionFixture("partial", fetched, retry))
+        server.respond(response)
+        val repo = repository().apply { configureMetadata(this@RepositoryContractTest.server.base, "synthetic-test-token") }
+
+        val catalog = repo.catalog("Synthetic", topOnly = true)
+        val state = requireNotNull(catalog.acquisition)
+
+        assertEquals("stale-cache", state.source)
+        assertEquals(fetched, state.fetchedAt)
+        assertTrue(state.stale)
+        assertFalse(state.complete)
+        assertEquals(250, state.expectedTotal)
+        assertEquals(50, state.availableTotal)
+        assertEquals(1, catalog.items.size)
+        assertEquals(listOf("synthetic-partial-warning"), state.warnings)
+        assertFalse(state.blocked)
+        assertEquals(retry, state.retryAt)
+        assertEquals("synthetic-snapshot-a", state.snapshotId)
+        assertTrue(state.refreshing)
+        assertEquals(CatalogAcquisitionState.PARTIAL, state.state)
+        assertEquals(50, catalog.nextOffset)
+        assertEquals(expiry, catalog.licenseExpiresAt)
+        assertEquals(expiry, catalog.items.single().catalogLicenseExpiresAt)
+        assertEquals("Synthetic fixture attribution only", catalog.items.single().catalogAttribution)
+        val status = CatalogStatus.message(CatalogChartSnapshot(catalog, catalog.items), now)
+        assertTrue(status.contains("50/250"))
+        assertTrue(status.contains("已载入 1 条"))
+        assertTrue(status.contains("旧缓存"))
+        assertFalse(status.contains("synthetic-partial-warning"))
+        assertNull(catalog.items.single().usableMetadata(expiry))
+        val request = server.takeRequest()
+        assertEquals("douban-top250", request.uri.getQueryParameter("chart"))
+    }
+
+    @Test fun acquisitionStatesDecodeWithoutEnablingForbiddenPolling() = runBlocking {
+        val now = System.currentTimeMillis()
+        val repo = repository().apply { configureMetadata(this@RepositoryContractTest.server.base, "synthetic-test-token") }
+        mapOf("rate_limited" to CatalogAcquisitionState.RATE_LIMITED,
+            "access_blocked" to CatalogAcquisitionState.ACCESS_BLOCKED,
+            "disabled" to CatalogAcquisitionState.DISABLED).forEach { (name, expected) ->
+            server.respond(catalogResponse(license = license(Instant.ofEpochMilli(now + 86_400_000).toString()))
+                .put("items", JSONArray()).put("status", "empty")
+                .put("acquisition", acquisitionFixture(name, now - 1000, now - 1)
+                    .put("blocked", name == "access_blocked")))
+            val catalog = repo.catalog(topOnly = true)
+            assertFalse(catalog.available)
+            assertEquals(expected, catalog.acquisition?.state)
+            assertNull(CatalogRefreshPolicy.nextDelay(catalog, now, now + 90_000))
+        }
+    }
+
+    @Test fun emptyRefreshingSnapshotIsNotReportedAsUnavailableOrComplete() = runBlocking {
+        val now = System.currentTimeMillis()
+        server.respond(catalogResponse(license = license(Instant.ofEpochMilli(now + 86_400_000).toString()))
+            .put("status", "empty").put("items", JSONArray())
+            .put("acquisition", acquisitionFixture("refreshing", now, now)
+                .put("availableTotal", 0).put("source", JSONObject.NULL)
+                .put("fetchedAt", JSONObject.NULL).put("snapshotId", JSONObject.NULL).put("stale", false)))
+        val repo = repository().apply { configureMetadata(this@RepositoryContractTest.server.base, "synthetic-test-token") }
+
+        val catalog = repo.catalog(topOnly = true)
+
+        assertTrue(catalog.items.isEmpty())
+        assertEquals(CatalogAcquisitionState.REFRESHING, catalog.acquisition?.state)
+        assertNull(catalog.acquisition?.fetchedAt)
+        assertNull(catalog.acquisition?.snapshotId)
+        assertNull(catalog.acquisition?.source)
+        assertEquals(5_000L, CatalogRefreshPolicy.nextDelay(catalog, now, now + 90_000))
+        val text = CatalogStatus.message(CatalogChartSnapshot(catalog), now)
+        assertTrue(text.contains("后台更新中"))
+        assertTrue(text.contains("快照未完整 0/250"))
+    }
+
+    @Test fun expiredLicenseCannotBeRevivedByFreshAcquisitionMetadata() = runBlocking {
+        val now = System.currentTimeMillis()
+        server.respond(catalogResponse(license = license(Instant.ofEpochMilli(now - 1).toString()))
+            .put("acquisition", acquisitionFixture("fresh", now, now).put("complete", true).put("availableTotal", 250)))
+        val repo = repository().apply { configureMetadata(this@RepositoryContractTest.server.base, "synthetic-test-token") }
+
+        val catalog = repo.catalog(topOnly = true)
+
+        assertTrue(catalog.licenseRejected)
+        assertFalse(catalog.available)
+        assertTrue(catalog.items.isEmpty())
+        assertNull(CatalogRefreshPolicy.nextDelay(catalog, now, now + 90_000))
+        assertTrue(CatalogStatus.message(CatalogChartSnapshot(catalog), now).contains("授权已过期或无效"))
+    }
+
+    @Test fun pagingQueryAndMalformedAcquisitionRemainBoundedAndReadable() = runBlocking {
+        val now = System.currentTimeMillis()
+        server.respond(catalogResponse(license = license(Instant.ofEpochMilli(now + 86_400_000).toString()))
+            .put("nextOffset", 100).put("acquisition", acquisitionFixture("unknown-provider-state", now, now)
+                .put("fetchedAt", "not-a-date").put("retryAt", "not-a-date")))
+        val repo = repository().apply { configureMetadata(this@RepositoryContractTest.server.base, "synthetic-test-token") }
+        val catalog = repo.catalog(offset = 50, topOnly = true)
+        assertEquals(100, catalog.nextOffset)
+        assertNull(catalog.acquisition?.fetchedAt)
+        assertNull(catalog.acquisition?.retryAt)
+        assertEquals(CatalogAcquisitionState.UNAVAILABLE, catalog.acquisition?.state)
+        val request = server.takeRequest()
+        assertEquals("50", request.uri.getQueryParameter("offset"))
+        assertEquals("douban-top250", request.uri.getQueryParameter("chart"))
+        assertFalse(CatalogStatus.message(CatalogChartSnapshot(catalog), now).contains("unknown-provider-state"))
+    }
+
+    private fun acquisitionFixture(state: String, fetched: Long, retry: Long) = JSONObject()
+        .put("source", "stale-cache").put("fetchedAt", Instant.ofEpochMilli(fetched).toString())
+        .put("stale", true).put("complete", false).put("expectedTotal", 250).put("availableTotal", 50)
+        .put("warnings", JSONArray(listOf("synthetic-partial-warning"))).put("blocked", false)
+        .put("retryAt", Instant.ofEpochMilli(retry).toString()).put("snapshotId", "synthetic-snapshot-a")
+        .put("refreshing", true).put("state", state)
 
     private fun license(expiry: String) = JSONObject().put("name", "Synthetic test licence")
         .put("url", "https://licence.example.test/synthetic").put("expiresAt", expiry)
