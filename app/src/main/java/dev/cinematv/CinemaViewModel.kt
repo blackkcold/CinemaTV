@@ -422,7 +422,7 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
         if (playerReturnPage == Page.DETAIL) selected?.let {
             repo.saveProgress(it, position, episodeIndex, durationMs)
             if (episodeIndex == playingEpisode) {
-                selected = it.copy(positionMs = position.coerceAtLeast(0), lastEpisode = episodeIndex, durationMs = durationMs.takeIf { value -> value > 0 } ?: it.durationMs)
+                selected = it.withPlaybackProgress(position, episodeIndex, durationMs)
             }
             libraryVersion++
         }

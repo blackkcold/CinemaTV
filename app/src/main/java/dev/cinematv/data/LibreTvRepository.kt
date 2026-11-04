@@ -409,8 +409,7 @@ class LibreTvRepository(context: Context) {
 
     fun saveProgress(item: MediaItem, positionMs: Long, episodeIndex: Int = 0, durationMs: Long = 0L) {
         if (item.id.isBlank()) return
-        val updated = item.copy(positionMs = positionMs.coerceAtLeast(0), lastEpisode = episodeIndex.coerceAtLeast(0),
-            durationMs = durationMs.takeIf { it > 0 } ?: if (item.lastEpisode == episodeIndex) item.durationMs else 0L)
+        val updated = item.withPlaybackProgress(positionMs, episodeIndex, durationMs)
         val existing = history().filterNot { it.id == item.id && it.source?.url == item.source?.url }
         val list = (listOf(updated) + existing).take(60)
         prefs.edit().putString("history", JSONArray(list.map { itemJson(it) }).toString()).apply()

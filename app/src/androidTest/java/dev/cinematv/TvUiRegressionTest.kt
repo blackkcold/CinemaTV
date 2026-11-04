@@ -22,6 +22,7 @@ import java.io.File
 import java.util.Collections
 
 @RunWith(AndroidJUnit4::class)
+@OptIn(ExperimentalTestApi::class)
 class TvUiRegressionTest {
     @get:Rule val rule = createAndroidComposeRule<TvTestActivity>()
     private lateinit var server: UiFixtureServer
