@@ -31,6 +31,9 @@ jobs:
         run: |
           gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug
           npm --prefix backend/tv-bff test
+      - name: Require executed Android JUnit tests
+        run: |
+          find app/build/test-results/testDebugUnitTest -name 'TEST-*.xml' -print -quit | grep -q . || { echo "Android tests absent (NO-SOURCE)"; exit 1; }
       - name: Validate APK archive and signature
         shell: bash
         run: |
@@ -43,7 +46,7 @@ jobs:
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
       - name: Publish prerelease on version tags
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') && (contains(github.ref_name, '-preview') || contains(github.ref_name, '-rc'))
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
