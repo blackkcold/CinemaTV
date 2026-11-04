@@ -1,6 +1,8 @@
 package dev.cinematv
 
 import android.os.Bundle
+import android.net.ConnectivityManager
+import android.net.Network
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
@@ -18,9 +20,22 @@ import dev.cinematv.ui.*
 
 class MainActivity : ComponentActivity() {
     private val model: CinemaViewModel by viewModels()
+    private var networkManager: ConnectivityManager? = null
+    private var networkListener: ConnectivityManager.NetworkCallback? = null
+    private var firstResume = true
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        networkManager = getSystemService(ConnectivityManager::class.java)
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                runOnUiThread {
+                    if (!firstResume && model.repo.isConnected) model.refreshConnection()
+                }
+            }
+        }
+        runCatching { networkManager?.registerDefaultNetworkCallback(callback) }
+            .onSuccess { networkListener = callback }
         window.decorView.systemUiVisibility = (
             android.view.View.SYSTEM_UI_FLAG_FULLSCREEN or
             android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
@@ -61,5 +76,18 @@ class MainActivity : ComponentActivity() {
             }
             }
         }
+    }
+    override fun onResume() {
+        super.onResume()
+        if (!firstResume && model.repo.isConnected) model.refreshConnection()
+        firstResume = false
+    }
+
+    override fun onDestroy() {
+        networkListener?.let { listener ->
+            runCatching { networkManager?.unregisterNetworkCallback(listener) }
+        }
+        networkListener = null
+        super.onDestroy()
     }
 }
