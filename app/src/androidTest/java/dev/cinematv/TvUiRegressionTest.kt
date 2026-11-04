@@ -30,7 +30,7 @@ class TvUiRegressionTest {
     private val directory get() = File(InstrumentationRegistry.getArguments().getString("additionalTestOutputDir")
         ?: rule.activity.getExternalFilesDir(null)!!.absolutePath, "ui-evidence").apply { mkdirs() }
     private fun key(code: Int) {
-        if (code == KeyEvent.KEYCODE_BACK) androidx.test.espresso.Espresso.pressBack()
+        if (code == KeyEvent.KEYCODE_BACK && model.page != Page.PLAYER) androidx.test.espresso.Espresso.pressBack()
         else {
             val composeKey = when (code) {
                 KeyEvent.KEYCODE_DPAD_DOWN -> Key.DirectionDown
@@ -38,6 +38,7 @@ class TvUiRegressionTest {
                 KeyEvent.KEYCODE_DPAD_LEFT -> Key.DirectionLeft
                 KeyEvent.KEYCODE_DPAD_RIGHT -> Key.DirectionRight
                 KeyEvent.KEYCODE_DPAD_CENTER -> Key.DirectionCenter
+                KeyEvent.KEYCODE_BACK -> Key.Back
                 else -> error("Unsupported test key: $code")
             }
             val target = if (rule.onAllNodes(isDialog()).fetchSemanticsNodes().isNotEmpty()) rule.onNode(isDialog()) else rule.onRoot()
@@ -48,6 +49,7 @@ class TvUiRegressionTest {
         File(directory, "focus-trace.txt").appendText("key=$code route=${model.focusRoute}\n$trace\n")
     }
     private fun screenshot(name: String, waitForArt: Boolean = true) {
+        if (waitForArt) rule.runOnIdle { model.dismissMessage() }
         rule.waitForIdle()
         try {
           if (waitForArt && model.page != Page.PLAYER) {
@@ -154,7 +156,13 @@ class TvUiRegressionTest {
         rule.onNodeWithText("自动选择").assertExists()
         screenshot("14-player-panel")
         key(KeyEvent.KEYCODE_BACK)
-        rule.onNodeWithText("音轨").assertIsFocused()
+        rule.onNodeWithText("自动选择").assertDoesNotExist()
+        rule.onNode(hasText("音轨") and hasClickAction()).assertIsFocused()
+        key(KeyEvent.KEYCODE_DPAD_CENTER)
+        rule.onNodeWithText("自动选择").assertExists()
+        rule.runOnIdle { rule.activity.onBackPressedDispatcher.onBackPressed() }
+        rule.onNodeWithText("自动选择").assertDoesNotExist()
+        rule.onNode(hasText("音轨") and hasClickAction()).assertIsFocused()
         key(KeyEvent.KEYCODE_BACK)
         key(KeyEvent.KEYCODE_BACK)
         rule.runOnIdle {
