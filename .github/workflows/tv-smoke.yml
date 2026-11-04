@@ -1,4 +1,4 @@
-name: Android emulator remote smoke
+name: Android emulator phone and D-pad smoke
 on:
   push:
     branches: [main]

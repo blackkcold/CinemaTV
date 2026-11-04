@@ -85,3 +85,10 @@ attribution, API and image-use conditions. No TMDB access key is bundled.
 - Android emulator smoke tests validate launch/navigation. This does not certify any physical TV, codec, GPU or full liquid-glass implementation.
 
 See [branding guidance](design/branding/README.md) and [installation guide](docs/INSTALL.md). Stable release is still gated by physical hardware certification.
+
+## New branding previews
+
+| Standard app launcher icon | Center-aligned Android TV banner |
+|---|---|
+| ![CinemaTV launcher icon](app/src/main/res/drawable-nodpi/ic_launcher_legacy.png) | ![CinemaTV TV banner](app/src/main/res/drawable-nodpi/tv_banner.png) |
+
