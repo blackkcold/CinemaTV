@@ -43,12 +43,59 @@ All font bytes are unmodified, not locally subsetted:
   occupy the full **20,629,732 bytes**, plus ZIP/alignment overhead. That is about
   **4,542,473 bytes more** than the DEFLATE estimate. This is not a measured total
   APK delta; check the built artifact before release.
-- Latin 400 and 700 are real font files. CJK ships only 400; bold/medium and italic
-  use Android/Compose synthetic styling. No claim of true CJK 500/600/700 masters.
+- Latin 400 and 700 are real font files. CJK ships only 400; requested weights 600 and above and italic
+  use Android/Compose synthetic styling. Requested 500 stays at the regular face
+  under Compose's standard synthesis policy. No claim of true CJK 500/600/700 masters.
   This deliberately avoids another approximately 20 MB collection on TV devices.
 
 Both original copyright/OFL 1.1 licenses ship in `assets/fonts/`. Fonts remain under
 OFL, separate from the application's MIT source license. Do not strip the licenses.
+
+## Weight-resolution correction
+
+The original `FontFamily(android.graphics.Typeface)` adapter was incorrect for CJK
+weight requests. The built APK identifies Compose ui-text **1.10.6**. Its exact
+published source shows `AndroidTypefaceWrapper.getNativeTypeface` returns its
+wrapped face unchanged and ignores requested weight/style/synthesis. Therefore the
+regular CJK face stayed regular in bold headings, while the separate Latin font
+list correctly selected its real bold file. This was a real mixed-weight regression,
+not an intended visual difference of Noto. Native specimens that explicitly set
+`Paint.isFakeBoldText` did not test that Compose path.
+
+Regional faces now use `FontFamily(PreloadedNotoFont(typeface))`: a public-API
+`AndroidFont` descriptor advertising weight 400/style normal. Its blocking loader
+only returns the already-loaded native object, with no filesystem/network access.
+Compose's font-list resolver then applies its built-in requested-weight/style
+synthesis and honors `FontSynthesis.None`. API26/27 use the platform style-creation
+path; API28+ use weight/style creation. The shared TTC index and original bytes,
+background load, cache and failure fallback remain unchanged. No new font files.
+
+`NotoFontsDeviceTest.composeCjkBoldHonorsWeightAndSynthesisOnBothSurfaces` checks
+resolved native bold flags and captures real `CinemaText` and `CinemaTvText` output
+for each regional face, comparing regular/bold/synthesis-disabled CJK-only samples
+at the same size. It requires greater stroke coverage for synthetic bold, and the
+regular raster when synthesis is disabled, comparing crop dimensions and SHA256 of
+raw ARGB pixels as well as ink. It writes the display PNG, three specimen crops and
+ink/pixel-hash JSON to `ui-evidence/noto/compose-weight`.
+
+Capture uses one bounded UiAutomation compositor screenshot for each region/wrapper
+pair (ten total), then crops all three semantics rectangles from that same display
+image. It does not use Compose force-redraw/captureToImage or PixelCopy. Before each
+capture, a draw-observed epoch is changed with a frame listener armed; the test waits
+for that epoch to draw, a fresh window frame, and Compose idle. Foreground activity
+and accessibility package are checked around the readback. Late/abandoned bitmaps
+are recycled. This generic ComponentActivity is not assumed fullscreen: the Compose
+host's measured screen and window positions translate `boundsInWindow` into display
+coordinates. Out-of-display/clipped rectangles fail. Evidence records full display
+dimensions, window/screen offsets, exact crop bounds and the fresh draw epoch. No
+scaling or guessed (0,0) origin is permitted. No assertion compares different regional faces
+or relies on a platform-specific golden. The native specimen remains useful for
+asset/glyph checks, but cannot replace this Compose regression gate. Device/CI
+execution of this correction is still required before accepting new goldens.
+
+Exact dependency source used to verify the behavior (no dependency was added):
+https://dl.google.com/dl/android/maven2/androidx/compose/ui/ui-text-android/1.10.6/ui-text-android-1.10.6-sources.jar
+(`AndroidTypefaceWrapper.android.kt`, `AndroidFont.android.kt`, `FontSynthesis.android.kt`).
 
 ## Packaging and low-RAM tradeoff
 

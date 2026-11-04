@@ -22,6 +22,33 @@ class NotoTypographyContractTest(unittest.TestCase):
                       'deadline', 'connectTimeout', 'readTimeout', '${name}.part'):
             self.assertIn(guard, script)
 
+    def test_cjk_uses_weight_aware_descriptor_and_compose_regression(self):
+        source = ROOT / 'app/src/main/java/dev/cinematv/ui/typography'
+        loader = (source / 'CinemaNoto.kt').read_text()
+        self.assertIn('FontFamily(PreloadedNotoFont(typeface))', loader)
+        self.assertNotIn('else FontFamily(typeface)', loader)
+        descriptor = (source / 'PreloadedNotoFont.kt').read_text()
+        self.assertIn('override val weight: FontWeight = FontWeight.Normal', descriptor)
+        self.assertIn('(font as PreloadedNotoFont).typeface', descriptor)
+        self.assertNotIn('Typeface.Builder', descriptor)
+        self.assertNotIn('assets.open', descriptor)
+        regression = (ROOT / 'app/src/androidTest/java/dev/cinematv/ui/typography/NotoComposeWeightEvidence.kt').read_text()
+        for required in ('CinemaText(', 'CinemaTvText(', 'FontSynthesis.None',
+                         'bold.isBold', 'NotoCompositorCapture.capture(', 'boldInk > normalInk',
+                         'regular/no-synthesis pixels differ', 'boundsInWindow'):
+            self.assertIn(required, regression)
+        self.assertNotIn('isFakeBoldText', regression)
+        self.assertNotIn('captureToImage', regression)
+        capture = (ROOT / 'app/src/androidTest/java/dev/cinematv/ui/typography/NotoCompositorCapture.kt').read_text()
+        for required in ('getLocationOnScreen', 'getLocationInWindow', 'automation.takeScreenshot()',
+                         'future.get(TIMEOUT_SECONDS', 'if (abandoned)', 'bitmap.recycle()',
+                         'settleFreshFrame', 'rendered()', 'activity.hasWindowFocus()',
+                         'if (!waitForRoot) check(windowReady)',
+                         'if (windowReady && lastPackage == activity.packageName) return'):
+            self.assertIn(required, capture)
+        self.assertNotIn('captureToImage', capture)
+        self.assertNotIn('PixelCopy', capture)
+
     def test_generated_assets_and_licenses_are_packaged(self):
         self.assertIn('apply(from = "noto-fonts.gradle")', (ROOT / 'app/build.gradle.kts').read_text())
         for name in ('OFL-NotoSans.txt', 'OFL-NotoSansCJK.txt'):

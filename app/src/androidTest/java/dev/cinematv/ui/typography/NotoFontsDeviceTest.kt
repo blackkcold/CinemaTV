@@ -4,9 +4,21 @@ import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
+import org.junit.Rule
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.activity.ComponentActivity
 
 /** Run on API26 and current TV/phone devices: proves native TTC loading, not merely file existence. */
 class NotoFontsDeviceTest {
+    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+
+    @Test fun composeCjkBoldHonorsWeightAndSynthesisOnBothSurfaces() = runBlocking {
+        val assets = InstrumentationRegistry.getInstrumentation().targetContext.assets
+        val fonts = NotoFontCache.load(assets)
+        assertTrue("Failed fonts: ${fonts.failedAssets}", fonts.failedAssets.isEmpty())
+        NotoComposeWeightEvidence.capture(compose, compose.activity, fonts)
+    }
+
     @Test fun regionalFontsRenderWithOfflineEvidence() {
         NotoRenderingEvidence.capture(InstrumentationRegistry.getInstrumentation().targetContext)
     }
