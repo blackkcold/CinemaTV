@@ -350,6 +350,7 @@ class LibreTvRepository(context: Context) {
                 (saved.source == null && MediaIdentity.isSameWork(saved.title, saved.year, entry.title, entry.year))
         }
         entry.copy(
+            isTv = item.isTv || entry.isTv,
             positionMs = progress?.positionMs ?: 0L,
             lastEpisode = progress?.lastEpisode ?: 0,
             description = info.optString("desc"),
