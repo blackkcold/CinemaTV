@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "startedAt": "2026-11-04T20:10:45.671545+00:00",
+  "result": "failed",
+  "scope": "controlled static fixture positive protocol parsing only",
+  "upstreamVersion": "2.21.1",
+  "upstreamCommit": "29cbeb3d37b4876f909a0354087a3531af0447f6",
+  "archiveSha256": "df9b240c0fdbb8470aaccccc5435f74820d6bea6f4d905b2c83d1e6dd0973786",
+  "nodeVersion": "v22.23.4",
+  "nodeArchiveSha256": "1805bcd35e6815559bd2eb97db438d3fdb0eb3a5e6a977b7c1badca76337e9ce",
+  "checks": [
+    "local fixture matches reviewed manifest",
+    "published immutable fixture query digest (plain)",
+    "published immutable fixture query digest ?ac=videolist&wd=Big%20Buck%20Bunny&pg=1",
+    "published immutable fixture query digest ?ac=videolist&ids=6402b77c-b61f-4a06-96ca-c8420a2becf4",
+    "fresh permitted media range availability",
+    "HTTP 200 /api/status",
+    "official version and no configured content sources",
+    "HTTP 200 /api/auth",
+    "synthetic authentication succeeds",
+    "HTTP 200 /api/search"
+  ],
+  "limitations": [
+    "Not a dynamic CMS/search/pagination/ID-filtering service",
+    "No unknown-ID correctness asserted",
+    "No Android/device/home-service acceptance or full-film decode",
+    "No Douban endpoint or arbitrary source requested",
+    "Upstream SSRF/auth/fetch unchanged; process loopback-only and ephemeral"
+  ],
+  "fixtureUrl": "https://raw.githubusercontent.com/blackkcold/CinemaTV/74d104aa2b4e212163376bcbb1da04bef6670918/scripts/libretv-contracts/fixtures/blender-bbb-static-cms.json",
+  "fixtureSha256": "8d84db9bf37fd22cccb41738b61e3795e547c77bbc7e7925bb19babbd7a8a73d",
+  "freshMediaRange": {
+    "url": "https://video.blender.org/object-storage/web_videos/6402b77c-b61f-4a06-96ca-c8420a2becf4-240.mp4",
+    "status": 206,
+    "bytes": 65536,
+    "sha256": "db4d6db4ad94f00f71268254c21426a87af47cbf3bc59c5718e36a7fab0c53be",
+    "contentRange": "bytes 0-65535/52991998"
+  },
+  "diagnostics": {
+    "searchResultCount": 0,
+    "searchFailures": [
+      {
+        "sourceKey": "controlled-blender-static",
+        "timedOut": false,
+        "error": "fetch failed"
+      }
+    ]
+  },
+  "errorType": "AssertionError",
+  "failedCheck": "Contract failed: static fixture positive search mapping",
+  "finishedAt": "2026-11-04T20:11:09.986412+00:00",
+  "passed": 10
+}

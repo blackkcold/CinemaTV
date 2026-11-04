@@ -1,0 +1,58 @@
+name: Official LibreTV controlled static protocol
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: cinematv-official-libretv-positive
+  cancel-in-progress: false
+jobs:
+  positive-protocol:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/test/official-libretv-positive'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Initialize separate evidence and run offline checks
+        run: |
+          mkdir -p qa/official-libretv-positive "$RUNNER_TEMP/official-libretv-positive"
+          printf '%s\n' '{"result":"not_run","scope":"controlled static protocol only","reason":"Download, verification or preflight did not complete; inspect workflow step status"}' > qa/official-libretv-positive/protocol.json
+          python3 scripts/libretv-contracts/fixtures/test_fixture.py
+          python3 scripts/libretv-contracts/test_positive.py
+          python3 scripts/libretv-contracts/test_workflow.py
+      - name: Download fixed official artifacts and published checksum manifests
+        timeout-minutes: 4
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/official-libretv-positive"
+          CURL=(curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --connect-timeout 20 --max-time 90 --max-filesize 67108864)
+          "${CURL[@]}" 'https://github.com/LibreSpark/LibreTV/releases/download/v2.21.1/libretv-2.21.1-standalone.tar.gz' -o libretv-2.21.1-standalone.tar.gz
+          "${CURL[@]}" 'https://github.com/LibreSpark/LibreTV/releases/download/v2.21.1/SHA256SUMS' -o SHA256SUMS
+          "${CURL[@]}" 'https://nodejs.org/dist/v22.23.4/node-v22.23.4-linux-x64.tar.xz' -o node-v22.23.4-linux-x64.tar.xz
+          "${CURL[@]}" 'https://nodejs.org/dist/v22.23.4/SHASUMS256.txt' -o SHASUMS256.txt
+      - name: Verify pins and published manifests before extracting runtime
+        run: |
+          python3 scripts/libretv-contracts/prepare_official.py \
+            --directory "$RUNNER_TEMP/official-libretv-positive" \
+            --report qa/official-libretv-positive/artifact-verification.json
+      - name: Run isolated official positive protocol contracts
+        timeout-minutes: 4
+        run: |
+          python3 scripts/libretv-contracts/positive.py \
+            --archive "$RUNNER_TEMP/official-libretv-positive/libretv-2.21.1-standalone.tar.gz" \
+            --sums "$RUNNER_TEMP/official-libretv-positive/SHA256SUMS" \
+            --node "$RUNNER_TEMP/official-libretv-positive/node-v22.23.4-linux-x64/bin/node" \
+            --node-archive "$RUNNER_TEMP/official-libretv-positive/node-v22.23.4-linux-x64.tar.xz" \
+            --fixture-url 'https://raw.githubusercontent.com/blackkcold/CinemaTV/74d104aa2b4e212163376bcbb1da04bef6670918/scripts/libretv-contracts/fixtures/blender-bbb-static-cms.json' \
+            --output qa/official-libretv-positive/protocol.json
+      - name: Upload redacted outcome even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: official-libretv-positive-${{ github.run_id }}-${{ github.run_attempt }}
+          path: qa/official-libretv-positive/*.json
+          if-no-files-found: warn
+          retention-days: 14
