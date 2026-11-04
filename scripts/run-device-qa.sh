@@ -157,8 +157,12 @@ if [[ "$3" == *OfficialLibreTvPlaybackAcceptanceTest* ]]; then
   [ -n "$CINEMA_CLASSES" ] || { echo 'Normal UTP suite must install APKs before official acceptance' >&2; exit 2; }
 fi
 
+# Run 41919417173: 4K instrumentation passed in 697s (671s, 16-test suite).
+# Keep a bounded variance margin for that viewport only; other targets stay at 12m.
+CINEMA_INSTRUMENTATION_BUDGET=12m
+if [ "$1" = 3840x2160 ]; then CINEMA_INSTRUMENTATION_BUDGET=15m; fi
 CINEMA_TEST_STATUS=0
-run_stage instrumentation timeout --signal=TERM --kill-after=30s 12m \
+run_stage instrumentation timeout --signal=TERM --kill-after=30s "$CINEMA_INSTRUMENTATION_BUDGET" \
   gradle --no-daemon --max-workers=2 '-Dorg.gradle.jvmargs=-Xmx1024m -Dfile.encoding=UTF-8' \
   -Pkotlin.compiler.execution.strategy=in-process :app:connectedDebugAndroidTest \
   "-Pandroid.testInstrumentationRunnerArguments.class=$CINEMA_CLASSES" || CINEMA_TEST_STATUS=$?
