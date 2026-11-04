@@ -13,6 +13,7 @@ import android.view.WindowManager
 import android.view.View
 import android.view.Window
 import androidx.test.platform.app.InstrumentationRegistry
+import dev.cinematv.NotoTestActivity
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -47,6 +48,9 @@ internal object NotoCompositorCapture {
         var lastPackage: String? = null
         do {
             instrumentation.runOnMainSync {
+                check(activity !is NotoTestActivity || !activity.hasStopped) {
+                    "Noto specimen session must use one uninterrupted Activity launch"
+                }
                 check(activity.window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE == 0) {
                     "Refusing font evidence capture of a FLAG_SECURE window"
                 }

@@ -102,6 +102,7 @@ internal object NotoComposeWeightEvidence {
             val ink = mutableMapOf<String, Long>()
             val hashes = mutableMapOf<String, String>()
             val sizes = mutableMapOf<String, Pair<Int, Int>>()
+            val backgroundGuards = mutableMapOf<String, List<Int>>()
             val tags = listOf("regular", "bold", "no-synthesis")
             val bounds = tags.associateWith { compose.onNodeWithTag(it).fetchSemanticsNode().boundsInWindow }
             val location = NotoCompositorCapture.location(checkNotNull(host.get()))
@@ -143,6 +144,7 @@ internal object NotoComposeWeightEvidence {
                         ink[tag] = luminanceInk(bitmap)
                         hashes[tag] = pixelHash(bitmap)
                         sizes[tag] = bitmap.width to bitmap.height
+                        backgroundGuards[tag] = backgroundGuardPixels(bitmap)
                         File(folder, "$label-$tag.png").outputStream().use {
                             check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it))
                         }
@@ -159,12 +161,7 @@ internal object NotoComposeWeightEvidence {
             val normalInk = ink.getValue("regular")
             val boldInk = ink.getValue("bold")
             val disabledInk = ink.getValue("no-synthesis")
-            assertTrue("$label regular specimen is blank", normalInk > 25_500L)
-            assertTrue("$label Bold did not add stroke coverage: $boldInk <= $normalInk", boldInk > normalInk)
-            assertEquals("$label disabling synthesis must render the regular face", normalInk, disabledInk)
-            assertEquals("$label regular/no-synthesis dimensions differ", sizes.getValue("regular"), sizes.getValue("no-synthesis"))
-            assertEquals("$label regular/no-synthesis pixels differ", hashes.getValue("regular"), hashes.getValue("no-synthesis"))
-            evidence.put(JSONObject().put("surface", if (useTv) "tv" else "phone")
+            val sampleEvidence = JSONObject().put("surface", if (useTv) "tv" else "phone")
                 .put("region", selected.name).put("ttcIndex", selected.ttcIndex)
                 .put("captureKind", captureKind).put("api", Build.VERSION.SDK_INT)
                 .put("captureWidth", captureWidth).put("captureHeight", captureHeight)
@@ -177,8 +174,24 @@ internal object NotoComposeWeightEvidence {
                 .put("hostWindowX", location.windowX).put("hostWindowY", location.windowY)
                 .put("windowOriginX", location.windowOriginX).put("windowOriginY", location.windowOriginY)
                 .put("freshDrawEpoch", nextEpoch).put("specimenBounds", rectangles)
+                .put("backgroundGuardArgb", JSONObject(backgroundGuards.mapValues { (_, pixels) ->
+                    JSONArray(pixels.map { "%08x".format(it) })
+                } as Map<*, *>))
                 .put("argbPixelSha256", JSONObject(hashes as Map<*, *>))
-                .put("regularInk", normalInk).put("boldInk", boldInk).put("synthesisNoneInk", disabledInk))
+                .put("regularInk", normalInk).put("boldInk", boldInk).put("synthesisNoneInk", disabledInk)
+            // Keep the single capture and its provenance even when a pixel assertion fails.
+            File(folder, "$label-capture.json").writeText(sampleEvidence.toString(2))
+            for (tag in tags) assertTrue(
+                "$label $tag background is not opaque black; window compositing contaminated the specimen: " +
+                    backgroundGuards.getValue(tag).joinToString { "%08x".format(it) },
+                backgroundGuards.getValue(tag).all { it == android.graphics.Color.BLACK },
+            )
+            assertTrue("$label regular specimen is blank", normalInk > 25_500L)
+            assertTrue("$label Bold did not add stroke coverage: $boldInk <= $normalInk", boldInk > normalInk)
+            assertEquals("$label disabling synthesis must render the regular face", normalInk, disabledInk)
+            assertEquals("$label regular/no-synthesis dimensions differ", sizes.getValue("regular"), sizes.getValue("no-synthesis"))
+            assertEquals("$label regular/no-synthesis pixels differ", hashes.getValue("regular"), hashes.getValue("no-synthesis"))
+            evidence.put(sampleEvidence)
         }
         File(folder, "compose-weight.json").writeText(JSONObject()
             .put("sample", "漢骨直令").put("fontSizeSp", 36)
@@ -188,6 +201,14 @@ internal object NotoComposeWeightEvidence {
             .put("captureCount", NotoRegion.entries.size * 2)
             .put("scope", "Actual CinemaText/CinemaTvText Compose output; within-face weight comparison only")
             .put("samples", evidence).toString(2))
+    }
+
+    /** The right margin is outside the four glyphs; use inset pixels, not a clipped crop edge. */
+    private fun backgroundGuardPixels(bitmap: Bitmap): List<Int> {
+        check(bitmap.width > 16 && bitmap.height > 16)
+        return listOf(8, bitmap.height / 2, bitmap.height - 9).map { y ->
+            bitmap.getPixel(bitmap.width - 9, y)
+        }
     }
 
     private fun pixelHash(bitmap: Bitmap): String {

@@ -80,16 +80,61 @@ ink/pixel-hash JSON to `ui-evidence/noto/compose-weight`.
 
 On API30/33, capture uses one bounded UiAutomation compositor screenshot for each
 region/wrapper pair (ten total), then crops all three semantics rectangles from that
-same display image. This passing path is unchanged. No version uses Compose
+same display image. This capture scope is unchanged. No version uses Compose
 force-redraw/captureToImage. Before each
 capture, a draw-observed epoch is changed with a frame listener armed; the test waits
 for that epoch to draw, a fresh window frame, and Compose idle. Foreground activity
 and accessibility package are checked around the readback. Late/abandoned bitmaps
-are recycled. This generic ComponentActivity is not assumed fullscreen: the Compose
+are recycled. The dedicated Noto test Activity is not assumed fullscreen: the Compose
 host's measured screen and window positions translate `boundsInWindow` into display
 coordinates. Out-of-display/clipped rectangles fail. Evidence records full display
 dimensions, window/screen offsets, exact crop bounds and the fresh draw epoch. No
 scaling or guessed (0,0) origin is permitted.
+
+### Window-entry readiness and strict background guards
+
+Exact-main `5942260`, run `41891554892`, artifact `ui-evidence-tv4k`, failed the
+first SC regular/no-synthesis ink comparison. Its `phone-sc-display.png` and three
+specimen crops show a compositor-blended background: explicitly black areas became
+RGB (195,195,195), and white glyph interiors became RGB (251,251,251). All 22,565
+regular/no-synthesis pixel differences were at crop x=1006..1119, to the right of
+the glyphs, and only darkened the background by at most 19 levels. Glyph foreground
+masks matched exactly. The expected/actual ink totals were 57,134,411 / 57,304,430,
+versus 6,345,833 for both unblended SC crops in the earlier passing 4K run. Native
+weight/synthesis flags had already passed. This is contaminated display evidence,
+not evidence of different CJK strokes. The blend is consistent with an unfinished
+WindowManager entrance transition; the artifact does not identify the specific
+compositor layer. The readiness gate covered Compose idle and a freshly drawn app
+frame, but did not wait for the separate window-entry completion.
+
+The debug-only, non-exported `NotoTestActivity` now records the real
+`onEnterAnimationComplete()` callback in a per-instance latch. The instrumentation
+thread waits at most ten seconds before creating/capturing the specimen content.
+There is no fixed sleep, injected callback, no-animation shortcut or screenshot
+retry. A host that stops is rejected rather than reusing stale readiness; recreation
+creates a new latch. The callback is not itself a physical-presentation fence, so
+the existing fresh-frame, Compose-idle, focus/package and coordinate gates remain.
+The full-app TV test host and device animation settings are unchanged.
+
+Three inset guard pixels in each specimen's empty right margin must be exactly
+opaque black before the unchanged native flags, ink, dimensions and raw-pixel SHA
+assertions are accepted. The display/region PNG, all crops and a per-pair
+`*-capture.json` with guard values and capture provenance are written before any
+raster assertion can fail. A blended frame now fails explicitly as capture
+contamination instead of being misdiagnosed as a font-weight change.
+
+`noAnimationLaunchStillReportsEnterTransitionComplete` exercises a real
+`FLAG_ACTIVITY_NO_ANIMATION` launch without auto-passing. The public callback is
+available since API21. AOSP API26 explicitly notifies immediately visible and
+non-animating opening windows; API30/33 retain corresponding completion paths.
+The new host and guard checks still require exact-commit device execution.
+
+Callback sources:
+- https://developer.android.com/reference/android/app/Activity#onEnterAnimationComplete()
+- https://android.googlesource.com/platform/frameworks/base/+/android-8.0.0_r36/services/core/java/com/android/server/wm/AppWindowToken.java
+- https://android.googlesource.com/platform/frameworks/base/+/android-13.0.0_r1/services/core/java/com/android/server/wm/AppTransitionController.java
+
+### API26 readback compatibility
 
 API26 has a narrow test-only readback route. In main `5576a10` run `41887458013`,
 SurfaceFlinger logged `size mismatch (1920,1080) > (1080,1920)` after framebuffer
@@ -110,8 +155,9 @@ assertions, no altered device orientation and no display-security workaround.
 API26 evidence is explicitly a `*-window-region.png`, not a full display screenshot.
 JSON records route, API, union-window rectangle, capture dimensions/origin and each
 crop's window/screen/capture coordinates; full-display dimensions are null for this
-route. Ten union captures still produce all thirty specimen crops. API26 success
-must be established by the next device gate, not inferred from this source change.
+route. Ten union captures still produce all thirty specimen crops. API26 passed
+all 13 tests on main `5942260` in run `41891554892`, including the exact raster
+comparisons. Subsequent test-host changes must pass their own device gate.
 The API26 method contract and synchronous-copy/callback behavior were checked in
 Android 8.0 source:
 https://android.googlesource.com/platform/frameworks/base/+/android-8.0.0_r1/graphics/java/android/view/PixelCopy.java
