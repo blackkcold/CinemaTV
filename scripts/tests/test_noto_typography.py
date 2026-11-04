@@ -76,6 +76,36 @@ class NotoTypographyContractTest(unittest.TestCase):
         self.assertFalse((ROOT / 'app/noto-fonts.gradle.kts').exists())
         self.assertIn('noCompress += listOf("ttc", "ttf")', build)
 
+    def test_font_evidence_waits_for_real_window_entry_and_rejects_blended_background(self):
+        host = (ROOT / 'app/src/debug/java/dev/cinematv/NotoTestActivity.kt').read_text()
+        for required in ('CountDownLatch(1)', 'override fun onEnterAnimationComplete()',
+                         'super.onEnterAnimationComplete()', 'enterAnimationFinished.countDown()',
+                         'Looper.myLooper() != Looper.getMainLooper()',
+                         'enterAnimationFinished.await(timeoutMillis, TimeUnit.MILLISECONDS) && !hasStopped',
+                         'override fun onStop()', 'hasStopped = true'):
+            self.assertIn(required, host)
+        self.assertEqual(host.count('enterAnimationFinished.countDown()'), 1)
+        self.assertNotIn('onResume', host)
+        self.assertNotIn('Thread.sleep', host)
+        manifest = (ROOT / 'app/src/debug/AndroidManifest.xml').read_text()
+        self.assertIn('<activity android:name=".NotoTestActivity" android:exported="false" />', manifest)
+        self.assertNotIn('NotoTestActivity', (ROOT / 'app/src/main/AndroidManifest.xml').read_text())
+        test = (ROOT / 'app/src/androidTest/java/dev/cinematv/ui/typography/NotoFontsDeviceTest.kt').read_text()
+        self.assertIn('createAndroidComposeRule<NotoTestActivity>()', test)
+        self.assertLess(test.index('compose.activity.awaitEnterAnimationComplete(10_000)'),
+                        test.index('NotoComposeWeightEvidence.capture('))
+        self.assertIn('noAnimationLaunchStillReportsEnterTransitionComplete', test)
+        self.assertIn('Intent.FLAG_ACTIVITY_NO_ANIMATION', test)
+        self.assertIn('activity.awaitEnterAnimationComplete(10_000)', test)
+        evidence = (ROOT / 'app/src/androidTest/java/dev/cinematv/ui/typography/NotoComposeWeightEvidence.kt').read_text()
+        self.assertIn('backgroundGuards.getValue(tag).all { it == android.graphics.Color.BLACK }', evidence)
+        self.assertLess(evidence.index('File(folder, "$label-capture.json").writeText'),
+                        evidence.index('background is not opaque black'))
+        self.assertIn('NotoCompositorCapture.settleFreshFrame(', evidence)
+        self.assertIn('compose.waitForIdle()', evidence)
+        capture = (ROOT / 'app/src/androidTest/java/dev/cinematv/ui/typography/NotoCompositorCapture.kt').read_text()
+        self.assertIn('activity !is NotoTestActivity || !activity.hasStopped', capture)
+
     def test_ci_font_cache_uses_only_exact_lock_and_asset_path(self):
         expected_key = "noto-fonts-v2-${{ hashFiles('scripts/fonts/noto-fonts.lock.json') }}"
         for name in ('android.yml', 'tv-smoke.yml'):
