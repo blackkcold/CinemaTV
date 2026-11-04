@@ -13,6 +13,8 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
 import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * Only this layer knows LibreTV's upstream API schema.
@@ -43,8 +45,9 @@ class LibreTvRepository(context: Context) {
     }
 
     val isConnected get() = server.isNotBlank()
-    private data class MetadataArt(val backdrop: String, val poster: String, val overview: String)
+    private data class MetadataArt(val backdrop: String, val poster: String, val overview: String, val expiresAt: Long)
     private val metadataCache = ConcurrentHashMap<String, MetadataArt>()
+    private val metadataMutex = Mutex()
     var metadataServer: String
         get() = prefs.getString("metadata_server", "") ?: ""
         private set(value) { prefs.edit().putString("metadata_server", value).apply() }
@@ -70,7 +73,8 @@ class LibreTvRepository(context: Context) {
             return@withContext item
         }
         val cacheKey = listOf(item.title, item.year, if (item.isTv) "tv" else "movie").joinToString("|")
-        val art = metadataCache[cacheKey] ?: run {
+        val art = metadataMutex.withLock {
+          metadataCache[cacheKey]?.takeIf { it.expiresAt > System.currentTimeMillis() } ?: run {
             val query = "/v1/metadata?title=${encode(item.title)}&year=${encode(item.year)}&type=${if (item.isTv) "tv" else "movie"}"
             val conn = (URL(urlBase + query).openConnection() as HttpURLConnection).apply {
                 connectTimeout = 4500
@@ -82,10 +86,15 @@ class LibreTvRepository(context: Context) {
             try {
                 if (conn.responseCode != 200) return@withContext item
                 val root = conn.inputStream.bufferedReader().use { JSONObject(it.readText()) }
-                val data = root.optJSONObject("item") ?: return@withContext item
-                MetadataArt(data.optString("backdrop"), data.optString("poster"),
-                    data.optString("overview")).also { metadataCache[cacheKey] = it }
+                val data = root.optJSONObject("item")
+                MetadataArt(data?.optString("backdrop").orEmpty(), data?.optString("poster").orEmpty(),
+                    data?.optString("overview").orEmpty(), System.currentTimeMillis() + if (data == null) 300000L else 3600000L)
+                    .also {
+                        if (metadataCache.size >= 96) metadataCache.keys.firstOrNull()?.let(metadataCache::remove)
+                        metadataCache[cacheKey] = it
+                    }
             } finally { conn.disconnect() }
+          }
         }
         item.copy(
             backdrop = art.backdrop,
@@ -254,6 +263,10 @@ class LibreTvRepository(context: Context) {
                 id = "recommend:${j.optString("id", title)}",
                 title = title,
                 poster = j.optString("cover"),
+                backdrop = j.optString("backdrop"),
+                year = j.optString("year"),
+                category = j.optString("typeName"),
+                description = j.optString("description"),
                 rating = j.optString("rating"),
                 isTv = isTv
             )
@@ -365,6 +378,8 @@ class LibreTvRepository(context: Context) {
             isTv = item.isTv || entry.isTv,
             positionMs = progress?.positionMs ?: 0L,
             lastEpisode = progress?.lastEpisode ?: 0,
+            durationMs = progress?.durationMs ?: 0,
+            backdrop = entry.backdrop.ifBlank { item.backdrop },
             description = info.optString("desc"),
             poster = info.optString("cover").ifBlank { entry.poster },
             category = info.optString("typeName").ifBlank { entry.category },
@@ -392,9 +407,10 @@ class LibreTvRepository(context: Context) {
         }
     }
 
-    fun saveProgress(item: MediaItem, positionMs: Long, episodeIndex: Int = 0) {
+    fun saveProgress(item: MediaItem, positionMs: Long, episodeIndex: Int = 0, durationMs: Long = 0L) {
         if (item.id.isBlank()) return
-        val updated = item.copy(positionMs = positionMs, lastEpisode = episodeIndex.coerceAtLeast(0))
+        val updated = item.copy(positionMs = positionMs.coerceAtLeast(0), lastEpisode = episodeIndex.coerceAtLeast(0),
+            durationMs = durationMs.takeIf { it > 0 } ?: if (item.lastEpisode == episodeIndex) item.durationMs else 0L)
         val existing = history().filterNot { it.id == item.id && it.source?.url == item.source?.url }
         val list = (listOf(updated) + existing).take(60)
         prefs.edit().putString("history", JSONArray(list.map { itemJson(it) }).toString()).apply()
@@ -417,6 +433,8 @@ class LibreTvRepository(context: Context) {
             MediaItem(
                 id = j.optString("id"), title = j.optString("title"),
                 poster = j.optString("poster"), year = j.optString("year"),
+                backdrop = j.optString("backdrop"), category = j.optString("category"),
+                isTv = j.optBoolean("isTv"), durationMs = j.optLong("durationMs"),
                 source = j.optJSONObject("source")?.let(::sourceFrom),
                 positionMs = j.optLong("positionMs"), lastEpisode = j.optInt("lastEpisode", 0)
             )
@@ -426,6 +444,8 @@ class LibreTvRepository(context: Context) {
     private fun itemJson(it: MediaItem) = JSONObject()
         .put("id", it.id).put("title", it.title).put("poster", it.poster)
         .put("year", it.year).put("source", it.source?.let(::sourceJson))
+        .put("backdrop", it.backdrop).put("category", it.category).put("isTv", it.isTv)
+        .put("durationMs", it.durationMs)
         .put("positionMs", it.positionMs).put("lastEpisode", it.lastEpisode)
 
     private fun libraryEntries(): List<Pair<LibraryStatus, MediaItem>> = runCatching {
@@ -435,6 +455,8 @@ class LibreTvRepository(context: Context) {
             val media = MediaItem(
                 id = obj.optString("id"), title = obj.optString("title"),
                 poster = obj.optString("poster"), year = obj.optString("year"),
+                backdrop = obj.optString("backdrop"), category = obj.optString("category"),
+                isTv = obj.optBoolean("isTv"), durationMs = obj.optLong("durationMs"),
                 source = obj.optJSONObject("source")?.let(::sourceFrom),
                 positionMs = obj.optLong("positionMs"),
                 lastEpisode = obj.optInt("lastEpisode", 0)

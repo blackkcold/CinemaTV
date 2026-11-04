@@ -19,6 +19,7 @@ import androidx.media3.ui.PlayerView
 import dev.cinematv.CinemaViewModel
 import dev.cinematv.Page
 import dev.cinematv.playback.PlaybackFactory
+import dev.cinematv.playback.ObservePlaybackLifecycle
 import dev.cinematv.ui.Ink
 import dev.cinematv.ui.Ivory
 import dev.cinematv.ui.Muted
@@ -42,6 +43,7 @@ fun MobilePlayerPage(model: CinemaViewModel) {
             if (model.playbackPosition > 0L) seekTo(model.playbackPosition)
         }
     }
+    ObservePlaybackLifecycle(player)
     var error by remember(uri) { mutableStateOf("") }
     var position by remember(uri) { mutableLongStateOf(0L) }
     var playing by remember(uri) { mutableStateOf(true) }
@@ -59,7 +61,7 @@ fun MobilePlayerPage(model: CinemaViewModel) {
         player.addListener(listener)
         onDispose {
             if (model.playbackUrl == uri) {
-                model.savePlaybackPosition(player.currentPosition.coerceAtLeast(0L), episodeAtCreation)
+                model.savePlaybackPosition(player.currentPosition.coerceAtLeast(0L), episodeAtCreation, player.duration.coerceAtLeast(0L))
             }
             player.removeListener(listener)
             player.release()
@@ -69,7 +71,7 @@ fun MobilePlayerPage(model: CinemaViewModel) {
         var seconds = 0
         while (isActive) {
             position = player.currentPosition.coerceAtLeast(0L)
-            if (++seconds % 5 == 0) model.savePlaybackPosition(position, episodeAtCreation)
+            if (++seconds % 5 == 0) model.savePlaybackPosition(position, episodeAtCreation, player.duration.coerceAtLeast(0L))
             delay(1000)
         }
     }

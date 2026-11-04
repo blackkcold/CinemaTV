@@ -13,6 +13,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Movie
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.LiveTv
+import androidx.compose.material.icons.outlined.VideoLibrary
+import androidx.compose.material.icons.outlined.Settings
+import dev.cinematv.ui.tv.design.GlassQuality
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -54,24 +62,33 @@ fun MobileRootApp(model: CinemaViewModel) {
         Scaffold(
             modifier = Modifier.fillMaxSize().systemBarsPadding(),
             containerColor = Ink,
+            topBar = {
+                if (page != Page.PLAYER && page != Page.DETAIL) Row(
+                    Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("CinemaTV", fontSize = 19.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    IconButton(onClick = { model.navigate(Page.SETTINGS) }, modifier = Modifier.semantics { contentDescription = "打开设置" }) {
+                        Icon(Icons.Outlined.Settings, contentDescription = null)
+                    }
+                }
+            },
             bottomBar = {
                 if (page != Page.DETAIL && page != Page.PLAYER) {
                     NavigationBar(containerColor = surface) {
                         listOf(
-                            Triple("精选", Page.HOME, "⌂"),
-                            Triple("电影", Page.MOVIES, "▣"),
-                            Triple("搜索", Page.SEARCH, "⌕"),
-                            Triple("直播", Page.LIVE, "▸"),
-                            Triple("片库", Page.LIBRARY, "▤"),
-                            Triple("设置", Page.SETTINGS, "⚙")
+                            Triple("精选", Page.HOME, Icons.Outlined.Home),
+                            Triple("浏览", Page.MOVIES, Icons.Outlined.Movie),
+                            Triple("搜索", Page.SEARCH, Icons.Outlined.Search),
+                            Triple("直播", Page.LIVE, Icons.Outlined.LiveTv),
+                            Triple("片库", Page.LIBRARY, Icons.Outlined.VideoLibrary)
                         ).forEach { (label, destination, symbol) ->
                             NavigationBarItem(
                                 modifier = Modifier.semantics { contentDescription = "打开" + label },
-                                selected = page == destination,
+                                selected = page == destination || (destination == Page.MOVIES && page in listOf(Page.SERIES, Page.EXPLORE)),
                                 onClick = { model.navigate(destination) },
-                                icon = { Text(symbol, fontSize = 18.sp) },
+                                icon = { Icon(symbol, contentDescription = null, modifier = Modifier.size(22.dp)) },
                                 label = { Text(label, fontSize = 10.sp, maxLines = 1) },
-                                alwaysShowLabel = false
+                                alwaysShowLabel = true
                             )
                         }
                     }
@@ -209,9 +226,10 @@ private fun MobileCatalog(model: CinemaViewModel, tvOnly: Boolean?) {
             false -> "电影"
             null -> "探索"
         }, "点击封面查看详情")
-        if (tvOnly == false) {
-            TextButton(onClick = { model.navigate(Page.SERIES) },
-                modifier = Modifier.padding(start = 12.dp)) { Text("切换到剧集") }
+        Row(Modifier.padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            TextButton(onClick = { model.navigate(Page.MOVIES) }) { Text("电影") }
+            TextButton(onClick = { model.navigate(Page.SERIES) }) { Text("剧集") }
+            TextButton(onClick = { model.navigate(Page.EXPLORE) }) { Text("发现") }
         }
         if (contents.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -459,6 +477,13 @@ private fun MobileSettings(model: CinemaViewModel) {
         MobileField("BFF Token（不持久保存）", model.metadataAccessToken,
             { model.metadataAccessToken = it }, secret = true)
         OutlinedButton(onClick = { model.configureMetadata() }) { Text("保存元数据连接") }
+        HorizontalDivider(color = stroke)
+        Text("画面与动效", fontWeight = FontWeight.SemiBold, fontSize = 18.sp)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("减少动态效果", Modifier.weight(1f))
+            Switch(checked = model.reducedMotion, onCheckedChange = model::updateReducedMotion)
+        }
+        Text("TMDB 元数据与图像（配置后）。This product uses the TMDB API but is not endorsed or certified by TMDB.", color = Muted, fontSize = 12.sp)
         Text("仅连接自行部署且有合法访问权限的服务器和片源。",
             color = Muted, fontSize = 12.sp)
     }

@@ -102,6 +102,11 @@ fun FocusMediaCard(
                     modifier = Modifier.align(Alignment.BottomStart).padding(9.dp)
                         .background(TvColors.Background.copy(alpha = .8f), RoundedCornerShape(5.dp)).padding(horizontal = 7.dp, vertical = 4.dp))
             }
+            if (continueWatching && item.watchProgress != null) {
+                Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(3.dp).background(Color.White.copy(alpha = .2f))) {
+                    Box(Modifier.fillMaxWidth(item.watchProgress!!).fillMaxHeight().background(TvColors.Text))
+                }
+            }
             Box(Modifier.matchParentSize().border(if (focused) 2.dp else .5.dp,
                 if (focused) TvColors.Text else Color.White.copy(alpha = if (selected) .6f else .08f), shape))
         }

@@ -100,6 +100,8 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
     private var epgJob: Job? = null
     private var searchJob: Job? = null
     private var backdropJob: Job? = null
+    private var detailJob: Job? = null
+    private var channelsJob: Job? = null
     var failoverBusy by mutableStateOf(false)
         private set
     var failoverMessage by mutableStateOf("")
@@ -259,22 +261,26 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun open(item: MediaItem) {
+        backdropJob?.cancel()
+        detailJob?.cancel()
         page = Page.DETAIL
         selected = item
         alternatives = emptyList()
         busy = true
-        viewModelScope.launch {
-            runCatching { repo.detail(item) }
-                .onSuccess { detailed ->
-                    selected = detailed
-                    viewModelScope.launch {
-                        runCatching { repo.enrichMetadata(detailed) }.onSuccess { enhanced ->
-                            if (selected?.id == detailed.id && page == Page.DETAIL) selected = enhanced
-                        }
-                    }
+        detailJob = viewModelScope.launch {
+            try {
+                val detailed = repo.detail(item)
+                if (page != Page.DETAIL) return@launch
+                selected = detailed
+                busy = false
+                runCatching { repo.enrichMetadata(detailed) }.onSuccess { enhanced ->
+                    if (selected?.presentationKey == detailed.presentationKey && page == Page.DETAIL) selected = enhanced
                 }
-                .onFailure { connectionError(it) }
-            busy = false
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                connectionError(error)
+            } finally { busy = false }
         }
     }
 
@@ -409,11 +415,11 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    fun savePlaybackPosition(position: Long, episodeIndex: Int = playingEpisode) {
+    fun savePlaybackPosition(position: Long, episodeIndex: Int = playingEpisode, durationMs: Long = 0L) {
         if (playerReturnPage == Page.DETAIL) selected?.let {
-            repo.saveProgress(it, position, episodeIndex)
+            repo.saveProgress(it, position, episodeIndex, durationMs)
             if (episodeIndex == playingEpisode) {
-                selected = it.copy(positionMs = position, lastEpisode = episodeIndex)
+                selected = it.copy(positionMs = position.coerceAtLeast(0), lastEpisode = episodeIndex, durationMs = durationMs.takeIf { value -> value > 0 } ?: it.durationMs)
             }
             libraryVersion++
         }
@@ -428,14 +434,21 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun loadChannels(source: LiveSource) {
+        channelsJob?.cancel()
+        epgJob?.cancel()
         activeLiveSource = source
         activeChannel = null
+        channels = emptyList()
         epgPrograms = emptyList()
-        viewModelScope.launch {
+        channelsJob = viewModelScope.launch {
             busy = true
-            runCatching { repo.channels(source) }.onSuccess { channels = it }
-                .onFailure { connectionError(it); channels = emptyList() }
-            busy = false
+            try {
+                val loaded = repo.channels(source)
+                if (activeLiveSource?.url == source.url) channels = loaded
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) { connectionError(error) }
+            finally { busy = false }
         }
     }
 

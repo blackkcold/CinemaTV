@@ -8,6 +8,13 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class PresentationPolicyTest {
+    @Test fun progressRequiresRealDurationAndClampsBadPositions() {
+        val item = MediaItem("1", "A", positionMs = 30000)
+        assertNull(item.watchProgress)
+        assertEquals(.5f, item.copy(durationMs = 60000).watchProgress!!, .001f)
+        assertEquals(1f, item.copy(durationMs = 15000).watchProgress!!, .001f)
+        assertEquals(0f, item.copy(positionMs = -1, durationMs = 15000).watchProgress!!, .001f)
+    }
     @Test fun protectsLowEndDevicesAndHonorsReducedMotion() {
         assertEquals(GlassQuality.BASIC, resolveGlassQuality(GlassQuality.ENHANCED, true, 36, false))
         assertEquals(GlassQuality.BASIC, resolveGlassQuality(GlassQuality.AUTO, false, 30, false))

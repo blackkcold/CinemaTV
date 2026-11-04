@@ -5,6 +5,8 @@ import dev.cinematv.data.MediaItem
 /** Provider + id is stable across progressive search batches and route returns. */
 val MediaItem.presentationKey: String get() = "${source?.url.orEmpty()}|$id"
 
+val MediaItem.watchProgress: Float? get() = if (durationMs > 0L) (positionMs.toDouble() / durationMs).toFloat().coerceIn(0f, 1f) else null
+
 fun MediaItem.metadataLine(): String = listOf(
     year, category,
     rating.takeIf { it.isNotBlank() }?.let { "★ $it" }.orEmpty(),

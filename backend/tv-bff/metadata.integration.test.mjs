@@ -42,7 +42,7 @@ test('authenticated optional metadata lookup supplies correct matched backdrop',
   const result = await ok.json();
   assert.equal(result.status, 'matched');
   assert.equal(result.item.providerId, 2);
-  assert.equal(result.item.backdrop, 'https://image.tmdb.org/t/p/original/new.jpg');
+  assert.equal(result.item.backdrop, 'https://image.tmdb.org/t/p/w1280/new.jpg');
 
   const ambiguous = await fetch(base + '/v1/metadata?title=Sample&type=movie', { headers });
   assert.equal((await ambiguous.json()).status, 'unmatched');

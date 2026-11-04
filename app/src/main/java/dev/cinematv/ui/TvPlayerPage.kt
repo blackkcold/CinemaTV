@@ -1,12 +1,13 @@
 package dev.cinematv.ui
 
 import android.view.ViewGroup
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Text
+import androidx.tv.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -19,6 +20,9 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.key.key
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -32,6 +36,9 @@ import androidx.media3.common.Tracks
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import dev.cinematv.playback.PlaybackFactory
+import dev.cinematv.playback.ObservePlaybackLifecycle
+import dev.cinematv.ui.tv.components.CinemaGlassSurface
+import dev.cinematv.ui.tv.design.LocalTvLayout
 import dev.cinematv.Page
 import dev.cinematv.CinemaViewModel
 import kotlinx.coroutines.delay
@@ -103,6 +110,21 @@ fun TvPlayerPage(model: CinemaViewModel) {
     val rootFocus = remember(uri) { FocusRequester() }
     val playFocus = remember(uri) { FocusRequester() }
     val panelFocus = remember(uri) { FocusRequester() }
+    val qualityFocus = remember(uri) { FocusRequester() }
+    val audioFocus = remember(uri) { FocusRequester() }
+    val subtitleFocus = remember(uri) { FocusRequester() }
+    val speedFocus = remember(uri) { FocusRequester() }
+    var returnFocus by remember(uri) { mutableStateOf(playFocus) }
+    val layout = LocalTvLayout.current
+    ObservePlaybackLifecycle(player)
+    BackHandler {
+        when {
+            panel != null -> { panel = null; interaction++ }
+            error.isNotBlank() -> model.back()
+            controlsVisible -> controlsVisible = false
+            else -> model.back()
+        }
+    }
 
     DisposableEffect(player) {
         val listener = object : Player.Listener {
@@ -120,7 +142,7 @@ fun TvPlayerPage(model: CinemaViewModel) {
         player.addListener(listener)
         onDispose {
             if (model.playbackUrl == uri) {
-                model.savePlaybackPosition(player.currentPosition.coerceAtLeast(0L), episodeAtCreation)
+                model.savePlaybackPosition(player.currentPosition.coerceAtLeast(0L), episodeAtCreation, player.duration.coerceAtLeast(0L))
             }
             player.removeListener(listener)
             player.release()
@@ -131,7 +153,7 @@ fun TvPlayerPage(model: CinemaViewModel) {
         while (isActive) {
             position = player.currentPosition.coerceAtLeast(0L)
             duration = player.duration.coerceAtLeast(0L)
-            if (++ticks % 5 == 0) model.savePlaybackPosition(position, episodeAtCreation)
+            if (++ticks % 5 == 0) model.savePlaybackPosition(position, episodeAtCreation, player.duration.coerceAtLeast(0L))
             delay(1000)
         }
     }
@@ -146,7 +168,7 @@ fun TvPlayerPage(model: CinemaViewModel) {
         when {
             !controlsVisible -> rootFocus.requestFocus()
             panel != null -> panelFocus.requestFocus()
-            else -> playFocus.requestFocus()
+            else -> runCatching { returnFocus.requestFocus() }
         }
     }
 
@@ -163,7 +185,10 @@ fun TvPlayerPage(model: CinemaViewModel) {
         Modifier.fillMaxSize().background(Color.Black)
             .focusRequester(rootFocus).focusable()
             .onPreviewKeyEvent { event ->
-                if (event.type != KeyEventType.KeyDown || panel != null || controlsVisible) false
+                if (event.type == KeyEventType.KeyDown && event.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE) {
+                    if (player.isPlaying) player.pause() else player.play()
+                    interaction++; true
+                } else if (event.type != KeyEventType.KeyDown || panel != null || controlsVisible) false
                 else when (event.key) {
                     Key.DirectionCenter, Key.Enter -> {
                         controlsVisible = true; true
@@ -204,52 +229,51 @@ fun TvPlayerPage(model: CinemaViewModel) {
                     model.back()
                 }
                 Spacer(Modifier.width(24.dp))
-                Text(model.playbackTitle, color = Ivory, fontSize = 21.sp)
-                Spacer(Modifier.weight(1f))
+                Text(model.playbackTitle, color = Ivory, fontSize = 21.sp, maxLines = 1, modifier = Modifier.weight(1f))
+                Spacer(Modifier.width(20.dp))
                 Text(
                     if (duration > 0L) "${formatTime(position)} / ${formatTime(duration)}"
                     else formatTime(position),
                     color = Muted, fontSize = 16.sp
                 )
             }
-            Column(
-                modifier = Modifier.align(Alignment.BottomCenter)
-                    .fillMaxWidth().padding(horizontal = 52.dp, vertical = 34.dp),
-                verticalArrangement = Arrangement.spacedBy(17.dp)
+            CinemaGlassSurface(
+                modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()
+                    .padding(horizontal = layout.gutter, vertical = 25.dp), radius = 22.dp
             ) {
-                Box(Modifier.fillMaxWidth().height(5.dp).background(Color.White.copy(alpha = .26f))) {
-                    if (duration > 0L) Box(
-                        Modifier.fillMaxWidth((position.toFloat() / duration).coerceIn(0f, 1f))
-                            .fillMaxHeight().background(Ivory)
-                    )
-                }
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(11.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    GlassAction("−10s", Modifier.width(92.dp).height(48.dp), onFocus = { interaction++ }) { seek(-10000L) }
-                    GlassAction(
-                        if (isPlaying) "暂停" else "播放",
-                        Modifier.focusRequester(playFocus).width(100.dp).height(48.dp),
-                        prominent = true, onFocus = { interaction++ }
-                    ) {
-                        if (player.isPlaying) player.pause() else player.play()
-                        interaction++
+                Column(Modifier.padding(horizontal = 21.dp, vertical = 18.dp), verticalArrangement = Arrangement.spacedBy(15.dp)) {
+                    Box(Modifier.fillMaxWidth().height(10.dp)
+                        .semantics { contentDescription = "播放进度"; stateDescription = "${formatTime(position)} / ${formatTime(duration)}" }
+                        .onPreviewKeyEvent { event ->
+                            if (event.type != KeyEventType.KeyDown) false else when (event.key) {
+                                Key.DirectionLeft -> { seek(-10000); true }
+                                Key.DirectionRight -> { seek(10000); true }
+                                else -> false
+                            }
+                        }.focusable(), contentAlignment = Alignment.CenterStart) {
+                        Box(Modifier.fillMaxWidth().height(4.dp).background(Color.White.copy(alpha = .23f)))
+                        if (duration > 0) Box(Modifier.fillMaxWidth((position.toDouble() / duration).toFloat().coerceIn(0f, 1f))
+                            .height(4.dp).background(Ivory))
                     }
-                    GlassAction("+10s", Modifier.width(92.dp).height(48.dp), onFocus = { interaction++ }) { seek(10000L) }
-                    Spacer(Modifier.weight(1f))
-                    GlassAction("画质", Modifier.width(92.dp).height(48.dp), onFocus = { interaction++ }) { panel = PlayerPanel.QUALITY }
-                    GlassAction("音轨", Modifier.width(92.dp).height(48.dp), onFocus = { interaction++ }) { panel = PlayerPanel.AUDIO }
-                    GlassAction("字幕", Modifier.width(92.dp).height(48.dp), onFocus = { interaction++ }) { panel = PlayerPanel.SUBTITLE }
-                    GlassAction("倍速", Modifier.width(92.dp).height(48.dp), onFocus = { interaction++ }) { panel = PlayerPanel.SPEED }
-                    if (model.playerReturnPage == Page.DETAIL) {
-                        GlassAction("选集/换源", Modifier.width(126.dp).height(48.dp), onFocus = { interaction++ }) {
-                            model.back()
+                    Row(horizontalArrangement = Arrangement.spacedBy(9.dp), verticalAlignment = Alignment.CenterVertically) {
+                        GlassAction("−10s", Modifier.width(62.dp).height(41.dp), onFocus = { interaction++ }) { seek(-10000) }
+                        GlassAction(if (isPlaying) "暂停" else "播放", Modifier.focusRequester(playFocus).width(80.dp).height(41.dp),
+                            prominent = true, onFocus = { interaction++ }) {
+                            if (player.isPlaying) player.pause() else player.play()
+                            interaction++
                         }
+                        GlassAction("+10s", Modifier.width(62.dp).height(41.dp), onFocus = { interaction++ }) { seek(10000) }
+                        Spacer(Modifier.weight(1f))
+                        GlassAction("画质", Modifier.focusRequester(qualityFocus).width(60.dp).height(41.dp), onFocus = { interaction++ }) { returnFocus = qualityFocus; panel = PlayerPanel.QUALITY }
+                        GlassAction("音轨", Modifier.focusRequester(audioFocus).width(60.dp).height(41.dp), onFocus = { interaction++ }) { returnFocus = audioFocus; panel = PlayerPanel.AUDIO }
+                        GlassAction("字幕", Modifier.focusRequester(subtitleFocus).width(60.dp).height(41.dp), onFocus = { interaction++ }) { returnFocus = subtitleFocus; panel = PlayerPanel.SUBTITLE }
+                        GlassAction("倍速", Modifier.focusRequester(speedFocus).width(60.dp).height(41.dp), onFocus = { interaction++ }) { returnFocus = speedFocus; panel = PlayerPanel.SPEED }
+                        if (model.playerReturnPage == Page.DETAIL) GlassAction("选集 / 换源", Modifier.width(110.dp).height(41.dp), onFocus = { interaction++ }) { model.back() }
                     }
                 }
             }
         }
+
         if (panel != null) {
             val active = panel!!
             val type = when (active) {

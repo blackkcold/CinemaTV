@@ -33,6 +33,7 @@ fun TvRootApp(model: CinemaViewModel) {
             LocalContentFocus provides content, LocalNavigationHasFocus provides navigationHasFocus,
             LocalBackdropArt provides decodedArt) {
             val layout = LocalTvLayout.current
+            if (model.page != Page.PLAYER) ArtworkPrefetch(model.featured + model.tvShows, model.focused)
             Box(Modifier.fillMaxSize().background(TvColors.Background)) {
                 if (model.page != Page.PLAYER) BackdropLayer(
                     if (model.page == Page.DETAIL) model.selected else model.focused ?: model.featured.firstOrNull()

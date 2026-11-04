@@ -20,3 +20,11 @@ test('unicode width and release year protect identity', () => {
   assert.equal(selectMetadata('ABC', '2024',
     [{ name: 'ABC', first_air_date: '2025-04-01' }], 'tv'), null);
 });
+
+test('missing years and duplicate matches are not guessed', () => {
+  assert.equal(selectMetadata('Film', '2026', [{ title: 'Film', id: 1 }]), null);
+  assert.equal(selectMetadata('Film', '2026', [
+    { title: 'Film', release_date: '2026-01-01', id: 1 },
+    { title: 'Film', release_date: '2026-02-01', id: 2 }
+  ]), null);
+});

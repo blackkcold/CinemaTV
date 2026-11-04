@@ -114,16 +114,16 @@ export function selectMetadata(title, year, candidates = [], type = 'movie') {
     const original = type === 'tv' ? candidate.original_name : candidate.original_title;
     if (normalize(candidateName) !== wanted && normalize(original) !== wanted) return false;
     const release = String((type === 'tv' ? candidate.first_air_date : candidate.release_date) || '').slice(0, 4);
-    return !year || !release || year === release;
+    return !year || year === release;
   });
   // Ambiguous year-free titles should never receive an assumed image.
-  if (!year && allowed.length > 1) return null;
+  if (allowed.length !== 1) return null;
   return allowed[0] || null;
 }
 
-function tmdbImage(path) {
+function tmdbImage(path, size = 'w1280') {
   return typeof path === 'string' && /^\/[a-zA-Z0-9_\/-]+\.(?:jpg|jpeg|png|webp)$/i.test(path)
-    ? 'https://image.tmdb.org/t/p/original' + path : '';
+    ? 'https://image.tmdb.org/t/p/' + size + path : '';
 }
 
 async function resolveMetadata(title, year, type) {
@@ -143,7 +143,7 @@ async function resolveMetadata(title, year, type) {
   const data = await response.json();
   const result = selectMetadata(title, year, Array.isArray(data.results) ? data.results : [], type);
   const value = result ? {
-    backdrop: tmdbImage(result.backdrop_path), poster: tmdbImage(result.poster_path),
+    backdrop: tmdbImage(result.backdrop_path), poster: tmdbImage(result.poster_path, 'w500'),
     overview: String(result.overview || '').slice(0, 4000),
     releaseDate: String(type === 'tv' ? result.first_air_date || '' : result.release_date || ''),
     provider: 'TMDB', providerId: result.id
