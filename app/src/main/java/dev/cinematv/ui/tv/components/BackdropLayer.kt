@@ -11,6 +11,12 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.unit.toSize
+import coil3.BitmapImage
+import android.graphics.Bitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -40,7 +46,7 @@ fun AmbientArtwork(modifier: Modifier = Modifier, seed: Int = 0) {
 
 /** Decode before swapping; a failed or portrait-sized image resolves to fallback. */
 @Composable
-fun BackdropLayer(item: MediaItem?, onDecodedArt: (String?) -> Unit = {}) {
+fun BackdropLayer(item: MediaItem?, onDecodedFrame: (GlassBackdropFrame?) -> Unit = {}, onDecodedArt: (String?) -> Unit = {}) {
     val context = LocalContext.current
     val effects = LocalTvEffects.current
     val decodeWidth = if (effects.glass == GlassQuality.BASIC) 960 else 1600
@@ -48,11 +54,26 @@ fun BackdropLayer(item: MediaItem?, onDecodedArt: (String?) -> Unit = {}) {
     val requested = landscapeArt(item)
     val latest by rememberUpdatedState(requested)
     val notify by rememberUpdatedState(onDecodedArt)
+    val notifyFrame by rememberUpdatedState(onDecodedFrame)
+    var bitmap by remember { mutableStateOf<Bitmap?>(null) }
+    var origin by remember { mutableStateOf(Offset.Zero) }
+    var viewport by remember { mutableStateOf(Size.Zero) }
     var decoded by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(requested) {
-        if (requested == null) { decoded = null; notify(null) }
+        if (requested == null) { decoded = null; bitmap = null; notify(null) }
     }
-    Box(Modifier.fillMaxSize()) {
+    LaunchedEffect(bitmap, decoded, requested, origin, viewport, effects.glass) {
+        notifyFrame(null) // Never refract a different still during the scene crossfade.
+        if (decoded == requested && bitmap != null && effects.glass != GlassQuality.BASIC) {
+            kotlinx.coroutines.delay(effects.sceneMillis.toLong())
+            if (viewport.width > 0 && viewport.height > 0)
+                notifyFrame(GlassBackdropFrame(bitmap!!, origin, viewport))
+        }
+    }
+    DisposableEffect(Unit) { onDispose { notifyFrame(null) } }
+    Box(Modifier.fillMaxSize().onGloballyPositioned {
+        origin = it.positionInRoot(); viewport = it.size.toSize()
+    }) {
         AmbientArtwork(Modifier.matchParentSize(), item?.title?.hashCode() ?: 0)
         if (requested != null) {
             val request = remember(requested, decodeWidth) {
@@ -66,10 +87,11 @@ fun BackdropLayer(item: MediaItem?, onDecodedArt: (String?) -> Unit = {}) {
                         val image = state.result.image
                         val ratio = image.width.toFloat() / image.height.coerceAtLeast(1)
                         decoded = requested.takeIf { image.width >= 640 && ratio in 1.3f..2.5f }
+                        bitmap = (image as? BitmapImage)?.bitmap.takeIf { decoded != null }
                         notify(decoded)
                     }
                 },
-                onError = { if (latest == requested) { decoded = null; notify(null) } })
+                onError = { if (latest == requested) { decoded = null; bitmap = null; notify(null) } })
         }
         Crossfade(targetState = decoded, animationSpec = tween(effects.sceneMillis), label = "decoded-backdrop") { art ->
             if (art != null) AsyncImage(

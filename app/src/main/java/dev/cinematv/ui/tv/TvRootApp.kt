@@ -28,16 +28,21 @@ fun TvRootApp(model: CinemaViewModel, onSceneDecoded: (String?) -> Unit = {}) {
         val content = remember(model.focusRoute) { FocusRequester() }
         var navigationHasFocus by remember { mutableStateOf(false) }
         var decodedArt by remember { mutableStateOf<String?>(null) }
+        var glassFrame by remember { mutableStateOf<GlassBackdropFrame?>(null) }
+        val glassFailure = remember { GlassFailureLatch() }
         val showNav = model.page !in listOf(Page.DETAIL, Page.PLAYER, Page.SETTINGS)
         LaunchedEffect(showNav) { if (!showNav) navigationHasFocus = false }
         CompositionLocalProvider(LocalTvFocusRegistry provides registry, LocalNavigationFocus provides navigation,
             LocalContentFocus provides content, LocalNavigationHasFocus provides (navigationHasFocus && showNav),
-            LocalBackdropArt provides decodedArt) {
+            LocalBackdropArt provides decodedArt,
+            LocalGlassBackdrop provides glassFrame.takeUnless { model.page == Page.PLAYER },
+            LocalGlassFailureLatch provides glassFailure) {
             val layout = LocalTvLayout.current
             if (model.page != Page.PLAYER) ArtworkPrefetch(model.featured + model.tvShows, model.focused)
             Box(Modifier.fillMaxSize().background(TvColors.Background)) {
                 if (model.page != Page.PLAYER) BackdropLayer(
-                    if (model.page == Page.DETAIL) model.selected else model.focused ?: model.featured.firstOrNull()
+                    if (model.page == Page.DETAIL) model.selected else model.focused ?: model.featured.firstOrNull(),
+                    onDecodedFrame = { glassFrame = it }
                 ) { decodedArt = it; onSceneDecoded(it) }
                 savedPages.SaveableStateProvider(model.focusRoute) {
                   key(model.focusRoute) {

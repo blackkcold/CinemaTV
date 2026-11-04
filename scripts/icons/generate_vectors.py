@@ -3,6 +3,8 @@
 from pathlib import Path
 import xml.etree.ElementTree as ET
 import json
+import re
+from decimal import Decimal, ROUND_HALF_EVEN
 ROOT = Path(__file__).resolve().parents[2]
 BOUNDS = json.loads((ROOT/'design/icons-v3/path-bounds.json').read_text())
 A = 'http://schemas.android.com/apk/res/android'
@@ -20,6 +22,25 @@ def shape(node):
         return f'M{x-r} {y}a{r} {r} 0 1 0 {2*r} 0a{r} {r} 0 1 0 {-2*r} 0Z'
     x,y,w,h,r = map(float, (node.get('x'),node.get('y'),node.get('width'),node.get('height'),node.get('rx','0')))
     return f'M{x+r} {y}H{x+w-r}a{r} {r} 0 0 1 {r} {r}V{y+h-r}a{r} {r} 0 0 1 {-r} {r}H{x+r}a{r} {r} 0 0 1 {-r} {-r}V{y+r}a{r} {r} 0 0 1 {r} {-r}Z'
+# Round only absolute point coordinates. Relative/arc parameters stay byte-for-byte
+# unchanged, avoiding accumulated relative drift or arc-radius perturbations.
+NUMBER = re.compile(r"[-+]?(?:\d*\.\d+|\d+\.?\d*)(?:[eE][-+]?\d+)?")
+COMMAND = re.compile(r"([MmLlHhVvCcSsQqTtAaZz])([^MmLlHhVvCcSsQqTtAaZz]*)")
+
+def compact_path(data):
+    def coordinates(match):
+        command, args = match.groups()
+        if command not in ('M', 'L', 'Q'):
+            return match.group(0)
+        def rounded(number):
+            value = Decimal(number.group())
+            result = value.quantize(Decimal('0.0001'), rounding=ROUND_HALF_EVEN)
+            if result == value:
+                return number.group()
+            return format(result, 'f').rstrip('0').rstrip('.')
+        return command + NUMBER.sub(rounded, args)
+    return COMMAND.sub(coordinates, data)
+
 def convert(source):
     svg=ET.parse(source).getroot()
     gradients={e.get('id'):e for e in svg.iter() if e.tag.endswith('linearGradient')}
@@ -37,7 +58,7 @@ def convert(source):
             return
         if tag not in ('path','rect','circle'): raise ValueError(tag)
         d=shape(node)
-        p=ET.SubElement(parent,'path',attrs(pathData=d,fillType='evenOdd' if style.get('fill-rule')=='evenodd' else 'nonZero'))
+        p=ET.SubElement(parent,'path',attrs(pathData=compact_path(d),fillType='evenOdd' if style.get('fill-rule')=='evenodd' else 'nonZero'))
         xmin,xmax,ymin,ymax=BOUNDS[d]
         for prop in ('fill','stroke'):
             value=style.get(prop,'#000000' if prop=='fill' else 'none')
