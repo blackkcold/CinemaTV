@@ -143,7 +143,7 @@ fun TvPlayerPage(model: CinemaViewModel) {
                 controlsVisible = true
             }
             override fun onPlaybackStateChanged(state: Int) {
-                if (state == Player.STATE_ENDED) model.playerEnded()
+                if (state == Player.STATE_ENDED && model.playbackUrl == uri) model.playerEnded(player.currentPosition, player.duration.coerceAtLeast(0L), episodeAtCreation)
             }
             override fun onIsPlayingChanged(playing: Boolean) { isPlaying = playing }
             override fun onTracksChanged(tracks: Tracks) { tracksVersion++ }

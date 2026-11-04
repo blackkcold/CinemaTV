@@ -22,7 +22,7 @@ import dev.cinematv.ui.tv.focus.*
 
 @Composable
 fun CatalogScreen(model: CinemaViewModel, series: Boolean) {
-    val all = if (series) model.tvShows else model.featured
+    val all = if (series) model.browseSeries else model.browseMovies
     val layout = LocalTvLayout.current
     var category by rememberSaveable { mutableStateOf<String?>(null) }
     var year by rememberSaveable { mutableStateOf<String?>(null) }

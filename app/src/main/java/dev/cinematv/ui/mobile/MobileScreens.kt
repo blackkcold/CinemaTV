@@ -45,6 +45,8 @@ import dev.cinematv.CinemaViewModel
 import dev.cinematv.Page
 import dev.cinematv.data.LibraryStatus
 import dev.cinematv.data.MediaItem
+import dev.cinematv.data.SearchFilters
+import dev.cinematv.ui.shared.metadataLine
 import dev.cinematv.ui.CinemaBackdrop
 import dev.cinematv.ui.Ink
 import dev.cinematv.ui.Ivory
@@ -208,6 +210,9 @@ private fun MobileHome(model: CinemaViewModel) {
         item { MobileRail("继续观看", model.history(), model) }
         item { MobileRail("精选电影", model.featured, model) }
         item { MobileRail("热门剧集", model.tvShows, model) }
+        if (model.catalogAttribution.isNotBlank()) item {
+            Text(model.catalogAttribution, color = Muted, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 20.dp))
+        }
         item {
             TextButton(onClick = { model.navigate(Page.EXPLORE) },
                 modifier = Modifier.padding(start = 16.dp)) {
@@ -220,9 +225,9 @@ private fun MobileHome(model: CinemaViewModel) {
 @Composable
 private fun MobileCatalog(model: CinemaViewModel, tvOnly: Boolean?) {
     val contents = when (tvOnly) {
-        true -> model.tvShows
-        false -> model.featured
-        null -> (model.featured + model.tvShows).distinctBy { it.title + it.year }
+        true -> model.browseSeries
+        false -> model.browseMovies
+        null -> (model.browseMovies + model.browseSeries).distinctBy { it.title + it.year }
     }
     Column(Modifier.fillMaxSize()) {
         MobileHeading(when (tvOnly) {
@@ -255,13 +260,13 @@ private fun MobileCatalog(model: CinemaViewModel, tvOnly: Boolean?) {
 @Composable
 private fun MobileSearch(model: CinemaViewModel) {
     Column(Modifier.fillMaxSize()) {
-        MobileHeading("搜索影视", "聚合已配置的 LibreTV 片源")
+        MobileHeading("搜索影视", "本地片库、元数据目录与 LibreTV 片源")
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(
                 value = model.query, onValueChange = { model.query = it },
-                label = { Text("电影、剧集或关键词") },
+                label = { Text("片名、别名或演员") },
                 modifier = Modifier.weight(1f),
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
@@ -269,6 +274,24 @@ private fun MobileSearch(model: CinemaViewModel) {
             )
             Button(onClick = { model.search() }) { Text("搜索") }
         }
+        LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            item { FilterChip(selected = model.searchFilters.isTv != null,
+                onClick = { model.updateSearchFilters(model.searchFilters.copy(isTv = when (model.searchFilters.isTv) { null -> false; false -> true; true -> null })) },
+                label = { Text(when (model.searchFilters.isTv) { true -> "剧集"; false -> "电影"; null -> "全部类型" }) }) }
+            item { FilterChip(selected = model.searchFilters.year != null, onClick = model::cycleSearchYear,
+                label = { Text(model.searchFilters.year ?: "全部年份") }) }
+            item { FilterChip(selected = model.searchFilters.ratingSource == "TMDB",
+                onClick = { model.updateSearchFilters(model.searchFilters.copy(minRating = 8.0, ratingSource = "TMDB", doubanTopOnly = false)) }, label = { Text("TMDB ≥ 8") }) }
+            item { FilterChip(selected = model.searchFilters.ratingSource == "Douban" && !model.searchFilters.doubanTopOnly,
+                onClick = { model.updateSearchFilters(model.searchFilters.copy(minRating = 8.0, ratingSource = "Douban", doubanTopOnly = false)) }, label = { Text("豆瓣 ≥ 8") }) }
+            item { FilterChip(selected = model.searchFilters.doubanTopOnly,
+                onClick = { model.updateSearchFilters(model.searchFilters.copy(minRating = null, ratingSource = "Douban", doubanTopOnly = true)) }, label = { Text("豆瓣 TOP250") }) }
+            item { TextButton(onClick = { model.updateSearchFilters(SearchFilters()) }) { Text("重置") } }
+        }
+        if (model.searchFilters.ratingSource == "Douban") Text("仅使用有效授权目录；未配置时无豆瓣结果。", color = Muted,
+            fontSize = 11.sp, modifier = Modifier.padding(horizontal = 20.dp))
+        if (model.catalogAttribution.isNotBlank()) Text(model.catalogAttribution, color = Muted,
+            fontSize = 10.sp, modifier = Modifier.padding(horizontal = 20.dp))
         if (model.searchHistory.isNotEmpty()) {
             Text("最近搜索", color = Muted, fontSize = 13.sp,
                 modifier = Modifier.padding(start = 20.dp, top = 12.dp))
@@ -308,6 +331,7 @@ private fun MobileSearch(model: CinemaViewModel) {
 
 @Composable
 private fun MobileDetail(model: CinemaViewModel) {
+    val libraryVersion = model.libraryVersion
     val item = model.selected ?: return
     var showAlternates by remember(item.id) { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())
@@ -322,15 +346,17 @@ private fun MobileDetail(model: CinemaViewModel) {
         Column(Modifier.padding(horizontal = 20.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(item.title, fontSize = 30.sp, fontWeight = FontWeight.Bold)
-            Text(listOf(item.year, item.category, item.rating)
-                .filter(String::isNotBlank).joinToString(" · "), color = Muted)
+            Text(item.metadataLine(), color = Muted)
             Text(item.description.ifBlank { if (model.busy) "正在加载详情..." else "暂无简介" },
                 color = Ivory.copy(alpha = .86f), fontSize = 14.sp, lineHeight = 22.sp)
+            if (item.catalogAttribution.isNotBlank()) Text(item.catalogAttribution, color = Muted, fontSize = 11.sp)
+            if (model.selectedRecommendationReason.startsWith("因为") || model.selectedRecommendationReason.startsWith("来自"))
+                Text(model.selectedRecommendationReason, color = Accent, fontSize = 12.sp)
             Row(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
                 Button(onClick = {
                     model.playEpisode(item.lastEpisode.coerceIn(0, (item.episodes.size - 1).coerceAtLeast(0)))
                 }) { Text("播放 / 续播") }
-                OutlinedButton(onClick = { model.toggleFavorite() }) { Text("收藏") }
+                OutlinedButton(onClick = { model.toggleFavorite() }) { Text(if (model.repo.isFavorite(item)) "已收藏" else "收藏") }
             }
             OutlinedButton(onClick = { showAlternates = !showAlternates; model.findAlternatives() }) {
                 Text("选择片源")
@@ -360,7 +386,7 @@ private fun MobileDetail(model: CinemaViewModel) {
                             modifier = Modifier.weight(1f),
                             contentPadding = PaddingValues(horizontal = 3.dp, vertical = 8.dp),
                             onClick = { model.playEpisode(index) }
-                        ) { Text((index + 1).toString(), fontSize = 12.sp) }
+                        ) { Text(model.episodeLabel(index), fontSize = 12.sp, maxLines = 2) }
                     }
                 }
             }

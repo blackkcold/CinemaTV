@@ -11,6 +11,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.coroutineScope
 import dev.cinematv.ui.tv.design.GlassQuality
 import dev.cinematv.ui.shared.presentationKey
 
@@ -103,7 +106,37 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
     private var searchJob: Job? = null
     private var backdropJob: Job? = null
     private var detailJob: Job? = null
+    private var detailGeneration = 0L
+    var selectedRecommendationReason by mutableStateOf("")
+        private set
     private var channelsJob: Job? = null
+    private var homeJob: Job? = null
+    private var catalogMovies by mutableStateOf<List<MediaItem>>(emptyList())
+    private var catalogSeries by mutableStateOf<List<MediaItem>>(emptyList())
+    val browseMovies get() = catalogMovies.ifEmpty { featured }.mapNotNull { it.usableMetadata() }
+    val browseSeries get() = catalogSeries.ifEmpty { tvShows }.mapNotNull { it.usableMetadata() }
+    private var remoteSearch: List<MediaItem> = emptyList()
+    private var queryCatalog: List<MediaItem> = emptyList()
+    var searchFilters by mutableStateOf(SearchFilters())
+        private set
+    var searchStage by mutableStateOf("")
+        private set
+    var catalogAttribution by mutableStateOf("")
+        private set
+    var recommendationReasons by mutableStateOf<Map<String, String>>(emptyMap())
+        private set
+    var searchHits by mutableStateOf<List<SearchHit>>(emptyList())
+        private set
+    private var completedSearchQuery = ""
+    private var searchGeneration = 0L
+    val searchYears: List<String> get() = (catalogMovies + catalogSeries + queryCatalog + remoteSearch +
+        repo.library.snapshot.records.map { it.item }).map { it.year }.filter { it.matches(Regex("\\d{4}")) }.distinct().sortedDescending()
+
+    fun cycleSearchYear() {
+        val choices = listOf<String?>(null) + searchYears
+        updateSearchFilters(searchFilters.copy(year = choices[(choices.indexOf(searchFilters.year) + 1) % choices.size]))
+    }
+
     var failoverBusy by mutableStateOf(false)
         private set
     var failoverMessage by mutableStateOf("")
@@ -112,7 +145,35 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
     var playingEpisode by mutableStateOf(0)
         private set
 
-    init { if (repo.isConnected) refreshConnection() }
+    init {
+        viewModelScope.launch {
+            repo.library.snapshots.collect {
+                libraryVersion++
+                rebuildRecommendations()
+                if (completedSearchQuery.isNotBlank()) rebuildSearch()
+            }
+        }
+        viewModelScope.launch {
+            runCatching { repo.library.initialize() }
+                .onFailure { message = "片库迁移未完成，旧记录已保留：${it.message}" }
+            if (repo.isConnected) refreshConnection() else rebuildRecommendations()
+        }
+        viewModelScope.launch {
+            while (true) {
+                val now = System.currentTimeMillis()
+                val expiry = (catalogMovies + catalogSeries + queryCatalog + repo.localItems() + listOfNotNull(selected))
+                    .map { it.catalogLicenseExpiresAt }.filter { it > now }.minOrNull()
+                delay(((expiry ?: now + 60000) - now + 1).coerceIn(1000, 60000))
+                rebuildRecommendations()
+                if (completedSearchQuery.isNotBlank()) rebuildSearch()
+                focused = focused?.usableMetadata()
+                selected?.takeIf { it.catalogLicenseExpiresAt > 0 && it.catalogLicenseExpiresAt <= System.currentTimeMillis() }?.let {
+                    selected = it.usableMetadata() ?: it.copy(title = "目录授权已过期", poster = "", backdrop = "", description = "本地片库记录已保留，请刷新元数据目录。", rating = "", aliases = emptyList(), actors = emptyList())
+                }
+                libraryVersion++
+            }
+        }
+    }
 
     fun dismissMessage() { message = "" }
 
@@ -209,22 +270,53 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
         liveSources = repo.liveSources()
     }
 
+    private fun rebuildRecommendations() {
+        val records = repo.library.snapshot.records
+        val signals = records.filter { it.status != null || it.favorite || it.historyAt != null }.map {
+            RecommendationSignal(it.item, it.status ?: if (it.historyAt != null) LibraryStatus.WATCHING else null,
+                favorite = it.favorite, notInterested = it.status == LibraryStatus.DROPPED)
+        }
+        val offline = repo.localItems()
+        val movies = RecommendationEngine.recommend(catalogMovies.ifEmpty { offline.filter { !it.isTv } }, signals, 50)
+        val series = RecommendationEngine.recommend(catalogSeries.ifEmpty { offline.filter { it.isTv } }, signals, 50)
+        featured = movies.map { it.item }
+        tvShows = series.map { it.item }
+        recommendationReasons = (movies + series).associate { it.item.presentationKey to it.reason }
+        catalogAttribution = (featured + tvShows + queryCatalog).mapNotNull { it.usableMetadata() }
+            .map { it.catalogAttribution }.filter(String::isNotBlank).distinct().joinToString("\n")
+    }
+
     private fun loadHome() {
-        viewModelScope.launch {
-            runCatching { repo.recommend(false) }.onSuccess {
-                featured = it
-                if (focused == null) focused = it.firstOrNull()
-                val first = it.firstOrNull()
-                if (first != null) {
-                    runCatching { repo.enrichMetadata(first) }.onSuccess { enhanced ->
-                        featured = featured.map { original ->
-                            if (original.id == first.id) enhanced else original
-                        }
-                        if (focused?.id == first.id) focused = enhanced
-                    }
+        homeJob?.cancel()
+        homeJob = viewModelScope.launch {
+            suspend fun load(tv: Boolean): List<MediaItem>? {
+                val catalog = try { repo.catalog(isTv = tv) } catch (cancelled: CancellationException) { throw cancelled }
+                    catch (_: Exception) { MetadataCatalog() }
+                if (catalog.available && catalog.items.isNotEmpty()) {
+                    return catalog.items
                 }
-            }.onFailure { message = "推荐加载失败：${it.message}" }
-            runCatching { repo.recommend(true) }.onSuccess { tvShows = it }
+                return try { repo.recommend(tv) } catch (cancelled: CancellationException) { throw cancelled }
+                    catch (_: Exception) { null }
+            }
+            val movies = load(false)
+            ensureActive()
+            if (movies != null) catalogMovies = movies
+            rebuildRecommendations()
+            if (focused == null) focused = featured.firstOrNull()
+            val series = load(true)
+            ensureActive()
+            if (series != null) catalogSeries = series
+            rebuildRecommendations()
+            if (movies == null && series == null) message = "推荐目录暂不可用，已保留本地片库与搜索。"
+            featured.firstOrNull()?.let { first ->
+                try {
+                    val enhanced = repo.enrichMetadata(first)
+                    ensureActive()
+                    catalogMovies = catalogMovies.map { if (it.presentationKey == first.presentationKey) enhanced else it }
+                    rebuildRecommendations()
+                    if (focused?.presentationKey == first.presentationKey) focused = enhanced
+                } catch (cancelled: CancellationException) { throw cancelled } catch (_: Exception) { /* Keep local/source artwork. */ }
+            }
         }
     }
 
@@ -265,6 +357,8 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
     fun open(item: MediaItem) {
         backdropJob?.cancel()
         detailJob?.cancel()
+        val generation = ++detailGeneration
+        selectedRecommendationReason = recommendationReasons[item.presentationKey].orEmpty()
         detailSessionKey = item.presentationKey
         page = Page.DETAIL
         selected = item
@@ -273,8 +367,9 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
         detailJob = viewModelScope.launch {
             try {
                 val detailed = repo.detail(item)
-                if (page != Page.DETAIL) return@launch
+                if (page != Page.DETAIL || detailGeneration != generation) return@launch
                 selected = detailed
+                if (repo.persistenceWarning.isNotBlank()) message = repo.persistenceWarning
                 busy = false
                 runCatching { repo.enrichMetadata(detailed) }.onSuccess { enhanced ->
                     if (selected?.presentationKey == detailed.presentationKey && page == Page.DETAIL) selected = enhanced
@@ -283,7 +378,7 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
                 throw cancelled
             } catch (error: Exception) {
                 connectionError(error)
-            } finally { busy = false }
+            } finally { if (detailGeneration == generation) busy = false }
         }
     }
 
@@ -293,12 +388,21 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
             busy = true
             runCatching { repo.search(item.title) }
                 .onSuccess { items ->
-                    alternatives = items.filter { MediaIdentity.isSameWork(item.title, item.year, it.title, it.year) }
+                    if (selected?.presentationKey != item.presentationKey) return@onSuccess
+                    alternatives = items.filter { sameSourceCandidate(item, it) }
                         .distinctBy { it.source?.url }
                 }
                 .onFailure { message = "换源失败：${it.message}" }
             busy = false
         }
+    }
+
+    private fun sameSourceCandidate(item: MediaItem, candidate: MediaItem): Boolean {
+        if (item.source?.url == candidate.source?.url && item.id == candidate.id) return true
+        if (item.year.isBlank() || candidate.year.isBlank() || item.year != candidate.year) return false
+        return MediaIdentity.normalizedTitle(item.title) == MediaIdentity.normalizedTitle(candidate.title) &&
+            (!item.mediaTypeKnown || !candidate.mediaTypeKnown || item.isTv == candidate.isTv) &&
+            (item.seasonNumber == null || candidate.seasonNumber == null || item.seasonNumber == candidate.seasonNumber)
     }
 
     fun focusChannel(channel: TvChannel) {
@@ -313,28 +417,91 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    fun updateSearchFilters(filters: SearchFilters) {
+        searchFilters = filters
+        rebuildSearch()
+    }
+
+    private fun rebuildSearch() {
+        searchHits = SearchIndex.search(completedSearchQuery,
+            library = repo.localItems(),
+            catalog = catalogMovies + catalogSeries + queryCatalog,
+            remote = remoteSearch, filters = searchFilters)
+        results = searchHits.map { it.item }
+        catalogAttribution = (featured + tvShows + results).map { it.catalogAttribution }
+            .filter(String::isNotBlank).distinct().joinToString("\n")
+    }
+
     fun search() {
         val wd = query.trim()
         if (wd.isBlank()) return
         navigate(Page.SEARCH)
         searchJob?.cancel()
+        val generation = ++searchGeneration
+        completedSearchQuery = wd
+        remoteSearch = emptyList()
+        queryCatalog = emptyList()
+        message = ""
         repo.rememberSearch(wd)
         searchHistory = repo.searchHistory()
+        rebuildSearch() // Local matches appear immediately, including while offline.
+        searchStage = "本地片库与目录"
         searchJob = viewModelScope.launch {
             busy = true
-            results = emptyList()
-            runCatching {
-                repo.searchProgressively(wd).collect { partial ->
-                    results = partial
+            try {
+                coroutineScope {
+                    launch {
+                        if (repo.hasMetadataCatalog) {
+                            for (tv in listOf(false, true)) {
+                                try {
+                                    val catalog = repo.catalog(wd, tv)
+                                    ensureActive()
+                                    queryCatalog = queryCatalog + catalog.items
+                                    rebuildSearch()
+                                } catch (cancelled: CancellationException) { throw cancelled } catch (_: Exception) { /* Independent provider. */ }
+                            }
+                        }
+                    }
+                    launch {
+                        if (!repo.isConnected || sources.none { it.enabled }) return@launch
+                        searchStage = "本地 → 元数据目录 → LibreTV 片源"
+                        try {
+                            repo.searchProgressively(wd).collect { partial ->
+                                ensureActive()
+                                remoteSearch = partial
+                                rebuildSearch()
+                            }
+                        } catch (cancelled: CancellationException) { throw cancelled }
+                        catch (_: Exception) {
+                            try {
+                                val fallback = repo.search(wd)
+                                ensureActive()
+                                remoteSearch = fallback
+                                rebuildSearch()
+                            } catch (cancelled: CancellationException) { throw cancelled }
+                            catch (_: Exception) { searchStage = "片源暂不可用 · 已保留本地和目录结果" }
+                        }
+                    }
                 }
-            }.onFailure { failure ->
-                if (failure is kotlinx.coroutines.CancellationException) return@launch
-                runCatching { repo.search(wd) }
-                    .onSuccess { results = SearchAggregator.group(it) }
-                    .onFailure { message = it.message ?: "搜索失败" }
+                if (results.isEmpty()) message = "没有符合当前关键词和筛选条件的作品"
+            } finally {
+                // A cancelled older search must not reset the newer search's loading state.
+                if (searchGeneration == generation) busy = false
             }
-            if (results.isEmpty() && message.isBlank()) message = "没有找到相关影片"
-            busy = false
+        }
+    }
+
+    fun episodeProgress(index: Int) = selected?.let { repo.library.snapshot.progress(it, index) }
+
+    fun episodeLabel(index: Int): String {
+        val item = selected ?: return "第 ${index + 1} 集"
+        val name = item.episodeNames.getOrNull(index)?.takeIf { it.isNotBlank() }
+            ?: if (item.episodes.size == 1) "播放" else "第 ${index + 1} 集"
+        val progress = episodeProgress(index) ?: return name
+        return when {
+            progress.durationMs > 0 && progress.positionMs.toDouble() / progress.durationMs >= .95 -> "$name ✓"
+            progress.positionMs > 0 -> "$name · ${progress.positionMs / 60000}分"
+            else -> name
         }
     }
 
@@ -346,10 +513,14 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
             return
         }
         playerReturnPage = Page.DETAIL
-        if (repo.libraryStatus(item) == null) repo.setLibraryStatus(item, LibraryStatus.WATCHING)
+        if (repo.libraryStatus(item) == null) viewModelScope.launch {
+            runCatching { repo.setLibraryStatus(item, LibraryStatus.WATCHING) }
+                .onFailure { message = "片库保存失败：${it.message}" }
+        }
         playbackUrl = url
         playbackTitle = item.title + if (item.episodes.size > 1) " · 第${index + 1}集" else ""
-        playbackPosition = if (index == item.lastEpisode) item.positionMs else 0L
+        val progress = repo.library.snapshot.progress(item, index)
+        playbackPosition = progress?.positionMs ?: 0L
         playingEpisode = index
         failedSources.clear()
         item.source?.url?.let { failedSources.add(it) }
@@ -386,7 +557,7 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
             runCatching {
                 val alternatives = repo.search(current.title)
                     .filter { candidate ->
-                        MediaIdentity.isSameWork(current.title, current.year, candidate.title, candidate.year) &&
+                        sameSourceCandidate(current, candidate) &&
                         candidate.source != null && candidate.source.url !in failedSources
                     }.take(12)
                 var found: MediaItem? = null
@@ -395,7 +566,10 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
                     failedSources.add(sourceUrl)
                     try {
                         val detailed = repo.detail(candidate)
-                        if (detailed.episodes.getOrNull(playingEpisode)?.startsWith("http") == true) {
+                        val labelsMatch = current.episodeNames.getOrNull(playingEpisode)?.takeIf(String::isNotBlank)?.let { label ->
+                            detailed.episodeNames.getOrNull(playingEpisode)?.let { MediaIdentity.normalizedTitle(it) == MediaIdentity.normalizedTitle(label) }
+                        } ?: (detailed.episodes.size == current.episodes.size)
+                        if (sameSourceCandidate(current, detailed) && labelsMatch && detailed.episodes.getOrNull(playingEpisode)?.startsWith("http") == true) {
                             found = detailed
                             break
                         }
@@ -419,20 +593,30 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun savePlaybackPosition(position: Long, episodeIndex: Int = playingEpisode, durationMs: Long = 0L) {
-        if (playerReturnPage == Page.DETAIL) selected?.let {
-            repo.saveProgress(it, position, episodeIndex, durationMs)
-            if (episodeIndex == playingEpisode) {
-                selected = it.withPlaybackProgress(position, episodeIndex, durationMs)
-            }
-            libraryVersion++
+        val item = selected ?: return
+        if (playerReturnPage != Page.DETAIL) return
+        viewModelScope.launch {
+            runCatching { repo.saveProgress(item, position, episodeIndex, durationMs) }
+                .onSuccess {
+                    if (episodeIndex == playingEpisode && selected?.presentationKey == item.presentationKey) {
+                        selected = repo.library.snapshot.applyProgress(item)
+                    }
+                }.onFailure { message = "观看进度未能保存：${it.message}" }
         }
     }
 
-    fun playerEnded() {
+    fun playerEnded(position: Long = 0, duration: Long = 0, episodeIndex: Int = playingEpisode) {
         val entry = selected ?: return
-        if (playerReturnPage == Page.DETAIL) {
-            if (playingEpisode + 1 < entry.episodes.size) playEpisode(playingEpisode + 1)
-            else { repo.setLibraryStatus(entry, LibraryStatus.WATCHED); libraryVersion++ }
+        if (playerReturnPage == Page.DETAIL && episodeIndex == playingEpisode) {
+            val endingUrl = playbackUrl
+            viewModelScope.launch {
+                runCatching { repo.saveProgress(entry, if (duration > 0) duration else position, episodeIndex, duration) }
+                    .onFailure { message = "最终观看进度未能保存：${it.message}" }
+                if (page != Page.PLAYER || playbackUrl != endingUrl || playingEpisode != episodeIndex) return@launch
+                if (episodeIndex + 1 < entry.episodes.size) playEpisode(episodeIndex + 1)
+                else runCatching { repo.setLibraryStatus(entry, LibraryStatus.WATCHED) }
+                    .onFailure { message = "片库保存失败：${it.message}" }
+            }
         }
     }
 
@@ -456,14 +640,19 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun toggleFavorite() {
-        selected?.let { repo.toggleFavorite(it); libraryVersion++; message = "收藏已更新" }
+        val item = selected ?: return
+        viewModelScope.launch {
+            runCatching { repo.toggleFavorite(item) }.onSuccess { message = "收藏已更新" }
+                .onFailure { message = "收藏未能保存：${it.message}" }
+        }
     }
 
     fun setLibraryStatus(status: LibraryStatus) {
-        selected?.let {
-            repo.setLibraryStatus(it, status)
-            libraryVersion++
-            message = "已加入：${status.title}"
+        val item = selected ?: return
+        viewModelScope.launch {
+            runCatching { repo.setLibraryStatus(item, status) }
+                .onSuccess { message = "已加入：${status.title}" }
+                .onFailure { message = "片库保存失败：${it.message}" }
         }
     }
 

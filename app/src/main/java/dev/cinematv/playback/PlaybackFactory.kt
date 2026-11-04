@@ -11,6 +11,8 @@ import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.exoplayer.DefaultLoadControl
+import dev.cinematv.ui.shared.deviceProfile
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import java.io.File
 
@@ -21,7 +23,6 @@ import java.io.File
  */
 @OptIn(UnstableApi::class)
 object PlaybackFactory {
-    private const val MAX_CACHE_BYTES = 256L * 1024 * 1024
     @Volatile private var cache: SimpleCache? = null
 
     @Synchronized
@@ -30,14 +31,18 @@ object PlaybackFactory {
         val app = context.applicationContext
         return SimpleCache(
             File(app.cacheDir, "media3-playback"),
-            LeastRecentlyUsedCacheEvictor(MAX_CACHE_BYTES),
+            LeastRecentlyUsedCacheEvictor(deviceProfile(context).diskCacheBytes),
             StandaloneDatabaseProvider(app)
         ).also { cache = it }
     }
 
     fun create(context: Context, cacheVod: Boolean): ExoPlayer {
         val renderers = DefaultRenderersFactory(context).setEnableDecoderFallback(true)
-        if (!cacheVod) return ExoPlayer.Builder(context, renderers).build()
+        val loadControl = DefaultLoadControl.Builder()
+            .setTargetBufferBytes(deviceProfile(context).playbackBufferBytes)
+            .setPrioritizeTimeOverSizeThresholds(false)
+            .build()
+        if (!cacheVod) return ExoPlayer.Builder(context, renderers).setLoadControl(loadControl).build()
         val http = DefaultHttpDataSource.Factory()
             .setAllowCrossProtocolRedirects(true)
             .setUserAgent("CinemaTV/${BuildConfig.VERSION_NAME} (Android)")
@@ -48,6 +53,7 @@ object PlaybackFactory {
         val mediaSource = DefaultMediaSourceFactory(context)
             .setDataSourceFactory(source)
         return ExoPlayer.Builder(context, renderers)
+            .setLoadControl(loadControl)
             .setMediaSourceFactory(mediaSource)
             .build()
     }

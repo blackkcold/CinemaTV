@@ -58,6 +58,7 @@ jobs:
         with:
           name: build-test-reports
           path: |
+            app/schemas/
             app/build/test-results/
             app/build/reports/lint-results-debug.*
           if-no-files-found: warn

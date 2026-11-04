@@ -1,6 +1,7 @@
 package dev.cinematv.data
 
 import android.content.Context
+import dev.cinematv.data.library.LocalMediaLibrary
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.Flow
@@ -9,10 +10,12 @@ import kotlinx.coroutines.flow.flowOn
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
+import java.io.ByteArrayOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
 import java.util.concurrent.ConcurrentHashMap
+import java.time.Instant
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -26,7 +29,9 @@ import kotlinx.coroutines.sync.withLock
  *
  * IMPORTANT: supply sources you are authorized to use. The app does not ship any feeds.
  */
-class LibreTvRepository(context: Context) {
+class LibreTvRepository(context: Context, val library: LocalMediaLibrary = LocalMediaLibrary(context)) {
+    @Volatile var persistenceWarning: String = ""
+        private set
     private val prefs = context.getSharedPreferences("cinema_settings", Context.MODE_PRIVATE)
     private var sessionCookie: String? = null
     var server: String
@@ -52,6 +57,74 @@ class LibreTvRepository(context: Context) {
         get() = prefs.getString("metadata_server", "") ?: ""
         private set(value) { prefs.edit().putString("metadata_server", value).apply() }
     @Volatile private var metadataAccessToken: String = ""
+    val hasMetadataCatalog: Boolean get() = metadataServer.isNotBlank() && metadataAccessToken.isNotBlank()
+
+    private fun strings(value: Any?): List<String> = when (value) {
+        is JSONArray -> (0 until value.length()).mapNotNull { value.optString(it).trim().takeIf(String::isNotBlank) }
+        is String -> value.split(Regex("[,，/、;；]")).map(String::trim).filter(String::isNotBlank)
+        else -> emptyList()
+    }.distinct().take(50)
+
+    /** Only the configured BFF receives the explicit query. Viewing history stays on device. */
+    suspend fun catalog(query: String = "", isTv: Boolean = false): MetadataCatalog = withContext(Dispatchers.IO) {
+        if (!hasMetadataCatalog) return@withContext MetadataCatalog()
+        val conn = (URL(metadataServer + "/v1/catalog?type=${if (isTv) "tv" else "movie"}&limit=50&query=${encode(query.take(100))}")
+            .openConnection() as HttpURLConnection).apply {
+            connectTimeout = 4500
+            readTimeout = 9000
+            instanceFollowRedirects = false
+            setRequestProperty("Authorization", "Bearer $metadataAccessToken")
+            setRequestProperty("Accept", "application/json")
+        }
+        try {
+            if (conn.responseCode != 200) return@withContext MetadataCatalog()
+            val body = conn.inputStream.use { input ->
+                val output = ByteArrayOutputStream()
+                val buffer = ByteArray(8192)
+                while (true) {
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    require(output.size() + count <= 1_048_576) { "元数据目录响应过大" }
+                    output.write(buffer, 0, count)
+                }
+                output.toByteArray()
+            }
+            val root = JSONObject(String(body, Charsets.UTF_8))
+            val license = root.optJSONObject("license")
+            val expiry = runCatching { Instant.parse(license?.optString("expiresAt")).toEpochMilli() }.getOrDefault(0L)
+            val licensed = license != null && expiry > System.currentTimeMillis()
+            if (license != null && !licensed) return@withContext MetadataCatalog()
+            val items = parseArray(root.optJSONArray("items")) { item ->
+                val title = item.optString("title").trim()
+                val provider = item.optString("provider").ifBlank { root.optString("provider") }
+                val ratingSource = item.optString("ratingSource").takeUnless { it == "null" }.orEmpty()
+                val validRating = item.optDouble("ratingScale", 0.0) == 10.0 &&
+                    item.optDouble("rating", -1.0) in 0.0..10.0 &&
+                    (RatingPolicy.normalizeProvider(ratingSource) != "douban" || licensed)
+                if (title.isBlank()) null else MediaItem(
+                    id = "catalog:$provider:${item.optString("id")}", title = title,
+                    poster = item.optString("poster"), backdrop = item.optString("backdrop"),
+                    year = item.optString("year"), description = item.optString("overview"),
+                    category = item.optString("category"), isTv = item.optString("type") == "tv",
+                    rating = if (validRating) item.optString("rating") else "",
+                    ratingSource = if (validRating) ratingSource else "",
+                    aliases = strings(item.opt("aliases")), actors = strings(item.opt("actors")),
+                    doubanTopRank = item.optInt("topRank", 0).takeIf {
+                        licensed && RatingPolicy.normalizeProvider(item.optString("topSource")) == "douban" &&
+                            RatingPolicy.normalizeProvider(ratingSource) == "douban" && it in 1..250
+                    },
+                    ratingLicenseExpiresAt = if (licensed) expiry else 0L,
+                    catalogProvider = provider,
+                    catalogAttribution = root.optString("attribution").takeUnless { it == "null" }.orEmpty(),
+                    catalogLicenseExpiresAt = if (licensed) expiry else 0L,
+                    metadataIds = if (provider.isNotBlank() && item.optString("providerId").isNotBlank())
+                        mapOf(provider.lowercase() to item.optString("providerId")) else emptyMap()
+                )
+            }
+            MetadataCatalog(items, root.optString("provider").takeUnless { it == "null" }.orEmpty(),
+                root.optString("attribution").takeUnless { it == "null" }.orEmpty(), root.optString("status") == "available")
+        } finally { conn.disconnect() }
+    }
 
     /**
      * Optional operator-owned BFF. Access token remains in memory and must be
@@ -260,7 +333,7 @@ class LibreTvRepository(context: Context) {
         parseArray(data.optJSONArray("items")) { j ->
             val title = j.optString("title")
             if (title.isBlank()) null else MediaItem(
-                id = "recommend:${j.optString("id", title)}",
+                id = "recommend:$type:${j.optString("id", title)}",
                 title = title,
                 poster = j.optString("cover"),
                 backdrop = j.optString("backdrop"),
@@ -268,6 +341,8 @@ class LibreTvRepository(context: Context) {
                 category = j.optString("typeName"),
                 description = j.optString("description"),
                 rating = j.optString("rating"),
+                ratingSource = "LibreTV",
+                aliases = strings(j.opt("aliases")), actors = strings(j.opt("actors")),
                 isTv = isTv
             )
         }
@@ -284,6 +359,12 @@ class LibreTvRepository(context: Context) {
                 poster = j.optString("pic"),
                 year = j.optString("year"),
                 category = j.optString("typeName"),
+                isTv = j.optBoolean("isTv", j.optString("type").equals("tv", true)),
+                mediaTypeKnown = j.has("isTv") || j.optString("type") in listOf("tv", "movie"),
+                aliases = strings(j.opt("aliases")).ifEmpty { strings(j.opt("vod_sub")) },
+                actors = strings(j.opt("actors")).ifEmpty { strings(j.opt("vod_actor")) },
+                rating = j.optString("rating"), ratingSource = "LibreTV",
+                seasonNumber = j.optInt("season", 0).takeIf { it > 0 },
                 source = source
             )
         }
@@ -338,31 +419,34 @@ class LibreTvRepository(context: Context) {
                             accumulated = (accumulated + batch).distinctBy {
                                 (it.source?.key ?: "") + "/" + it.id
                             }
-                            emit(SearchAggregator.group(accumulated))
+                            emit(accumulated)
                         }
                         "done" -> {
                             completed = true
-                            emit(SearchAggregator.group(batch))
+                            emit(batch)
                         }
                         else -> {
                             if (event.has("list")) {
                                 completed = true
-                                emit(SearchAggregator.group(batch))
+                                emit(batch)
                             }
                         }
                     }
                 }
             }
-            if (!completed) emit(SearchAggregator.group(accumulated))
+            if (!completed) emit(accumulated)
         } finally {
             conn.disconnect()
         }
     }.flowOn(Dispatchers.IO)
 
-    suspend fun detail(item: MediaItem): MediaItem = withContext(Dispatchers.IO) {
+    suspend fun detail(requested: MediaItem): MediaItem = withContext(Dispatchers.IO) {
+        val item = requireNotNull(requested.usableMetadata()) { "目录授权已过期，请刷新后重试；本地记录仍保留。" }
         val entry = if (item.source == null) {
             search(item.title).firstOrNull {
-                MediaIdentity.isSameWork(item.title, item.year, it.title, it.year)
+                MediaIdentity.isSameWork(item.title, item.year, it.title, it.year) &&
+                    (!it.mediaTypeKnown || !item.mediaTypeKnown || it.isTv == item.isTv) &&
+                    (it.seasonNumber == null || item.seasonNumber == null || it.seasonNumber == item.seasonNumber)
             } ?: throw IOException("未找到可确认与《${item.title}》匹配的播放来源")
         } else item
         val src = requireNotNull(entry.source)
@@ -370,22 +454,35 @@ class LibreTvRepository(context: Context) {
         val j = request(path)
         val info = j.optJSONObject("videoInfo") ?: JSONObject()
         val episodes = j.optJSONArray("episodes") ?: JSONArray()
-        val progress = history().firstOrNull { saved ->
-            (saved.source?.url == entry.source?.url && saved.id == entry.id) ||
-                (saved.source == null && MediaIdentity.isSameWork(saved.title, saved.year, entry.title, entry.year))
-        }
-        entry.copy(
+        val detailed = entry.copy(
             isTv = item.isTv || entry.isTv,
-            positionMs = progress?.positionMs ?: 0L,
-            lastEpisode = progress?.lastEpisode ?: 0,
-            durationMs = progress?.durationMs ?: 0,
+            mediaTypeKnown = item.mediaTypeKnown || entry.mediaTypeKnown,
             backdrop = entry.backdrop.ifBlank { item.backdrop },
             description = info.optString("desc"),
             poster = info.optString("cover").ifBlank { entry.poster },
             category = info.optString("typeName").ifBlank { entry.category },
             year = info.optString("year").ifBlank { entry.year },
-            episodes = (0 until episodes.length()).mapNotNull { episodes.optString(it).takeIf(String::isNotBlank) }
+            aliases = strings(info.opt("aliases")).ifEmpty { entry.aliases.ifEmpty { item.aliases } },
+            actors = strings(info.opt("actors")).ifEmpty { strings(info.opt("vod_actor")).ifEmpty { entry.actors.ifEmpty { item.actors } } },
+            episodeNames = info.optJSONArray("episodeNames")?.let { names ->
+                (0 until names.length()).map { names.optString(it) }
+            }.orEmpty(),
+            seasonNumber = info.optInt("season", 0).takeIf { it > 0 } ?: entry.seasonNumber ?: item.seasonNumber,
+            // Title resolution is not an authoritative cross-provider ID mapping.
+            metadataIds = entry.metadataIds,
+            rating = item.rating.ifBlank { entry.rating }, ratingSource = item.ratingSource.ifBlank { entry.ratingSource },
+            ratingLicenseExpiresAt = if (item.rating.isNotBlank()) item.ratingLicenseExpiresAt else entry.ratingLicenseExpiresAt,
+            doubanTopRank = item.doubanTopRank ?: entry.doubanTopRank,
+            catalogProvider = item.catalogProvider, catalogAttribution = item.catalogAttribution,
+            catalogLicenseExpiresAt = item.catalogLicenseExpiresAt,
+            episodes = (0 until episodes.length()).map { episodes.optString(it) }
         )
+        try {
+            library.cacheItem(detailed)
+            persistenceWarning = ""
+        } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+        catch (error: Exception) { persistenceWarning = "本地片库暂不可写；播放仍可用，旧记录已保留。" }
+        library.snapshot.applyProgress(detailed)
     }
 
     suspend fun channels(source: LiveSource): List<TvChannel> = withContext(Dispatchers.IO) {
@@ -407,13 +504,8 @@ class LibreTvRepository(context: Context) {
         }
     }
 
-    fun saveProgress(item: MediaItem, positionMs: Long, episodeIndex: Int = 0, durationMs: Long = 0L) {
-        if (item.id.isBlank()) return
-        val updated = item.withPlaybackProgress(positionMs, episodeIndex, durationMs)
-        val existing = history().filterNot { it.id == item.id && it.source?.url == item.source?.url }
-        val list = (listOf(updated) + existing).take(60)
-        prefs.edit().putString("history", JSONArray(list.map { itemJson(it) }).toString()).apply()
-    }
+    suspend fun saveProgress(item: MediaItem, positionMs: Long, episodeIndex: Int = 0, durationMs: Long = 0L) =
+        library.saveProgress(item, positionMs, episodeIndex, durationMs)
 
     fun searchHistory(): List<String> = runCatching {
         val data = JSONArray(prefs.getString("search_history", "[]") ?: "[]")
@@ -427,74 +519,12 @@ class LibreTvRepository(context: Context) {
         prefs.edit().putString("search_history", JSONArray(next.take(25)).toString()).apply()
     }
 
-    fun history(): List<MediaItem> = runCatching {
-        parseArray(JSONArray(prefs.getString("history", "[]") ?: "[]")) { j ->
-            MediaItem(
-                id = j.optString("id"), title = j.optString("title"),
-                poster = j.optString("poster"), year = j.optString("year"),
-                backdrop = j.optString("backdrop"), category = j.optString("category"),
-                isTv = j.optBoolean("isTv"), durationMs = j.optLong("durationMs"),
-                source = j.optJSONObject("source")?.let(::sourceFrom),
-                positionMs = j.optLong("positionMs"), lastEpisode = j.optInt("lastEpisode", 0)
-            )
-        }
-    }.getOrDefault(emptyList())
-
-    private fun itemJson(it: MediaItem) = JSONObject()
-        .put("id", it.id).put("title", it.title).put("poster", it.poster)
-        .put("year", it.year).put("source", it.source?.let(::sourceJson))
-        .put("backdrop", it.backdrop).put("category", it.category).put("isTv", it.isTv)
-        .put("durationMs", it.durationMs)
-        .put("positionMs", it.positionMs).put("lastEpisode", it.lastEpisode)
-
-    private fun libraryEntries(): List<Pair<LibraryStatus, MediaItem>> = runCatching {
-        parseArray(JSONArray(prefs.getString("library_entries", "[]") ?: "[]")) { obj ->
-            val status = runCatching { LibraryStatus.valueOf(obj.optString("state")) }.getOrNull()
-                ?: return@parseArray null
-            val media = MediaItem(
-                id = obj.optString("id"), title = obj.optString("title"),
-                poster = obj.optString("poster"), year = obj.optString("year"),
-                backdrop = obj.optString("backdrop"), category = obj.optString("category"),
-                isTv = obj.optBoolean("isTv"), durationMs = obj.optLong("durationMs"),
-                source = obj.optJSONObject("source")?.let(::sourceFrom),
-                positionMs = obj.optLong("positionMs"),
-                lastEpisode = obj.optInt("lastEpisode", 0)
-            )
-            status to media
-        }
-    }.getOrDefault(emptyList())
-
-    fun libraryStatus(item: MediaItem): LibraryStatus? = libraryEntries()
-        .firstOrNull { LibraryIdentity.key(it.second) == LibraryIdentity.key(item) }?.first
-
-    fun setLibraryStatus(item: MediaItem, status: LibraryStatus?) {
-        require(item.id.isNotBlank())
-        val entries = libraryEntries().filterNot { LibraryIdentity.key(it.second) == LibraryIdentity.key(item) }
-        val updated = if (status == null) entries else listOf(status to item) + entries
-        val json = JSONArray(updated.take(500).map { (state, media) ->
-            itemJson(media).put("state", state.name)
-        })
-        prefs.edit().putString("library_entries", json.toString()).apply()
-    }
-
-    fun libraryByStatus(status: LibraryStatus): List<MediaItem> =
-        libraryEntries().filter { it.first == status }.map { it.second }
-
-    fun toggleFavorite(item: MediaItem) {
-        val current = libraryStatus(item)
-        if (current == LibraryStatus.FAVORITE) setLibraryStatus(item, null)
-        else setLibraryStatus(item, LibraryStatus.FAVORITE)
-    }
-
-    fun favorites(): List<MediaItem> = (libraryByStatus(LibraryStatus.FAVORITE) + legacyFavorites())
-        .distinctBy(LibraryIdentity::key)
-
-    private fun legacyFavorites(): List<MediaItem> = runCatching {
-        parseArray(JSONArray(prefs.getString("favorites", "[]") ?: "[]")) { j ->
-            MediaItem(
-                id = j.optString("id"), title = j.optString("title"), poster = j.optString("poster"),
-                year = j.optString("year"), source = j.optJSONObject("source")?.let(::sourceFrom)
-            )
-        }
-    }.getOrDefault(emptyList())
+    fun localItems(): List<MediaItem> = library.snapshot.records.mapNotNull { it.item.usableMetadata() }
+    fun history(): List<MediaItem> = library.snapshot.history().mapNotNull { it.usableMetadata() }
+    fun favorites(): List<MediaItem> = library.snapshot.favorites().mapNotNull { it.usableMetadata() }
+    fun libraryStatus(item: MediaItem): LibraryStatus? = library.snapshot.status(item)
+    fun isFavorite(item: MediaItem): Boolean = library.snapshot.isFavorite(item)
+    fun libraryByStatus(status: LibraryStatus): List<MediaItem> = library.snapshot.byStatus(status).mapNotNull { it.usableMetadata() }
+    suspend fun setLibraryStatus(item: MediaItem, status: LibraryStatus?) = library.setStatus(item, status)
+    suspend fun toggleFavorite(item: MediaItem) = library.toggleFavorite(item)
 }

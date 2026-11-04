@@ -110,6 +110,7 @@ class TvUiRegressionTest {
         rule.onNodeWithText("片库状态").assertIsFocused()
         key(KeyEvent.KEYCODE_DPAD_CENTER)
         key(KeyEvent.KEYCODE_DPAD_CENTER)
+        rule.waitUntil(5000) { model.repo.libraryStatus(model.selected!!) == LibraryStatus.WANT_TO_WATCH }
         rule.runOnIdle { assertEquals(LibraryStatus.WANT_TO_WATCH, model.repo.libraryStatus(model.selected!!)) }
         key(KeyEvent.KEYCODE_BACK)
         rule.onNodeWithContentDescription(selected).assertIsFocused()

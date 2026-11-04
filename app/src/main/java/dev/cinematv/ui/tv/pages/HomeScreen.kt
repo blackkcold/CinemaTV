@@ -6,6 +6,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.tv.material3.Text
+import dev.cinematv.ui.tv.design.TvColors
 import dev.cinematv.CinemaViewModel
 import dev.cinematv.ui.tv.components.*
 import dev.cinematv.ui.tv.focus.*
@@ -40,5 +43,8 @@ fun HomeScreen(model: CinemaViewModel) {
         if (model.featured.isNotEmpty()) item(key = "movies") { ContentRail("为你精选", model.featured, model, entryRequester = firstRail.takeIf { history.isEmpty() }) }
         if (model.tvShows.isNotEmpty()) item(key = "series") { ContentRail("值得追的好故事", model.tvShows, model, portrait = true, entryRequester = firstRail.takeIf { history.isEmpty() && model.featured.isEmpty() }) }
         if (model.featured.size > 6) item(key = "more") { ContentRail("更多电影", model.featured.drop(6), model, portrait = true) }
+        if (model.catalogAttribution.isNotBlank()) item(key = "attribution") {
+            Text(model.catalogAttribution, color = TvColors.Secondary, fontSize = 11.sp, modifier = Modifier.padding(horizontal = layout.gutter, vertical = 16.dp))
+        }
     }
 }

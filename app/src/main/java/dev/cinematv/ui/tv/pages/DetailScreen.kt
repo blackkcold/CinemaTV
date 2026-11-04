@@ -27,6 +27,7 @@ import dev.cinematv.ui.tv.focus.*
 
 @Composable
 fun DetailScreen(model: CinemaViewModel) {
+    val libraryVersion = model.libraryVersion
     val item = model.selected ?: return
     val layout = LocalTvLayout.current
     val entry = LocalContentFocus.current
@@ -50,13 +51,16 @@ fun DetailScreen(model: CinemaViewModel) {
                 Text(item.metadataLine().ifBlank { if (item.isTv) "剧集" else "电影" }, color = TvColors.Accent, fontSize = 14.sp)
                 Text(item.description.ifBlank { if (model.busy) "正在读取作品详情…" else "暂无作品简介" }, color = TvColors.Text.copy(alpha = .78f),
                     fontSize = 15.sp, lineHeight = 23.sp, maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth(.73f))
+                if (item.catalogAttribution.isNotBlank()) Text(item.catalogAttribution, color = TvColors.Secondary, fontSize = 11.sp)
+                if (model.selectedRecommendationReason.startsWith("因为") || model.selectedRecommendationReason.startsWith("来自"))
+                    Text(model.selectedRecommendationReason, color = TvColors.Accent, fontSize = 12.sp)
                 Row(Modifier.padding(vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     GlassAction(if (item.positionMs > 0) "▶ 继续播放" else "▶ 立即播放",
                         Modifier.focusRequester(entry).focusRequester(primary).width(150.dp).height(45.dp), prominent = true,
                         onFocus = { model.focusCoordinator.remember(model.focusRoute, "actions", "play") }) {
                         model.playEpisode(item.lastEpisode.coerceIn(0, (item.episodes.size - 1).coerceAtLeast(0)))
                     }
-                    GlassAction(if (model.repo.libraryStatus(item) == LibraryStatus.FAVORITE) "已收藏 ✓" else "＋ 收藏",
+                    GlassAction(if (model.repo.isFavorite(item)) "已收藏 ✓" else "＋ 收藏",
                         Modifier.width(115.dp).height(45.dp)) { model.toggleFavorite() }
                     GlassAction("更换片源", Modifier.width(122.dp).height(45.dp)) { model.findAlternatives() }
                     GlassAction("片库状态", Modifier.focusRequester(shelf).width(122.dp).height(45.dp),
@@ -76,7 +80,7 @@ fun DetailScreen(model: CinemaViewModel) {
             }
         }
         item(key = "episode-heading") {
-            Text(if (item.episodes.size > 1) "剧集 · ${item.episodes.size} 集" else "播放列表", color = TvColors.Text,
+            Text(if (item.episodes.size > 1) "${item.seasonNumber?.let { "第 $it 季 · " }.orEmpty()}剧集 · ${item.episodes.size} 集" else "播放列表", color = TvColors.Text,
                 fontSize = 22.sp, fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(start = layout.gutter, top = 30.dp, bottom = 17.dp))
         }
@@ -91,7 +95,7 @@ fun DetailScreen(model: CinemaViewModel) {
                     val index = row * columns + col
                     if (index < item.episodes.size) {
                         val target = rememberFocusTarget(model, "episodes", index.toString())
-                        GlassAction(if (item.episodes.size == 1) "播放" else "第 ${index + 1} 集",
+                        GlassAction(model.episodeLabel(index),
                             Modifier.weight(1f).height(43.dp).focusRequester(target), selected = index == item.lastEpisode,
                             onFocus = { model.focusCoordinator.remember(model.focusRoute, "episodes", index.toString()) }) { model.playEpisode(index) }
                     } else Spacer(Modifier.weight(1f))

@@ -14,10 +14,11 @@ import dev.cinematv.ui.tv.design.LocalTvEffects
 fun ArtworkPrefetch(items: List<MediaItem>, focused: MediaItem?) {
     val context = LocalContext.current
     val effects = LocalTvEffects.current
+    val capacity = remember(context) { deviceProfile(context).artworkPrefetchCount }
     val urls = remember(items, focused?.presentationKey, effects.glass) {
         if (effects.glass == GlassQuality.BASIC) emptyList() else {
             val index = items.indexOfFirst { it.presentationKey == focused?.presentationKey }
-            listOf(index - 1, index + 1).mapNotNull { items.getOrNull(it)?.let(::landscapeArt) }.distinct().take(2)
+            listOf(index - 1, index + 1).mapNotNull { items.getOrNull(it)?.let(::landscapeArt) }.distinct().take(capacity)
         }
     }
     DisposableEffect(urls) {

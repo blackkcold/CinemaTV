@@ -26,7 +26,7 @@ import dev.cinematv.ui.tv.focus.*
 
 @Composable
 fun ExploreScreen(model: CinemaViewModel) {
-    val items = (model.featured + model.tvShows).distinctBy { it.presentationKey }
+    val items = (model.browseMovies + model.browseSeries).distinctBy { it.presentationKey }
     val layout = LocalTvLayout.current
     val effects = LocalTvEffects.current
     val saved = remember { model.focusCoordinator.restore(model.focusRoute, "coverflow") }

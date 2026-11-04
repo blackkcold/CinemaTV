@@ -1,4 +1,5 @@
 import { createServer } from 'node:http';
+import { createCatalogService, parseCatalogRequest } from './catalog.mjs';
 
 const port = Number(process.env.PORT || 8787);
 const upstreamBase = String(process.env.LIBRETV_URL || '').replace(/\/+$/, '');
@@ -8,6 +9,7 @@ const maxBytes = 65536;
 const timeoutMs = 18000;
 const tmdbToken = String(process.env.TMDB_READ_ACCESS_TOKEN || '');
 const tmdbApiBase = String(process.env.TMDB_API_URL || 'https://api.themoviedb.org/3').replace(/\/+$/, '');
+const catalog = createCatalogService();
 const metadataCache = new Map();
 const metadataCacheTtl = 24 * 60 * 60 * 1000;
 let cookie = '';
@@ -158,6 +160,12 @@ async function handle(req, res) {
   if (url.pathname === '/healthz') return send(res, 200, { ok: true, service: 'cinematv-bff' });
   if (req.headers.authorization !== 'Bearer ' + accessToken) throw new ApiError('Unauthorized', 401);
 
+  if (req.method === 'GET' && url.pathname === '/v1/catalog') {
+    let request;
+    try { request = parseCatalogRequest(url.searchParams); }
+    catch { throw new ApiError('Invalid catalog parameter', 400); }
+    return send(res, 200, await catalog(request));
+  }
   if (req.method === 'GET' && url.pathname === '/v1/status') {
     const { status, vod } = await sources();
     return send(res, 200, {

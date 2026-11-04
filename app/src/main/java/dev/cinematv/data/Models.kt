@@ -30,7 +30,24 @@ data class MediaItem(
     val positionMs: Long = 0L,
     val lastEpisode: Int = 0,
     val sourceCount: Int = 1,
-    val durationMs: Long = 0L
+    val durationMs: Long = 0L,
+    val aliases: List<String> = emptyList(),
+    val actors: List<String> = emptyList(),
+    val ratingSource: String = "",
+    val doubanTopRank: Int? = null,
+    /** Explicit IDs supplied by a metadata adapter, never inferred from the title. */
+    val metadataIds: Map<String, String> = emptyMap(),
+    val episodeNames: List<String> = emptyList(),
+    /** Null means the source did not identify a season. Do not invent season one. */
+    val seasonNumber: Int? = null,
+    /** Epoch milliseconds; 0 means no licensed-metadata expiry was supplied. */
+    val ratingLicenseExpiresAt: Long = 0L,
+    /** False when a source result did not identify movie versus series. */
+    val mediaTypeKnown: Boolean = true,
+    val catalogProvider: String = "",
+    val catalogAttribution: String = "",
+    /** Epoch milliseconds; expiry covers the entire licensed catalog metadata record. */
+    val catalogLicenseExpiresAt: Long = 0L
 )
 
 data class TvChannel(
