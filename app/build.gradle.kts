@@ -5,6 +5,8 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+apply(from = "noto-fonts.gradle.kts")
+
 android {
     namespace = "dev.cinematv"
     compileSdk = 36

@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.cinematv.ui.*
+import dev.cinematv.ui.typography.CinemaNotoProvider
 import dev.cinematv.ui.mobile.MobileRootApp
 import dev.cinematv.ui.shared.CinemaBrandSession
 import dev.cinematv.ui.tv.design.GlassQuality
@@ -59,13 +60,15 @@ class MainActivity : ComponentActivity() {
             )
         }
         setContent {
-            CompositionLocalProvider(LocalOpticalGlass provides model.opticalGlassEnabled) {
-                BackHandler(enabled = model.page != Page.HOME) { model.back() }
-                CinemaBrandSession(
-                    reducedMotion = model.reducedMotion,
-                    lowCost = model.glassQuality == GlassQuality.BASIC,
-                ) {
-                    if (isTv) TvRootApp(model) else MobileRootApp(model)
+            CinemaNotoProvider {
+                CompositionLocalProvider(LocalOpticalGlass provides model.opticalGlassEnabled) {
+                    BackHandler(enabled = model.page != Page.HOME) { model.back() }
+                    CinemaBrandSession(
+                        reducedMotion = model.reducedMotion,
+                        lowCost = model.glassQuality == GlassQuality.BASIC,
+                    ) {
+                        if (isTv) TvRootApp(model) else MobileRootApp(model)
+                    }
                 }
             }
         }

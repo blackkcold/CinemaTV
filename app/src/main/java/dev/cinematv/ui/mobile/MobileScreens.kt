@@ -13,6 +13,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
+import dev.cinematv.ui.typography.cinemaUiFontFamily
+import dev.cinematv.ui.typography.withCinemaNoto
+import dev.cinematv.ui.typography.CinemaText as Text
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Movie
 import androidx.compose.material.icons.outlined.LiveTv
@@ -61,7 +64,7 @@ private val stroke = Color(0xFF424650)
 fun MobileRootApp(model: CinemaViewModel) {
     val page = model.page
     CompositionLocalProvider(LocalTvEffects provides TvEffects(model.reducedMotion, GlassQuality.BASIC)) {
-    MaterialTheme(colorScheme = darkColorScheme(
+    MaterialTheme(typography = MaterialTheme.typography.withCinemaNoto(cinemaUiFontFamily()), colorScheme = darkColorScheme(
         background = Ink, surface = surface, primary = Ivory, onPrimary = Ink,
         onBackground = Ivory, onSurface = Ivory, secondary = Accent
     )) {

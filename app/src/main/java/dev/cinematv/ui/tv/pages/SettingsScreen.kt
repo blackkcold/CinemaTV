@@ -12,7 +12,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.tv.material3.Text
+import dev.cinematv.ui.typography.CinemaTvText as Text
 import dev.cinematv.BuildConfig
 import androidx.compose.ui.platform.LocalUriHandler
 import dev.cinematv.ui.shared.TmdbLogo
