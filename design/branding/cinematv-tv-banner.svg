@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" fill="none">
+<defs>
+ <linearGradient id="streak" x1="0" x2="1"><stop stop-color="#141C28" stop-opacity="0"/><stop offset=".2" stop-color="#526477" stop-opacity=".3"/><stop offset=".53" stop-color="#98ACBD" stop-opacity=".24"/><stop offset=".8" stop-color="#415268" stop-opacity=".1"/><stop offset="1" stop-color="#0B131E" stop-opacity="0"/></linearGradient>
+ <linearGradient id="soft" x1="0" x2="1"><stop stop-color="#0E151D" stop-opacity="0"/><stop offset=".46" stop-color="#485563" stop-opacity=".32"/><stop offset="1" stop-color="#0E151D" stop-opacity="0"/></linearGradient>
+ <filter id="b1" x="-20%" y="-200%" width="140%" height="500%"><feGaussianBlur stdDeviation="19 9"/></filter>
+ <filter id="b2" x="-20%" y="-250%" width="140%" height="600%"><feGaussianBlur stdDeviation="32 13"/></filter>
+ <radialGradient id="shade"><stop stop-color="#111925" stop-opacity=".5"/><stop offset="1" stop-color="#020304" stop-opacity="0"/></radialGradient>
+ </defs>
+<rect width="1280" height="720" fill="#040506"/><ellipse cx="640" cy="360" rx="768" ry="309.6" fill="url(#shade)"/>
+<g filter="url(#b2)">
+  <rect x="-153.6" y="129.6" width="1536" height="32.4" rx="21.599999999999998" fill="url(#streak)"/>
+  <rect x="128" y="230.4" width="1190.4" height="21.599999999999998" rx="21.599999999999998" fill="url(#soft)"/>
+  <rect x="-153.6" y="388.8" width="1689.6000000000001" height="41.760000000000005" rx="28.8" fill="url(#streak)"/>
+  <rect x="230.39999999999998" y="540" width="1177.6000000000001" height="24.48" rx="21.599999999999998" fill="url(#streak)"/>
+</g>
+<g filter="url(#b1)" opacity=".56">
+  <rect x="76.8" y="205.2" width="1152" height="8.64" fill="url(#streak)"/>
+  <rect x="-128" y="482.40000000000003" width="1446.3999999999999" height="10.08" fill="url(#soft)"/>
+  <rect x="256" y="597.6" width="896" height="6.4799999999999995" fill="url(#streak)"/>
+</g>
+<!-- Symmetric brand lockup. Both the player glyph and the wordmark are centered at x=640. -->
+<g transform="translate(470 110) scale(.6641)"><rect x="98" y="146" width="316" height="216" rx="63" stroke="#F8FAFC" stroke-width="28" fill="none"/>
+<path d="M230 199c0-9 10-15 18-10l91 57c8 5 8 15 0 20l-91 57c-8 5-18-1-18-10z" fill="#F8FAFC"/>
+<rect x="173" y="393" width="166" height="15" rx="7.5" fill="#F8FAFC"/>
+<rect x="173" y="393" width="73" height="15" rx="7.5" fill="#BBCAD6"/></g>
+<text x="640" y="565" text-anchor="middle" font-family="DejaVu Sans,Arial,sans-serif" font-size="92" font-weight="bold" letter-spacing="-3" fill="#F8FAFC">CinemaTV</text>
+</svg>

@@ -1,0 +1,28 @@
+name: Rasterize CinemaTV branding
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'design/branding/**'
+      - 'scripts/render-branding.sh'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  assets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install SVG renderer
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends librsvg2-bin fonts-dejavu-core
+      - name: Convert SVG master assets to Android PNG
+        run: bash scripts/render-branding.sh
+      - name: Commit generated platform assets
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/src/main/res/drawable-nodpi/
+          if ! git diff --cached --quiet; then
+            git commit -m 'build(branding): update rasterized launcher and centered TV banner'
+            git push origin HEAD:main
+          fi
