@@ -74,9 +74,3 @@ val prepareNotoFonts by tasks.registering {
         }
     }
 }
-
-// Explicit dependency covers all APK variants; avoid AGP-internal generated source APIs.
-tasks.matching { it.name == "preBuild" }.configureEach { dependsOn(prepareNotoFonts) }
-extensions.configure<com.android.build.gradle.AppExtension> {
-    sourceSets.getByName("main").assets.srcDir(notoAssets)
-}

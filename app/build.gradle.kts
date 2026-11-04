@@ -7,6 +7,9 @@ plugins {
 
 apply(from = "noto-fonts.gradle.kts")
 
+// Keep AGP wiring here: applied Kotlin scripts do not inherit the plugin classpath.
+tasks.named("preBuild") { dependsOn("prepareNotoFonts") }
+
 android {
     namespace = "dev.cinematv"
     compileSdk = 36
@@ -40,6 +43,7 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
     buildFeatures { compose = true; buildConfig = true }
+    sourceSets["main"].assets.srcDir(layout.buildDirectory.dir("generated/notoAssets"))
     sourceSets["androidTest"].assets.srcDir("$projectDir/schemas")
     packaging { resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" } }
 }

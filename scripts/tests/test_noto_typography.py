@@ -26,7 +26,12 @@ class NotoTypographyContractTest(unittest.TestCase):
         self.assertIn('apply(from = "noto-fonts.gradle.kts")', (ROOT / 'app/build.gradle.kts').read_text())
         for name in ('OFL-NotoSans.txt', 'OFL-NotoSansCJK.txt'):
             self.assertIn('SIL OPEN FONT LICENSE Version 1.1', (ROOT / 'app/src/main/assets/fonts' / name).read_text())
-        self.assertIn('assets.srcDir(notoAssets)', (ROOT / 'app/noto-fonts.gradle.kts').read_text())
+        build = (ROOT / 'app/build.gradle.kts').read_text()
+        self.assertIn('sourceSets["main"].assets.srcDir(layout.buildDirectory.dir("generated/notoAssets"))', build)
+        self.assertIn('tasks.named("preBuild") { dependsOn("prepareNotoFonts") }', build)
+        script = (ROOT / 'app/noto-fonts.gradle.kts').read_text()
+        self.assertNotIn('com.android.', script)
+        self.assertNotIn('sourceSets', script)
 
     def test_both_surfaces_use_provider_and_font_only_theme_hook(self):
         source = ROOT / 'app/src/main/java/dev/cinematv'
