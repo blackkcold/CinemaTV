@@ -43,8 +43,8 @@ fun TopNavigation(model: CinemaViewModel, modifier: Modifier = Modifier) {
     Row(
         modifier = modifier
             .clip(RoundedCornerShape(35.dp))
-            .background(Color(0xDD1D1B21))
-            .border(1.dp, Color.White.copy(alpha = .16f), RoundedCornerShape(35.dp))
+            .background(Brush.verticalGradient(listOf(Color(0xE6414149), Color(0xD923242B))))
+            .border(1.dp, Color.White.copy(alpha = .23f), RoundedCornerShape(35.dp))
             .padding(6.dp),
         horizontalArrangement = Arrangement.spacedBy(3.dp)
     ) {
@@ -95,23 +95,7 @@ fun HomePage(model: CinemaViewModel) {
 }
 
 @Composable
-private fun HeroBackground(item: MediaItem?) {
-    Box(Modifier.fillMaxSize().background(Brush.linearGradient(
-        listOf(Color(0xFF412B25), Color(0xFF50333A), Color(0xFF11141D))
-    ))) {
-        val img = item?.backdrop?.ifBlank { item.poster } ?: ""
-        if (img.isNotBlank()) AsyncImage(
-            model = img, contentDescription = null, contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxWidth().height(570.dp)
-        )
-        Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(
-            listOf(Ink.copy(alpha = .93f), Ink.copy(alpha = .52f), Ink.copy(alpha = .12f))
-        )))
-        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(
-            listOf(Color.Transparent, Color.Transparent, Ink.copy(alpha = .7f), Ink)
-        )))
-    }
-}
+private fun HeroBackground(item: MediaItem?) = CinemaBackdrop(item)
 
 @Composable
 fun MediaRail(title: String, items: List<MediaItem>, model: CinemaViewModel) {
@@ -179,6 +163,14 @@ fun ExplorePage(model: CinemaViewModel) {
                                     scaleX = if (center) 1.13f else .87f
                                     scaleY = if (center) 1.13f else .87f
                                     alpha = fade
+                                    rotationY = when {
+                                        index < activeIndex -> 19f
+                                        index > activeIndex -> -19f
+                                        else -> 0f
+                                    }
+                                    translationY = if (center) -12.dp.toPx() else 15.dp.toPx()
+                                    cameraDistance = 18f * density
+                                    shadowElevation = if (center) 22.dp.toPx() else 0f
                                 }
                             ) {
                                 MediaTile(

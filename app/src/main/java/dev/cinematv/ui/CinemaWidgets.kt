@@ -63,8 +63,18 @@ fun GlassAction(
         modifier = modifier
             .graphicsLayer { scaleX = scale; scaleY = scale }
             .clip(RoundedCornerShape(26.dp))
-            .background(bg)
-            .border(1.dp, if (focused) Color.White else Color.White.copy(alpha = .16f), RoundedCornerShape(26.dp))
+            .background(
+                if (focused || selected || prominent) Brush.verticalGradient(
+                    listOf(bg, bg.copy(alpha = .92f))
+                ) else Brush.verticalGradient(
+                    listOf(Color(0xD54D4C55), Color(0xB520222A), Color(0xD51B1C22))
+                )
+            )
+            .border(
+                1.dp,
+                if (focused) Color.White else Color.White.copy(alpha = .26f),
+                RoundedCornerShape(26.dp)
+            )
             .onFocusChanged { focused = it.isFocused; if (it.isFocused) onFocus() }
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
