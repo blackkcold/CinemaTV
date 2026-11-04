@@ -157,8 +157,37 @@ private fun libraryControls(rule: ComposeContentTestRule, activity: ComponentAct
             assertTrue(model.repo.isFavorite(item))
             assertEquals(LibraryStatus.WATCHED, model.repo.libraryStatus(item))
         }
+        rule.onNodeWithText(title).assertDoesNotExist()
         rule.onNodeWithText(trigger).assertDoesNotExist()
         if (tv) rule.onNodeWithText("全部").assertIsFocused()
+        else rule.onNodeWithText("继续观看").assertDoesNotExist()
+
+        // A new checkpoint must restore the controls without navigating away. This
+        // catches stale lazy content in both directions, not just after confirmation.
+        runBlocking { model.repo.library.saveProgress(item, 34000, 1, 90000) }
+        openConfirmation()
+        activate(rule.onNodeWithText("取消"), tv)
+        rule.onNodeWithText(title).assertDoesNotExist()
+        rule.runOnIdle {
+            assertEquals(Page.LIBRARY, model.page)
+            assertNull(model.repo.library.snapshot.progress(item, 0))
+            assertEquals(34000L, model.repo.library.snapshot.progress(item, 1)!!.positionMs)
+            assertTrue(model.repo.isFavorite(item))
+            assertEquals(LibraryStatus.WATCHED, model.repo.libraryStatus(item))
+        }
+        openConfirmation()
+        activate(rule.onNodeWithText(if (tv) "永久清空" else "确认清空"), tv)
+        rule.waitUntil(15000) { model.history().isEmpty() }
+        rule.onNodeWithText(title).assertDoesNotExist()
+        rule.onNodeWithText(trigger).assertDoesNotExist()
+        if (tv) rule.onNodeWithText("全部").assertIsFocused()
+        else rule.onNodeWithText("继续观看").assertDoesNotExist()
+        rule.runOnIdle {
+            assertNull(model.repo.library.snapshot.progress(item, 0))
+            assertNull(model.repo.library.snapshot.progress(item, 1))
+            assertTrue(model.repo.isFavorite(item))
+            assertEquals(LibraryStatus.WATCHED, model.repo.libraryStatus(item))
+        }
     }
 }
 

@@ -438,6 +438,13 @@ private fun MobileDetail(model: CinemaViewModel) {
 @Composable
 private fun MobileLibrary(model: CinemaViewModel) {
     val version = model.libraryVersion
+    // Capture snapshot-derived values in the lazy content lambda. Reading the version
+    // alone leaves a model-only lambda unchanged, so cleared history can stay on screen.
+    val history = remember(model, version) { model.history() }
+    val shelves = remember(model, version) {
+        LibraryStatus.entries.associateWith { model.libraryByStatus(it) }
+    }
+    val quarantinedProgressCount = remember(model, version) { model.quarantinedProgressCount }
     var confirmClear by remember { mutableStateOf(false) }
     if (confirmClear) AlertDialog(onDismissRequest = { confirmClear = false },
         title = { Text("清空全部观看记录？") },
@@ -447,20 +454,18 @@ private fun MobileLibrary(model: CinemaViewModel) {
     LazyColumn(verticalArrangement = Arrangement.spacedBy(19.dp),
         contentPadding = PaddingValues(bottom = 35.dp)) {
         item { MobileHeading("我的片库", "最近观看与收藏") }
-        if (model.quarantinedProgressCount > 0) item {
-            Text("${model.quarantinedProgressCount} 条续播进度无法确认对应剧集，已保留但不会自动续播。", color = Muted,
+        if (quarantinedProgressCount > 0) item {
+            Text("${quarantinedProgressCount} 条续播进度无法确认对应剧集，已保留但不会自动续播。", color = Muted,
                 fontSize = 12.sp, modifier = Modifier.padding(horizontal = 20.dp))
         }
-        if (model.history().isNotEmpty()) item {
+        if (history.isNotEmpty()) item {
             TextButton(onClick = { confirmClear = true }, modifier = Modifier.padding(horizontal = 16.dp)) { Text("清空全部观看记录") }
         }
-        item { MobileRail("继续观看", model.history(), model) }
+        item { MobileRail("继续观看", history, model) }
         LibraryStatus.entries.forEach { status ->
-            item { MobileRail(status.title, model.libraryByStatus(status), model) }
+            item { MobileRail(status.title, shelves[status].orEmpty(), model) }
         }
-        if (model.history().isEmpty() && LibraryStatus.entries.all {
-            model.libraryByStatus(it).isEmpty()
-        }) item {
+        if (history.isEmpty() && shelves.values.all { it.isEmpty() }) item {
             Text("暂无片库内容，请先播放或收藏作品", color = Muted,
                 modifier = Modifier.padding(20.dp))
         }

@@ -162,15 +162,20 @@ run_stage instrumentation timeout --signal=TERM --kill-after=30s 12m \
   gradle --no-daemon --max-workers=2 '-Dorg.gradle.jvmargs=-Xmx1024m -Dfile.encoding=UTF-8' \
   -Pkotlin.compiler.execution.strategy=in-process :app:connectedDebugAndroidTest \
   "-Pandroid.testInstrumentationRunnerArguments.class=$CINEMA_CLASSES" || CINEMA_TEST_STATUS=$?
-if [ "$CINEMA_TEST_STATUS" -eq 0 ] && [[ "$3" == *OfficialLibreTvPlaybackAcceptanceTest* ]]; then
+# Collect the independent official adapter/player result even if ordinary UI assertions
+# failed. Its runner reinstalls exact APKs before transferring a disposable credential.
+# Keep both statuses: a later successful stage must never erase the primary failure.
+CINEMA_OFFICIAL_STATUS=0
+if [[ "$3" == *OfficialLibreTvPlaybackAcceptanceTest* ]]; then
   run_stage official-instrumentation timeout --signal=TERM --kill-after=10s 9m \
-    python3 scripts/libretv-contracts/run_android_test.py || CINEMA_TEST_STATUS=$?
+    python3 scripts/libretv-contracts/run_android_test.py || CINEMA_OFFICIAL_STATUS=$?
 fi
 CINEMA_EXPORT_STATUS=0
 run_stage evidence-export timeout --kill-after=5s 30s python3 scripts/merge-ui-evidence.py \
   --source app/build/outputs/connected_android_test_additional_output \
   --destination qa/ui-evidence || CINEMA_EXPORT_STATUS=$?
 if [ "$CINEMA_TEST_STATUS" -ne 0 ]; then exit "$CINEMA_TEST_STATUS"; fi
+if [ "$CINEMA_OFFICIAL_STATUS" -ne 0 ]; then exit "$CINEMA_OFFICIAL_STATUS"; fi
 if [ "$CINEMA_EXPORT_STATUS" -ne 0 ]; then exit "$CINEMA_EXPORT_STATUS"; fi
 
 if [[ "$3" == *TvUiRegressionTest* ]]; then

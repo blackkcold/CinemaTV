@@ -1,6 +1,7 @@
 package dev.cinematv.ui.tv.pages
 
 import dev.cinematv.ui.icons.CinemaSymbol
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -9,6 +10,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.text.font.FontWeight
@@ -56,7 +59,10 @@ fun DetailScreen(model: CinemaViewModel) {
                 if (item.catalogAttribution.isNotBlank()) Text(item.catalogAttribution, color = TvColors.Secondary, fontSize = 11.sp)
                 if (model.selectedRecommendationReason.startsWith("因为") || model.selectedRecommendationReason.startsWith("来自"))
                     Text(model.selectedRecommendationReason, color = TvColors.Accent, fontSize = 12.sp)
-                Row(Modifier.padding(vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                // Return from the full-width rows below to the action the user
+                // actually left, rather than whichever button is nearest their center.
+                Row(Modifier.padding(vertical = 6.dp).focusRestorer(primary).focusGroup(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     GlassAction(if (item.positionMs > 0) "▶ 继续播放" else "▶ 立即播放",
                         Modifier.focusRequester(entry).focusRequester(primary).width(150.dp).height(45.dp), prominent = true, icon = CinemaSymbol.Play,
                         onFocus = { model.focusCoordinator.remember(model.focusRoute, "actions", "play") }) {
@@ -100,13 +106,26 @@ fun DetailScreen(model: CinemaViewModel) {
         }
         val columns = ((layout.width - layout.gutter * 2).value / 116).toInt().coerceIn(3, 7)
         items((item.episodes.size + columns - 1) / columns, key = { "episode-row:$it" }) { row ->
-            Row(Modifier.padding(horizontal = layout.gutter, vertical = 7.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            val firstEpisode = remember { FocusRequester() }
+            val entryPolicy = if (row == 0) Modifier.focusProperties {
+                onEnter = {
+                    // Enter the playlist at episode one from the preceding section.
+                    // Keep normal column alignment when coming UP from a later row.
+                    if (requestedFocusDirection == FocusDirection.Down) firstEpisode.requestFocus()
+                }
+            }.focusGroup() else Modifier
+            // The entry requester is only consulted once this lazy row is composed.
+            // Work/season/source controls above retain their normal traversal order.
+            Row(Modifier.padding(horizontal = layout.gutter, vertical = 7.dp).then(entryPolicy),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 repeat(columns) { col ->
                     val index = row * columns + col
                     if (index < item.episodes.size) {
                         val target = rememberFocusTarget(model, "episodes", index.toString())
                         GlassAction(model.episodeLabel(index),
-                            Modifier.weight(1f).height(43.dp).focusRequester(target), selected = index == item.lastEpisode,
+                            Modifier.weight(1f).height(43.dp).focusRequester(target)
+                                .then(if (index == 0) Modifier.focusRequester(firstEpisode) else Modifier),
+                            selected = index == item.lastEpisode,
                             onFocus = { model.focusCoordinator.remember(model.focusRoute, "episodes", index.toString()) }) { model.playEpisode(index) }
                     } else Spacer(Modifier.weight(1f))
                 }

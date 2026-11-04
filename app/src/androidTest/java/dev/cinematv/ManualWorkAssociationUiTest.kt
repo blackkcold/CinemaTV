@@ -3,6 +3,7 @@ package dev.cinematv
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -85,8 +86,17 @@ private fun associationEditor(rule: ComposeContentTestRule, activity: ComponentA
         }
         fun choose(tag: String) = click(dialogNode(hasTestTag("association-$tag")))
         fun open() {
-            rule.onAllNodes(hasScrollToIndexAction()).onFirst().performScrollToNode(hasTestTag("association-open"))
-            click(rule.onNodeWithTag("association-open"))
+            if (tv) {
+                // TV detail is lazy; find its vertical list, not a horizontal season/source rail.
+                rule.onNode(hasScrollToIndexAction() and
+                    SemanticsMatcher.keyIsDefined(SemanticsProperties.VerticalScrollAxisRange))
+                    .performScrollToNode(hasTestTag("association-open"))
+            } else {
+                // Phone detail is a regular verticalScroll Column, not a lazy list. The nearby
+                // five-status LazyRow exposes ScrollToIndex but does not contain this button.
+                rule.onNodeWithTag("association-open").performScrollTo()
+            }
+            click(rule.onNodeWithTag("association-open").assertIsDisplayed())
             if (tv) rule.onNodeWithTag("association-close").assertIsFocused()
             dialogNode(hasText(associationEvidence(selected))).assertExists()
         }

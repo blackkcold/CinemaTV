@@ -58,6 +58,17 @@ class TvUiRegressionTest {
         val trace = rule.onAllNodes(isFocused()).fetchSemanticsNodes().joinToString { it.config.toString() }
         File(directory, "focus-trace.txt").appendText("key=$code route=${model.focusRoute}\n$trace\n")
     }
+    private fun assertFullyVisible(node: SemanticsNodeInteraction) {
+        node.assertIsDisplayed()
+        // assertIsDisplayed permits partial clipping. Compare the un-clipped
+        // control rectangle with the detail LazyColumn's full-screen viewport.
+        val bounds = node.getUnclippedBoundsInRoot()
+        val viewport = rule.onRoot().getUnclippedBoundsInRoot()
+        assertTrue("Control is clipped by the detail viewport: $bounds outside $viewport",
+            bounds.left >= viewport.left && bounds.top >= viewport.top &&
+                bounds.right <= viewport.right && bounds.bottom <= viewport.bottom)
+    }
+
     private fun awaitBundledFonts() {
         rule.waitUntil(15000) { rule.activity.bundledFontsReady || rule.activity.fontLoadFailures.isNotEmpty() }
         assertTrue("Bundled Noto failed: ${rule.activity.fontLoadFailures}", rule.activity.bundledFontsReady)
@@ -147,13 +158,58 @@ class TvUiRegressionTest {
         key(KeyEvent.KEYCODE_DPAD_CENTER)
         rule.waitUntil(15000) { model.page == Page.DETAIL && !model.busy && model.selected?.episodes?.size == 36 }
         screenshot("03-detail")
-        rule.onNodeWithText("片库状态").performClick()
-        rule.onNodeWithText("想看").assertIsFocused()
-        key(KeyEvent.KEYCODE_BACK)
+        // This fixture has one source and no work graph. The new full-width
+        // association row must not strand the playlist below the viewport.
+        rule.runOnIdle { assertFalse(model.workNavigation?.visible == true); assertTrue(model.alternatives.isEmpty()) }
+        rule.onNodeWithText("▶ 立即播放").assertIsFocused()
+        key(KeyEvent.KEYCODE_DPAD_DOWN)
+        rule.onNodeWithTag("association-open").assertIsFocused()
+        assertFullyVisible(rule.onNodeWithTag("association-open"))
+        key(KeyEvent.KEYCODE_DPAD_DOWN)
+        val firstEpisode = rule.onNodeWithText(model.episodeLabel(0))
+        firstEpisode.assertIsFocused()
+        assertFullyVisible(firstEpisode)
+        key(KeyEvent.KEYCODE_DPAD_UP)
+        rule.onNodeWithTag("association-open").assertIsFocused()
+        assertFullyVisible(rule.onNodeWithTag("association-open"))
+        key(KeyEvent.KEYCODE_DPAD_UP)
+        rule.onNodeWithText("▶ 立即播放").assertIsFocused()
+        assertFullyVisible(rule.onNodeWithText("▶ 立即播放"))
+        val originalStatus = rule.runOnIdle { model.repo.libraryStatus(model.selected!!) }
+        repeat(3) { key(KeyEvent.KEYCODE_DPAD_RIGHT) }
+        rule.onNodeWithText("片库状态").assertIsFocused()
+        // Restoration must remember a non-primary action too, not always Play.
+        key(KeyEvent.KEYCODE_DPAD_DOWN)
+        rule.onNodeWithTag("association-open").assertIsFocused()
+        key(KeyEvent.KEYCODE_DPAD_UP)
         rule.onNodeWithText("片库状态").assertIsFocused()
         key(KeyEvent.KEYCODE_DPAD_CENTER)
+        // Status removal made Cancel the deliberate safe default. Cover Back AND
+        // center-on-Cancel before deliberately navigating to a mutating status.
+        rule.onNodeWithText("取消").assertIsFocused()
+        key(KeyEvent.KEYCODE_BACK)
+        rule.onNodeWithText("片库状态").assertIsFocused()
+        rule.runOnIdle { assertEquals(originalStatus, model.repo.libraryStatus(model.selected!!)) }
+        key(KeyEvent.KEYCODE_DPAD_CENTER)
+        rule.onNodeWithText("取消").assertIsFocused()
+        key(KeyEvent.KEYCODE_DPAD_CENTER)
+        rule.onNodeWithText("加入片库").assertDoesNotExist()
+        rule.onNodeWithText("片库状态").assertIsFocused()
+        rule.runOnIdle { assertEquals(originalStatus, model.repo.libraryStatus(model.selected!!)) }
+        key(KeyEvent.KEYCODE_DPAD_CENTER)
+        rule.onNodeWithText("取消").assertIsFocused()
+        if (rule.runOnIdle { model.hasLibraryStatus(model.selected!!) }) {
+            key(KeyEvent.KEYCODE_DPAD_UP)
+            rule.onNodeWithText("移除片库状态").assertIsFocused()
+        }
+        LibraryStatus.entries.reversed().forEach { status ->
+            key(KeyEvent.KEYCODE_DPAD_UP)
+            rule.onNodeWithText(status.title).assertIsFocused()
+        }
         key(KeyEvent.KEYCODE_DPAD_CENTER)
         rule.waitUntil(5000) { model.repo.libraryStatus(model.selected!!) == LibraryStatus.WANT_TO_WATCH }
+        rule.onNodeWithText("加入片库").assertDoesNotExist()
+        rule.onNodeWithText("片库状态").assertIsFocused()
         rule.runOnIdle { assertEquals(LibraryStatus.WANT_TO_WATCH, model.repo.libraryStatus(model.selected!!)) }
         key(KeyEvent.KEYCODE_BACK)
         rule.onNodeWithContentDescription(selected).assertIsFocused()
