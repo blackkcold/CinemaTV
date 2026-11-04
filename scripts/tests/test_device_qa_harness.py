@@ -54,16 +54,37 @@ class DeviceMatrixTest(unittest.TestCase):
     def test_default_retains_all_acceptance_targets_and_classes(self):
         self.assertEqual(matrix.select("all"), {"include": [
             {"name": "phone", "api": 30, "size": "1080x1920", "density": 420,
-             "classes": "dev.cinematv.MobileNavigationSmokeTest,dev.cinematv.TvLaunchSmokeTest,dev.cinematv.MobilePlaybackSmokeTest,dev.cinematv.data.LocalMediaLibraryTest,dev.cinematv.data.RepositoryContractTest"},
+             "classes": "dev.cinematv.MobileNavigationSmokeTest,dev.cinematv.TvLaunchSmokeTest,dev.cinematv.MobilePlaybackSmokeTest,dev.cinematv.data.LocalMediaLibraryTest,dev.cinematv.data.RepositoryContractTest,dev.cinematv.MobileGlassButtonTest,dev.cinematv.CinemaBrandStartupTest"},
             {"name": "tv1080", "api": 33, "size": "1920x1080", "density": 320,
-             "classes": "dev.cinematv.TvUiRegressionTest"},
+             "classes": "dev.cinematv.TvUiRegressionTest,dev.cinematv.GlassMaterialSmokeTest,dev.cinematv.ui.typography.NotoFontsDeviceTest"},
             {"name": "tv4k", "api": 33, "size": "3840x2160", "density": 640,
-             "classes": "dev.cinematv.TvUiRegressionTest"},
+             "classes": "dev.cinematv.TvUiRegressionTest,dev.cinematv.GlassMaterialSmokeTest,dev.cinematv.ui.typography.NotoFontsDeviceTest"},
+            {"name": "compat26", "api": 26, "size": "1920x1080", "density": 320,
+             "classes": "dev.cinematv.ui.typography.NotoFontsDeviceTest,dev.cinematv.GlassMaterialSmokeTest#materialSurvivesFocusPressReducedMotionMissingArtAndFailure,dev.cinematv.CinemaBrandStartupTest"},
         ]})
 
     def test_each_target_is_exact_subset(self):
         for target in matrix.DEVICES:
             self.assertEqual(matrix.select(target["name"])["include"], [target])
+
+    def test_workflow_offers_every_target_and_all_test_classes_exist(self):
+        root = SCRIPTS.parent
+        workflow = (root / ".github/workflows/tv-smoke.yml").read_text()
+        self.assertIn("options: [all, phone, tv1080, tv4k, compat26]", workflow)
+        for device in matrix.DEVICES:
+            for selector in device["classes"].split(","):
+                class_name, _, method = selector.partition("#")
+                path = root / "app/src/androidTest/java" / (class_name.replace(".", "/") + ".kt")
+                source = path.read_text()
+                self.assertIn("package " + class_name.rsplit(".", 1)[0], source)
+                if method:
+                    self.assertIn("fun " + method + "(", source)
+        compatibility = matrix.select("compat26")["include"][0]
+        self.assertEqual(compatibility["api"], 26)
+        self.assertNotIn("TvUiRegressionTest", compatibility["classes"])
+        brand_targets = [device["name"] for device in matrix.DEVICES
+                         if "dev.cinematv.CinemaBrandStartupTest" in device["classes"].split(",")]
+        self.assertEqual(brand_targets, ["phone", "compat26"])
 
     def test_unknown_target_fails_closed(self):
         for target in ("unknown", "", "ALL", "phone,tv1080"):
@@ -143,6 +164,11 @@ if name == "gradle":
         directory = Path("app/build/outputs/connected_android_test_additional_output/device/ui-evidence")
         directory.mkdir(parents=True)
         (directory / "captured.png").write_text("exported evidence")
+    if os.environ.get("MOCK_CONFLICT_EVIDENCE") == "1":
+        for name in ("first", "second"):
+            directory = Path("app/build/outputs/connected_android_test_additional_output") / name / "ui-evidence"
+            directory.mkdir(parents=True, exist_ok=True)
+            (directory / "same.png").write_text(name)
     sys.exit(int(os.environ["MOCK_GRADLE_STATUS"]))
 if name in ("free", "sudo"):
     print("host diagnostic fixture")
@@ -156,7 +182,7 @@ if name == "ps":
 class DeviceRunnerTest(unittest.TestCase):
     def run_harness(self, *, gradle=0, evidence=0, goldens=0, setup=0, setup_command="size",
                     diagnostics=0, tv=False, four_k=False, exported=False, device_evidence=False,
-                    real_timeout=False, window=None):
+                    real_timeout=False, window=None, conflict_evidence=False):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             binaries = root / "bin"
@@ -164,6 +190,7 @@ class DeviceRunnerTest(unittest.TestCase):
             scripts = root / "scripts"
             scripts.mkdir()
             shutil.copy(SCRIPTS / "run-device-qa.sh", scripts)
+            shutil.copy(SCRIPTS / "merge-ui-evidence.py", scripts)
             for name in ("adb", "gradle", "timeout", "free", "sudo", "ps", "sleep"):
                 path = binaries / name
                 path.write_text(f"#!{sys.executable}\n" + STUB)
@@ -181,7 +208,8 @@ class DeviceRunnerTest(unittest.TestCase):
                        MOCK_SETUP_COMMAND=setup_command, MOCK_DIAGNOSTIC_STATUS=str(diagnostics),
                        MOCK_EXPORTED_EVIDENCE=str(int(exported)),
                        MOCK_DEVICE_EVIDENCE=str(int(device_evidence)),
-                       MOCK_REAL_TIMEOUT=str(int(real_timeout)))
+                       MOCK_REAL_TIMEOUT=str(int(real_timeout)),
+                       MOCK_CONFLICT_EVIDENCE=str(int(conflict_evidence)))
             if window is not None:
                 env["MOCK_WINDOW"] = window
             classes = "dev.cinematv.TvUiRegressionTest" if tv else "dev.cinematv.MobileNavigationSmokeTest"
@@ -338,6 +366,15 @@ class DeviceRunnerTest(unittest.TestCase):
         self.assertEqual(self.files["qa/ui-evidence/captured.png"], "exported evidence")
         self.assertLess(stages.index("evidence-export\t"), stages.index("evidence\t"))
         self.assertFalse(any(args[:1] == ["pull"] for args in self.calls["adb"]))
+
+    def test_conflicting_class_evidence_fails_export_before_goldens(self):
+        code, stages, diagnostics, invoked = self.run_harness(tv=True, conflict_evidence=True)
+        self.assertTrue(invoked)
+        self.assertEqual(code, 1)
+        self.assertIn("evidence-export\t1\t", stages)
+        self.assertNotIn("goldens\t", stages)
+        self.assertTrue(diagnostics)
+        self.assertNotIn("qa/ui-evidence/same.png", self.files)
 
     def test_failure_recovers_partial_device_evidence(self):
         code, _, _, _ = self.run_harness(gradle=7, device_evidence=True)

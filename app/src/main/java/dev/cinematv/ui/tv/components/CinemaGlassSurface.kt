@@ -13,16 +13,14 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import coil3.compose.rememberAsyncImagePainter
-import coil3.request.ImageRequest
-import dev.cinematv.ui.GlassSheen
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
+import kotlin.math.roundToInt
 import dev.cinematv.ui.tv.design.*
 import kotlin.math.max
 
@@ -35,32 +33,26 @@ fun CinemaGlassSurface(
     content: @Composable BoxScope.() -> Unit
 ) {
     val shape = RoundedCornerShape(radius)
-    val art = LocalBackdropArt.current
+    val frame = LocalGlassBackdrop.current
     val effects = LocalTvEffects.current
-    val layout = LocalTvLayout.current
-    val density = LocalDensity.current
-    val context = LocalContext.current
     var position by remember { mutableStateOf(Offset.Zero) }
     Box(modifier.onGloballyPositioned { position = it.positionInRoot() }.clip(shape)) {
-        if (sampleBackdrop && art != null && effects.glass != GlassQuality.BASIC) {
-            val request = remember(art) { ImageRequest.Builder(context).data(art).size(1600, 900).build() }
-            val painter = rememberAsyncImagePainter(request)
-            val viewport = with(density) { Size(layout.width.toPx(), layout.height.toPx()) }
+        if (sampleBackdrop && frame != null && !frame.bitmap.isRecycled && effects.glass != GlassQuality.BASIC) {
+            val bitmap = remember(frame.bitmap) { frame.bitmap.asImageBitmap() }
             Canvas(Modifier.matchParentSize().blur(20.dp)) {
-                val intrinsic = painter.intrinsicSize
-                if (intrinsic.width.isFinite() && intrinsic.height.isFinite() && intrinsic.width > 0f && intrinsic.height > 0f) {
-                    val scale = max(viewport.width / intrinsic.width, viewport.height / intrinsic.height)
-                    val drawing = Size(intrinsic.width * scale, intrinsic.height * scale)
-                    withTransform({ translate((viewport.width - drawing.width) / 2 - position.x, (viewport.height - drawing.height) / 2 - position.y) }) {
-                        with(painter) { draw(drawing, alpha = .55f) }
-                    }
-                }
+                val viewport = frame.viewport
+                val scale = max(viewport.width / bitmap.width, viewport.height / bitmap.height)
+                val drawing = Size(bitmap.width * scale, bitmap.height * scale)
+                val local = position - frame.origin
+                drawImage(bitmap,
+                    dstOffset = IntOffset(((viewport.width - drawing.width) / 2 - local.x).roundToInt(),
+                        ((viewport.height - drawing.height) / 2 - local.y).roundToInt()),
+                    dstSize = IntSize(drawing.width.roundToInt(), drawing.height.roundToInt()), alpha = .35f)
             }
         }
         Box(Modifier.matchParentSize().background(Brush.verticalGradient(
             listOf(Color(0xC52D3037), Color(0xDD15171C))
         )).border(.75.dp, Color.White.copy(alpha = .16f), shape))
-        GlassSheen(active = true, modifier = Modifier.matchParentSize())
         content()
     }
 }

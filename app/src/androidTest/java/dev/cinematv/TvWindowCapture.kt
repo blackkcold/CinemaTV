@@ -6,6 +6,8 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.view.FrameMetrics
 import android.view.Window
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.test.platform.app.InstrumentationRegistry
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
@@ -30,7 +32,11 @@ internal object TvWindowCapture {
                 }
                 val location = IntArray(2)
                 decor.getLocationOnScreen(location)
-                check(location.contentEquals(intArrayOf(0, 0))) { "Unexpected window offset" }
+                check(location.contentEquals(intArrayOf(0, 0))) {
+                    "Unexpected window offset ${location.contentToString()}; " +
+                        "imeVisible=${ViewCompat.getRootWindowInsets(decor)?.isVisible(WindowInsetsCompat.Type.ime())}; " +
+                        "softInputMode=${activity.window.attributes.softInputMode}"
+                }
             }
             val activeRoot = checkNotNull(automation.rootInActiveWindow) { "No active accessibility window" }
             try {

@@ -80,6 +80,25 @@ class DeviceQaContractTest(unittest.TestCase):
         self.assertNotIn('createScaledBitmap', source)
         self.assertIn('check(compressed)', test)
 
+    def test_search_submits_visible_ime_and_waits_for_hidden_restored_window(self):
+        source = (ROOT / 'app/src/androidTest/java/dev/cinematv/TvUiRegressionTest.kt').read_text()
+        search = source.split('performTextReplacement(server.title(0))', 1)[1].split('screenshot("08-search")', 1)[0]
+        markers = ['?.isVisible(WindowInsetsCompat.Type.ime()) == true',
+                   'performImeAction()', '!model.busy && model.results.isNotEmpty()',
+                   '!insets.isVisible(WindowInsetsCompat.Type.ime())',
+                   'location.contentEquals(intArrayOf(0, 0))',
+                   'windowRestored && root.positionInWindow.x == 0f && root.positionInWindow.y == 0f',
+                   'rule.onNodeWithContentDescription(server.title(0)).assertIsDisplayed()']
+        positions = [search.index(marker) for marker in markers]
+        self.assertEqual(positions, sorted(positions))
+        self.assertEqual(search.count('rule.waitUntil(15000)'), 3)
+        for bypass in ('hideSoftInput', 'closeSoftKeyboard', 'model.search()', 'KEYCODE_BACK', 'Type.ime()).hide'):
+            self.assertNotIn(bypass, search)
+        capture = (ROOT / 'app/src/androidTest/java/dev/cinematv/TvWindowCapture.kt').read_text()
+        self.assertIn('Unexpected window offset ${location.contentToString()}', capture)
+        self.assertIn('imeVisible=', capture)
+        self.assertIn('softInputMode=', capture)
+
 
 if __name__ == '__main__':
     unittest.main()

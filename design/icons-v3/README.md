@@ -43,7 +43,7 @@ these approved compact/default, compact/selected and monochrome SVGs. Regenerate
 `python scripts/icons/generate_vectors.py` (Python standard library only). The
 checked-in `path-bounds.json` records exact Bézier/arc bounds calculated with
 `svgpathtools` during initial conversion; paths must match before reuse. The
-viewport, path precision, fill rules, independent library layers, object-bounding-box
+viewport, approved geometry (within the precision bound below), fill rules, independent library layers, object-bounding-box
 gradients and Play's +1.4 optical offset are retained. No runtime SVG, bitmap, blur,
 shadow filter or per-icon shader is used. Standard SVGs are retained as source only:
 current toolbar/action consumers are 20–24dp, so standard-size detail is not useful.
@@ -70,3 +70,21 @@ checks all 30 source conversions, selection geometry, apertures, clipping, layer
 optical translation and RTL. Kotlin `CinemaIconTest` covers tier/selection policy.
 Android compilation, native raster inspection at actual density, focus contrast,
 TalkBack and device D-pad/touch acceptance still require the combined CI/device gate.
+
+### Generated numeric precision and Media3 overrides
+
+The generated Settings contour rounds only absolute M/L/Q point coordinates to four
+decimal places. The approved SVGs and exact bounds metadata remain unchanged. Tests
+verify that only this outer contour changes, each coordinate moves by at most 0.00005
+viewport units, and the inner aperture/arc data stays exact. Lines and quadratic Bézier
+curves are convex combinations of their endpoint/control coordinates, so the continuous
+Euclidean error is bounded by √2 × 0.00005 (< 0.000071 viewport units), comfortably below
+0.001. Relative and arc parameters are never rounded; all other icon paths are unchanged.
+This reduces redundant source precision; no runtime performance gain is claimed.
+
+Media3 explicitly documents global `exo_styled_controls_play` and
+`exo_styled_controls_pause` replacements in the
+[PlayerControlView reference](https://developer.android.com/reference/androidx/media3/ui/PlayerControlView#overriding-drawables-globally).
+Those two alias declarations carry `tools:override="true"` to acknowledge the deliberate
+replacement. No broad lint ignore is used. Lint clearance on the new candidate still
+requires the combined Android gate.

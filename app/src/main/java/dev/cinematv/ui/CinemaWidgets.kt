@@ -6,13 +6,17 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import dev.cinematv.ui.tv.components.GlassControlMaterial
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.tv.material3.Text
+import dev.cinematv.ui.typography.CinemaTvText as Text
+import dev.cinematv.ui.typography.cinemaUiFontFamily
 import dev.cinematv.ui.tv.design.LocalTvEffects
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.*
@@ -62,44 +66,29 @@ fun GlassAction(
 ) {
     var focused by remember { mutableStateOf(false) }
     val effects = LocalTvEffects.current
-    val scale by animateFloatAsState(if (focused) effects.focusScale else 1f, tween(effects.focusMillis), label = "action-scale")
-    val bg by animateColorAsState(
-        when {
-            focused || prominent -> Ivory
-            selected -> Color(0xD54A505B)
-            else -> Glass
-        }, animationSpec = tween(effects.focusMillis), label = "action-bg"
-    )
+    val interactions = remember { MutableInteractionSource() }
+    val pressed by interactions.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        if (effects.reducedMotion) 1f else if (pressed) .985f else if (focused) effects.focusScale else 1f,
+        tween(effects.focusMillis), label = "action-scale")
     Box(
         modifier = modifier
             .graphicsLayer { scaleX = scale; scaleY = scale }
             .clip(RoundedCornerShape(26.dp))
-            .background(
-                if (focused || selected || prominent) Brush.verticalGradient(
-                    listOf(bg, bg.copy(alpha = .92f))
-                ) else Brush.verticalGradient(
-                    listOf(Color(0xB032353D), Color(0xBA1D2027), Color(0xCE191B21))
-                )
-            )
-            .border(
-                1.dp,
-                if (focused) Color.White else Color.White.copy(alpha = .12f),
-                RoundedCornerShape(26.dp)
-            )
             .onFocusChanged { focused = it.isFocused; if (it.isFocused) onFocus() }
             .focusProperties { canFocus = true }
-            .clickable(onClick = onClick),
+            .clickable(interactionSource = interactions, indication = null, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        GlassSheen(active = focused || selected, modifier = Modifier.matchParentSize())
+        GlassControlMaterial(focused, pressed, selected, prominent, Modifier.matchParentSize())
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             if (icon != null) CinemaIcon(icon, Modifier.size(20.dp), selected = iconSelected,
-                onLightSurface = focused || prominent)
+                onLightSurface = false)
             if (label.isNotEmpty()) Text(
                 if (icon != null) label.removePrefix("← ").removePrefix("▶ ").removePrefix("＋ ") else label,
                 modifier = Modifier.clearAndSetSemantics { text = AnnotatedString(label) },
                 fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
-                color = if (focused || prominent) Ink else Ivory,
+                color = Ivory,
                 maxLines = 1
             )
         }
@@ -127,7 +116,7 @@ fun TvInput(
     ) {
         BasicTextField(
             value = value, onValueChange = onValueChange,
-            textStyle = TextStyle(color = Ivory, fontSize = 18.sp),
+            textStyle = TextStyle(color = Ivory, fontSize = 18.sp, fontFamily = cinemaUiFontFamily()),
             singleLine = true, cursorBrush = SolidColor(Accent),
             visualTransformation = if (isPassword) PasswordVisualTransformation() else VisualTransformation.None,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),

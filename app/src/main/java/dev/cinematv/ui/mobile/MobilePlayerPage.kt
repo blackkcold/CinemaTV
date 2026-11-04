@@ -8,6 +8,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
+import dev.cinematv.ui.typography.CinemaText as Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -97,7 +98,7 @@ fun MobilePlayerPage(model: CinemaViewModel) {
                 modifier = Modifier.align(Alignment.Center).padding(20.dp)) {
                 Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(model.failoverMessage.ifBlank { error }, color = Ivory)
-                    if (!model.failoverBusy) Button(onClick = { error = ""; player.prepare(); player.play() }) { Text("重试") }
+                    if (!model.failoverBusy) MobileGlassButton(onClick = { error = ""; player.prepare(); player.play() }) { Text("重试") }
                 }
             }
         }
@@ -119,13 +120,13 @@ fun MobilePlayerPage(model: CinemaViewModel) {
             .background(Color.Black, RoundedCornerShape(12.dp)))
         Row(horizontalArrangement = Arrangement.spacedBy(9.dp),
             verticalAlignment = Alignment.CenterVertically) {
-            OutlinedButton(onClick = {
+            MobileGlassOutlinedButton(onClick = {
                 if (player.isCurrentMediaItemSeekable) player.seekTo((player.currentPosition - 10000L).coerceAtLeast(0L))
             }) { Text("−10秒") }
-            Button(onClick = {
+            MobileGlassButton(onClick = {
                 if (player.isPlaying) player.pause() else player.play()
             }) { MobileIconLabel(if (playing) CinemaSymbol.Pause else CinemaSymbol.Play, if (playing) "暂停" else "播放") }
-            OutlinedButton(onClick = {
+            MobileGlassOutlinedButton(onClick = {
                 if (player.isCurrentMediaItemSeekable) player.seekTo(player.currentPosition + 10000L)
             }) { Text("+10秒") }
         }
@@ -135,10 +136,10 @@ fun MobilePlayerPage(model: CinemaViewModel) {
         )
         if (model.playerReturnPage == Page.DETAIL) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { model.back() }) { Text("返回选集 / 换源") }
+                MobileGlassOutlinedButton(onClick = { model.back() }) { Text("返回选集 / 换源") }
                 val episodes = model.selected?.episodes.orEmpty()
                 if (episodeAtCreation + 1 < episodes.size) {
-                    Button(onClick = { model.playEpisode(episodeAtCreation + 1) }) { Text("下一集") }
+                    MobileGlassButton(onClick = { model.playEpisode(episodeAtCreation + 1) }) { Text("下一集") }
                 }
             }
         }
@@ -148,7 +149,7 @@ fun MobilePlayerPage(model: CinemaViewModel) {
                 Column(Modifier.padding(15.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(model.failoverMessage.ifBlank { error }, color = Ivory, fontSize = 14.sp)
                     if (!model.failoverBusy) {
-                        Button(onClick = {
+                        MobileGlassButton(onClick = {
                             error = ""; player.prepare(); player.play()
                         }) { Text("重试") }
                     }

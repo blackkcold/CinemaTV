@@ -3,7 +3,7 @@
 A native Android TV / Google TV and Android phone client for a self-hosted LibreTV instance.
 Kotlin, Jetpack Compose for TV and Media3; separate TV and touch layouts.
 
-**v0.5.0 Preview: local library and personalized discovery.** Releases are debug-signed
+**v0.5.0 preview candidate: local library and personalized discovery.** Releases are debug-signed
 previews. Physical TV certification and production signing remain tracked in
 [Release Gate #1](https://github.com/blackkcold/CinemaTV/issues/1).
 
@@ -19,11 +19,12 @@ previews. Physical TV certification and production signing remain tracked in
 | Movies / series | Distinct poster-wall and landscape-card layouts; filters use available category/year/rating data |
 | Focus | Route/rail/title identity, scroll restoration, controlled horizontal traversal, dialog and player return targets |
 | Artwork | Conservative title/year matching, bounded cache/prefetch, validated landscape dimensions, original fallback |
-| Glass / motion | Basic, still-image backdrop and opt-in enhanced highlight modes; low-memory/API fallback and reduced motion |
+| Glass / motion | V4 depth buttons, optional focused scene-still lens on TV; static phone fallback, low-memory/API gates and reduced motion |
 | Search / library | Room-backed works/seasons/episodes/sources; local, catalog and NDJSON stages; title/alias/actor search and provenance-aware filters |
 | Recommendations | Local explicit favorites/status/progress signals, explainable ranking, negative feedback and cold-start catalog order |
 | Playback | Media3, episode resume and measured duration, floating TV controls, track/speed panels, background pause |
 | Live | M3U subscriptions, channel groups, XMLTV current/next and scrollable future guide |
+| Typography | Offline Noto Sans + explicitly selected CJK regional faces, OFL notices and system first-frame fallback |
 | Phone | Five tabs, separate touch screens and fitted portrait/landscape playback with rotation continuity |
 | Service | Direct LibreTV adapter; optional licensed-catalog/TMDB BFF and separately gated Douban Top 250 acquisition with explicit source, expiry and snapshot state |
 
@@ -43,7 +44,8 @@ npm --prefix backend/tv-bff test
 APK: `app/build/outputs/apk/debug/app-debug.apk`.
 
 The Actions build validates the APK archive and signature. UI QA covers a portrait
-phone (API 30) plus 1920×1080 and 3840×2160 TV UI viewports (API 33). `[ui-qa]`
+phone (API 30), 1920×1080 and 3840×2160 TV UI viewports (API 33),
+and a small API 26 font/static-control compatibility target. `[ui-qa]`
 commits run the full instrumentation matrix; `[preview-release]` additionally
 publishes only after build and all UI jobs pass **at that commit**. Screenshots,
 JUnit results, reviewed screenshot comparisons and informational emulator frame
@@ -82,8 +84,11 @@ permission and permitted live endpoint validation have not been established.
 
 ## Original branding
 
-Editable SVGs live in [`design/branding/`](design/branding/). The black motion-blur
-app icon, white player glyph and centered 320×180 TV banner remain unchanged.
+Editable SVGs live in [`design/branding/`](design/branding/). The approved pre-rainbow A1
+mark uses a static Android launcher icon and centered 320×180 TV banner. A bounded,
+six-second in-app header treatment preserves its horizontal motion without blocking
+input; reduced motion and low-cost devices use the static mark. Reviewed raster
+assets are hash-locked; CI validates them without rewriting or committing files.
 
 | App icon | TV banner |
 |---|---|
@@ -93,7 +98,8 @@ app icon, white player glyph and centered 320×180 TV banner remain unchanged.
 
 CinemaTV-authored code and test art use the [MIT License](LICENSE). No DpadTV,
 FongMi or LibreTV implementation source is copied. Third-party libraries and
-metadata services retain their own licenses and attribution conditions.
+metadata services retain their own licenses and attribution conditions. Bundled
+Noto font bytes and original OFL notices are documented in [typography](docs/NOTO_TYPOGRAPHY.md).
 
 This product may use the TMDB API through an independently configured BFF but
 is not endorsed or certified by TMDB. No API key is bundled. Public service

@@ -143,11 +143,10 @@ run_stage instrumentation timeout --signal=TERM --kill-after=30s 12m \
   gradle --no-daemon --max-workers=2 '-Dorg.gradle.jvmargs=-Xmx1024m -Dfile.encoding=UTF-8' \
   -Pkotlin.compiler.execution.strategy=in-process :app:connectedDebugAndroidTest \
   "-Pandroid.testInstrumentationRunnerArguments.class=$3" || CINEMA_TEST_STATUS=$?
-CINEMA_EVIDENCE_DIR=$(find app/build/outputs/connected_android_test_additional_output -type d -name ui-evidence -print -quit 2>/dev/null || true)
 CINEMA_EXPORT_STATUS=0
-if [ -n "$CINEMA_EVIDENCE_DIR" ]; then
-  run_stage evidence-export timeout --kill-after=5s 30s cp -R "$CINEMA_EVIDENCE_DIR" qa/ || CINEMA_EXPORT_STATUS=$?
-fi
+run_stage evidence-export timeout --kill-after=5s 30s python3 scripts/merge-ui-evidence.py \
+  --source app/build/outputs/connected_android_test_additional_output \
+  --destination qa/ui-evidence || CINEMA_EXPORT_STATUS=$?
 if [ "$CINEMA_TEST_STATUS" -ne 0 ]; then exit "$CINEMA_TEST_STATUS"; fi
 if [ "$CINEMA_EXPORT_STATUS" -ne 0 ]; then exit "$CINEMA_EXPORT_STATUS"; fi
 

@@ -12,7 +12,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.tv.material3.Text
+import dev.cinematv.ui.typography.CinemaTvText as Text
 import dev.cinematv.BuildConfig
 import androidx.compose.ui.platform.LocalUriHandler
 import dev.cinematv.ui.shared.TmdbLogo
@@ -104,7 +104,7 @@ fun SettingsScreen(model: CinemaViewModel) {
                                     }
                                 } }
                                 item { Text("当前生效：${LocalTvEffects.current.glass.title}", color = TvColors.Secondary, fontSize = 14.sp) }
-                                item { Text("自动模式按系统版本和内存分级。背景磨砂使用静态剧照；增强高光需 Android 13 及以上。", color = TvColors.Secondary, fontSize = 13.sp, lineHeight = 21.sp) }
+                                item { Text("自动模式按系统版本和内存分级。镜片折射仅作用于焦点按钮后的静态剧照，需 Android 13 及以上；低内存、减少动态、无剧照或效果失败时降级。视频不参与采样。", color = TvColors.Secondary, fontSize = 13.sp, lineHeight = 21.sp) }
                             }
                             else -> {
                                 item { SettingTitle("CinemaTV", "版本 ${BuildConfig.VERSION_NAME}") }

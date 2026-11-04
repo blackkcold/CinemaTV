@@ -6,6 +6,8 @@ import android.os.HandlerThread
 import android.view.FrameMetrics
 import android.view.KeyEvent
 import android.view.Window
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.semantics.SemanticsActions
@@ -56,7 +58,13 @@ class TvUiRegressionTest {
         val trace = rule.onAllNodes(isFocused()).fetchSemanticsNodes().joinToString { it.config.toString() }
         File(directory, "focus-trace.txt").appendText("key=$code route=${model.focusRoute}\n$trace\n")
     }
+    private fun awaitBundledFonts() {
+        rule.waitUntil(15000) { rule.activity.bundledFontsReady || rule.activity.fontLoadFailures.isNotEmpty() }
+        assertTrue("Bundled Noto failed: ${rule.activity.fontLoadFailures}", rule.activity.bundledFontsReady)
+        rule.waitForIdle()
+    }
     private fun captureWindow(): Bitmap {
+        awaitBundledFonts()
         rule.waitForIdle()
         val root = rule.onRoot().fetchSemanticsNode()
         check(root.positionInWindow.x == 0f && root.positionInWindow.y == 0f) {
@@ -65,6 +73,7 @@ class TvUiRegressionTest {
         return TvWindowCapture.capture(rule.activity, root.size.width, root.size.height)
     }
     private fun screenshot(name: String, waitForArt: Boolean = true) {
+        awaitBundledFonts()
         android.util.Log.i("CinemaTVQa", "capture=$name directory=${directory.absolutePath}")
         if (waitForArt) rule.runOnIdle { model.dismissMessage() }
         rule.waitForIdle()
@@ -88,6 +97,7 @@ class TvUiRegressionTest {
         }
     }
     @Before fun connectFixture() {
+        awaitBundledFonts()
         rule.waitUntil(10000) { rule.activity.hasWindowFocus() }
         server = UiFixtureServer(InstrumentationRegistry.getInstrumentation().context)
         rule.runOnIdle {
@@ -147,8 +157,35 @@ class TvUiRegressionTest {
 
         rule.onNodeWithContentDescription("打开搜索").performClick()
         rule.onNode(hasSetTextAction()).performTextReplacement(server.title(0))
+        // A cold emulator IME can finish showing after an immediate submission.
+        // Exercise the real visible editor before invoking its Search action;
+        // otherwise an early hide can race with Gboard's pending show request.
+        rule.waitUntil(15000) {
+            rule.runOnIdle {
+                ViewCompat.getRootWindowInsets(rule.activity.window.decorView)
+                    ?.isVisible(WindowInsetsCompat.Type.ime()) == true
+            }
+        }
+        android.util.Log.i("CinemaTVQa", "search-ime-visible; submitting Search action")
         rule.onNode(hasSetTextAction()).performImeAction()
         rule.waitUntil(15000) { !model.busy && model.results.isNotEmpty() }
+        // Results alone do not establish that IME hide/adjust-pan has finished.
+        // Observe the production submit handler's hide; never dismiss it here.
+        rule.waitUntil(15000) {
+            val windowRestored = rule.runOnIdle {
+                val decor = rule.activity.window.decorView
+                val insets = ViewCompat.getRootWindowInsets(decor)
+                val location = IntArray(2)
+                decor.getLocationOnScreen(location)
+                rule.activity.hasWindowFocus() && insets != null &&
+                    !insets.isVisible(WindowInsetsCompat.Type.ime()) &&
+                    location.contentEquals(intArrayOf(0, 0))
+            }
+            val root = rule.onRoot().fetchSemanticsNode()
+            windowRestored && root.positionInWindow.x == 0f && root.positionInWindow.y == 0f
+        }
+        android.util.Log.i("CinemaTVQa", "search-ime-hidden; full-screen geometry restored")
+        rule.onNodeWithContentDescription(server.title(0)).assertIsDisplayed()
         screenshot("08-search")
         rule.onNodeWithContentDescription(server.title(0)).performClick()
         rule.waitUntil(15000) { model.page == Page.DETAIL && !model.busy }
@@ -239,6 +276,6 @@ class TvUiRegressionTest {
         assertTrue("Frame evidence must contain rendered frames", values.isNotEmpty())
         File(directory, "frames.json").writeText(JSONObject().put("frames", values.size)
             .put("p95Ms", values[((values.size - 1) * .95).toInt()]).put("p99Ms", values[((values.size - 1) * .99).toInt()])
-            .put("over16_7ms", values.count { it > 16.7 }).put("renderer", "Android emulator / SwiftShader; informational, not hardware certification").toString(2))
+            .put("over16_7ms", values.count { it > 16.7 }).put("renderer", "Android emulator / Lavapipe (CI configuration; runtime GPU not queried); informational, not hardware certification").toString(2))
     }
 }
