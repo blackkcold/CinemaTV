@@ -72,3 +72,10 @@ of pixels differing by more than 32 channel levels ≤0.08, and exports overlays
 for failures. It also requires all 14 full-resolution captures, matching viewport
 metadata, a nonempty focus trace and rendered frame samples. Emulator P95/P99 are
 informational. Golden updates require visual review, not automatic acceptance.
+
+The emulator uses the supported `swiftshader` mode and disables Vulkan for this
+GLES UI suite. `swiftshader_indirect` is deprecated in emulator 36.4.9; the earlier
+37.2.13 CI runs also exhibited stalled renderer jobs. Test execution is bounded
+and partial device captures/logs are recovered on timeout. See Android's official
+[graphics options](https://developer.android.com/studio/run/emulator-acceleration)
+and [emulator troubleshooting](https://developer.android.com/studio/run/emulator-troubleshooting).
