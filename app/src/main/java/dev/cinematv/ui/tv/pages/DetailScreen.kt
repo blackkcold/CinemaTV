@@ -17,7 +17,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import androidx.tv.material3.Text
+import dev.cinematv.ui.typography.CinemaTvText as Text
 import dev.cinematv.CinemaViewModel
 import dev.cinematv.data.LibraryStatus
 import dev.cinematv.ui.GlassAction

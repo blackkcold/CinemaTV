@@ -13,7 +13,7 @@ import kotlinx.coroutines.launch
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.tv.material3.Text
+import dev.cinematv.ui.typography.CinemaTvText as Text
 import dev.cinematv.CinemaViewModel
 import dev.cinematv.data.MediaItem
 import dev.cinematv.ui.shared.presentationKey

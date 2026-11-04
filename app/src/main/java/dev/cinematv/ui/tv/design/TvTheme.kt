@@ -13,6 +13,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInputModeManager
 import androidx.compose.ui.input.InputMode
 import androidx.tv.material3.MaterialTheme
+import dev.cinematv.ui.typography.cinemaUiFontFamily
+import dev.cinematv.ui.typography.withCinemaNoto
 import androidx.tv.material3.darkColorScheme
 import dev.cinematv.ui.LocalOpticalGlass
 
@@ -27,7 +29,7 @@ fun CinemaTvTheme(reducedMotion: Boolean, quality: GlassQuality, content: @Compo
         } ?: true
     }
     val effects = TvEffects(reducedMotion, resolveGlassQuality(quality, lowRam, Build.VERSION.SDK_INT, reducedMotion))
-    MaterialTheme(colorScheme = darkColorScheme(
+    MaterialTheme(typography = MaterialTheme.typography.withCinemaNoto(cinemaUiFontFamily()), colorScheme = darkColorScheme(
         background = TvColors.Background, surface = TvColors.Surface,
         onBackground = TvColors.Text, onSurface = TvColors.Text,
         primary = TvColors.Text, onPrimary = TvColors.Background

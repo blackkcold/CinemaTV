@@ -15,7 +15,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.tv.material3.Text
+import dev.cinematv.ui.typography.CinemaTvText as Text
+import dev.cinematv.ui.typography.cinemaUiFontFamily
 import dev.cinematv.ui.tv.design.LocalTvEffects
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.*
@@ -115,7 +116,7 @@ fun TvInput(
     ) {
         BasicTextField(
             value = value, onValueChange = onValueChange,
-            textStyle = TextStyle(color = Ivory, fontSize = 18.sp),
+            textStyle = TextStyle(color = Ivory, fontSize = 18.sp, fontFamily = cinemaUiFontFamily()),
             singleLine = true, cursorBrush = SolidColor(Accent),
             visualTransformation = if (isPassword) PasswordVisualTransformation() else VisualTransformation.None,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
