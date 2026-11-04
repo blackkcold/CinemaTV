@@ -210,10 +210,10 @@ private fun MobileHome(model: CinemaViewModel) {
                     Text(listOfNotNull(hero?.year, hero?.category)
                         .filter(String::isNotBlank).joinToString(" · "), color = Muted)
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Button(onClick = {
+                        MobileGlassButton(onClick = {
                             if (hero != null) model.open(hero) else model.navigate(Page.SETTINGS)
                         }) { Text("查看影片") }
-                        OutlinedButton(onClick = { model.navigate(Page.SEARCH) }) {
+                        MobileGlassOutlinedButton(onClick = { model.navigate(Page.SEARCH) }) {
                             Text("搜索")
                         }
                     }
@@ -285,7 +285,7 @@ private fun MobileSearch(model: CinemaViewModel) {
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 keyboardActions = KeyboardActions(onSearch = { model.search() })
             )
-            Button(onClick = { model.search() }) { Text("搜索") }
+            MobileGlassButton(onClick = { model.search() }) { Text("搜索") }
         }
         LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             item { FilterChip(selected = model.searchFilters.isTv != null,
@@ -368,12 +368,12 @@ private fun MobileDetail(model: CinemaViewModel) {
             if (model.selectedRecommendationReason.startsWith("因为") || model.selectedRecommendationReason.startsWith("来自"))
                 Text(model.selectedRecommendationReason, color = Accent, fontSize = 12.sp)
             Row(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
-                Button(onClick = {
+                MobileGlassButton(onClick = {
                     model.playEpisode(item.lastEpisode.coerceIn(0, (item.episodes.size - 1).coerceAtLeast(0)))
                 }) { MobileIconLabel(CinemaSymbol.Play, "播放 / 续播") }
-                OutlinedButton(onClick = { model.toggleFavorite() }) { MobileIconLabel(CinemaSymbol.Bookmark, if (model.repo.isFavorite(item)) "已收藏" else "收藏", selected = model.repo.isFavorite(item)) }
+                MobileGlassOutlinedButton(onClick = { model.toggleFavorite() }) { MobileIconLabel(CinemaSymbol.Bookmark, if (model.repo.isFavorite(item)) "已收藏" else "收藏", selected = model.repo.isFavorite(item)) }
             }
-            OutlinedButton(onClick = { showAlternates = !showAlternates; model.findAlternatives() }) {
+            MobileGlassOutlinedButton(onClick = { showAlternates = !showAlternates; model.findAlternatives() }) {
                 Text("选择片源")
             }
             if (showAlternates) {
@@ -397,7 +397,7 @@ private fun MobileDetail(model: CinemaViewModel) {
             item.episodes.indices.chunked(4).forEach { group ->
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     group.forEach { index ->
-                        OutlinedButton(
+                        MobileGlassOutlinedButton(
                             modifier = Modifier.weight(1f),
                             contentPadding = PaddingValues(horizontal = 3.dp, vertical = 8.dp),
                             onClick = { model.playEpisode(index) }
@@ -435,7 +435,7 @@ private fun MobileLive(model: CinemaViewModel) {
         LazyRow(contentPadding = PaddingValues(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             items(model.liveSources, key = { it.url }) { source ->
-                OutlinedButton(onClick = { model.loadChannels(source) }) {
+                MobileGlassOutlinedButton(onClick = { model.loadChannels(source) }) {
                     Text(source.name)
                 }
             }
@@ -457,7 +457,7 @@ private fun MobileLive(model: CinemaViewModel) {
                             Text(channel.name, fontWeight = FontWeight.SemiBold)
                             Text(channel.group, color = Muted, fontSize = 12.sp)
                         }
-                        Button(onClick = { model.playChannel(channel) }) { Text("播放") }
+                        MobileGlassButton(onClick = { model.playChannel(channel) }) { Text("播放") }
                     }
                 }
             }
@@ -489,19 +489,19 @@ private fun MobileSettings(model: CinemaViewModel) {
         Text("CinemaTV 设置", fontSize = 27.sp, fontWeight = FontWeight.Bold)
         Text("LibreTV 服务器", fontSize = 19.sp, fontWeight = FontWeight.SemiBold)
         MobileField("服务器 URL", model.serverAddress, { model.serverAddress = it })
-        Button(onClick = { model.connect() }, modifier = Modifier.fillMaxWidth()) {
+        MobileGlassButton(onClick = { model.connect() }, modifier = Modifier.fillMaxWidth()) {
             Text("连接 / 刷新")
         }
         if (model.passwordRequired && !model.authorized) {
             MobileField("服务器密码", model.password, { model.password = it }, secret = true)
-            Button(onClick = { model.login() }) { Text("登录 LibreTV") }
+            MobileGlassButton(onClick = { model.login() }) { Text("登录 LibreTV") }
         }
         Text(if (model.authorized) "连接正常" else "未认证或未连接", color = Accent)
         HorizontalDivider(color = stroke)
         Text("添加点播源", fontWeight = FontWeight.SemiBold, fontSize = 18.sp)
         MobileField("名称", model.sourceName, { model.sourceName = it })
         MobileField("Apple CMS API URL", model.sourceAddress, { model.sourceAddress = it })
-        OutlinedButton(onClick = { model.addSource(false) }) { Text("添加点播源") }
+        MobileGlassOutlinedButton(onClick = { model.addSource(false) }) { Text("添加点播源") }
         model.sources.forEach { source ->
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(source.name, Modifier.weight(1f), maxLines = 1)
@@ -516,13 +516,13 @@ private fun MobileSettings(model: CinemaViewModel) {
         MobileField("直播源名称", model.liveName, { model.liveName = it })
         MobileField("M3U URL", model.liveAddress, { model.liveAddress = it })
         MobileField("XMLTV URL（可选）", model.liveEpg, { model.liveEpg = it })
-        OutlinedButton(onClick = { model.addSource(true) }) { Text("添加直播订阅") }
+        MobileGlassOutlinedButton(onClick = { model.addSource(true) }) { Text("添加直播订阅") }
         HorizontalDivider(color = stroke)
         Text("高清剧照 BFF（可选）", fontWeight = FontWeight.SemiBold, fontSize = 18.sp)
         MobileField("BFF 地址", model.metadataAddress, { model.metadataAddress = it })
         MobileField("BFF Token（不持久保存）", model.metadataAccessToken,
             { model.metadataAccessToken = it }, secret = true)
-        OutlinedButton(onClick = { model.configureMetadata() }) { Text("保存元数据连接") }
+        MobileGlassOutlinedButton(onClick = { model.configureMetadata() }) { Text("保存元数据连接") }
         HorizontalDivider(color = stroke)
         Text("画面与动效", fontWeight = FontWeight.SemiBold, fontSize = 18.sp)
         Row(verticalAlignment = Alignment.CenterVertically) {
