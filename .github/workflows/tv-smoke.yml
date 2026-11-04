@@ -120,12 +120,8 @@ jobs:
           # Lavapipe passed the isolated API 33 public phone run (41859160272);
           # this motivates the renderer choice, but full matrix acceptance is pending.
           emulator-options: '-no-window -no-audio -gpu lavapipe -feature -Vulkan -no-snapshot -no-boot-anim -memory 2048'
-          script: |
-            if [[ '${{ matrix.name }}' == phone || '${{ matrix.name }}' == tv1080 ]]; then
-              python3 scripts/libretv-contracts/android_acceptance.py --directory "$RUNNER_TEMP/official-libretv-android" --report qa/official-lifecycle.json -- bash scripts/run-device-qa.sh '${{ matrix.size }}' '${{ matrix.density }}' '${{ matrix.classes }}'
-            else
-              bash scripts/run-device-qa.sh '${{ matrix.size }}' '${{ matrix.density }}' '${{ matrix.classes }}'
-            fi
+          # The action executes each script line independently via sh -c.
+          script: bash scripts/run-device-qa-target.sh '${{ matrix.name }}' '${{ matrix.size }}' '${{ matrix.density }}' '${{ matrix.classes }}'
 
       - name: Record successful device provenance for preview promotion
         run: python3 scripts/preview-release.py receipt --device '${{ matrix.name }}' --classes '${{ matrix.classes }}' --output qa/promotion-receipt.json
