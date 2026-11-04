@@ -95,7 +95,7 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
 
     fun connect() {
         runCatching {
-            repo.setServer(serverAddress)
+            repo.configureServer(serverAddress)
             page = Page.SETTINGS
             refreshConnection()
         }.onFailure { message = it.message ?: "服务器地址无效" }
@@ -159,7 +159,7 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    fun setFocused(item: MediaItem) { focused = item }
+    fun onMediaFocus(item: MediaItem) { focused = item }
 
     fun open(item: MediaItem) {
         page = Page.DETAIL

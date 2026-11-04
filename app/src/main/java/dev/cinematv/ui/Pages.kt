@@ -122,7 +122,7 @@ fun MediaRail(title: String, items: List<MediaItem>, model: CinemaViewModel) {
             modifier = Modifier.fillMaxWidth()
         ) {
             items(items, key = { it.id + (it.source?.key ?: "") }) { item ->
-                MediaTile(item, onFocus = { model.setFocused(item) },
+                MediaTile(item, onFocus = { model.onMediaFocus(item) },
                     onClick = { model.open(item) }, modifier = Modifier.width(255.dp))
             }
         }
@@ -146,7 +146,7 @@ fun ExplorePage(model: CinemaViewModel) {
             modifier = Modifier.fillMaxWidth()
         ) {
             items(items, key = { it.id + it.title }) { item ->
-                MediaTile(item, onFocus = { model.setFocused(item) }, onClick = { model.open(item) },
+                MediaTile(item, onFocus = { model.onMediaFocus(item) }, onClick = { model.open(item) },
                     portrait = true, modifier = Modifier.width(215.dp))
             }
         }
@@ -168,7 +168,7 @@ fun CatalogPage(model: CinemaViewModel, isTv: Boolean) {
             contentPadding = PaddingValues(bottom = 50.dp)
         ) {
             items(items, key = { it.id }) { item ->
-                MediaTile(item, onFocus = { model.setFocused(item) }, onClick = { model.open(item) })
+                MediaTile(item, onFocus = { model.onMediaFocus(item) }, onClick = { model.open(item) })
             }
         }
     }
@@ -196,7 +196,7 @@ fun SearchPage(model: CinemaViewModel) {
             horizontalArrangement = Arrangement.spacedBy(18.dp), contentPadding = PaddingValues(bottom = 55.dp)
         ) {
             items(model.results, key = { it.source?.key.orEmpty() + it.id }) { item ->
-                MediaTile(item, onFocus = { model.setFocused(item) }, onClick = { model.open(item) })
+                MediaTile(item, onFocus = { model.onMediaFocus(item) }, onClick = { model.open(item) })
             }
         }
     }

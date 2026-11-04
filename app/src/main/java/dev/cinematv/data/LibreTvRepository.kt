@@ -33,7 +33,7 @@ class LibreTvRepository(context: Context) {
     var defaultLiveSources: List<LiveSource> = emptyList()
         private set
 
-    fun setServer(address: String) {
+    fun configureServer(address: String) {
         val cleaned = address.trim().trimEnd('/')
         require(cleaned.startsWith("https://") || cleaned.startsWith("http://")) { "服务器地址必须以 https:// 或 http:// 开头" }
         if (cleaned != server) sessionCookie = null
