@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -131,26 +133,81 @@ fun MediaRail(title: String, items: List<MediaItem>, model: CinemaViewModel) {
 
 @Composable
 fun ExplorePage(model: CinemaViewModel) {
-    val items = model.featured + model.tvShows
-    Column(
-        Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Ink, DeepRose, Ink))),
-        verticalArrangement = Arrangement.Center
+    val entries = (model.featured + model.tvShows).distinctBy { it.title + it.year }
+    var activeIndex by remember { mutableIntStateOf(0) }
+    val railState = rememberLazyListState()
+    Box(
+        Modifier.fillMaxSize().background(
+            Brush.radialGradient(
+                colors = listOf(Color(0xFF54232B), Color(0xFF1B1018), Ink),
+                radius = 1150f
+            )
+        )
     ) {
-        Box(Modifier.padding(start = margin, bottom = 24.dp)) {
-            PageHeading("发现好故事", "中心聚焦的海报视廊 · 左右选择影片")
-        }
-        if (items.isEmpty()) EmptyMessage("暂无推荐内容，请检查服务器连接", Modifier.fillMaxWidth().height(340.dp))
-        else LazyRow(
-            contentPadding = PaddingValues(horizontal = 230.dp),
-            horizontalArrangement = Arrangement.spacedBy(24.dp),
-            modifier = Modifier.fillMaxWidth()
+        Column(
+            modifier = Modifier.fillMaxSize().padding(top = 126.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            items(items, key = { it.id + it.title }) { item ->
-                MediaTile(item, onFocus = { model.onMediaFocus(item) }, onClick = { model.open(item) },
-                    portrait = true, modifier = Modifier.width(215.dp))
+            PageHeading("探索电影世界", "左右移动，透过海报发现值得观看的故事")
+            Spacer(Modifier.height(34.dp))
+            if (entries.isEmpty()) {
+                EmptyMessage("暂无推荐内容，请检查服务器连接", Modifier.fillMaxWidth().height(350.dp))
+            } else {
+                BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
+                    val cardWidth = 232.dp
+                    val sideInset = ((maxWidth - cardWidth) / 2).coerceAtLeast(0.dp)
+                    LaunchedEffect(activeIndex) {
+                        railState.animateScrollToItem(activeIndex)
+                    }
+                    LazyRow(
+                        state = railState,
+                        contentPadding = PaddingValues(horizontal = sideInset),
+                        horizontalArrangement = Arrangement.spacedBy(22.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth().height(410.dp)
+                    ) {
+                        itemsIndexed(entries, key = { _, item -> item.id + item.title }) { index, item ->
+                            val center = index == activeIndex
+                            val fade = when (kotlin.math.abs(index - activeIndex)) {
+                                0 -> 1f
+                                1 -> .74f
+                                else -> .50f
+                            }
+                            Box(
+                                Modifier.width(cardWidth).graphicsLayer {
+                                    scaleX = if (center) 1.13f else .87f
+                                    scaleY = if (center) 1.13f else .87f
+                                    alpha = fade
+                                }
+                            ) {
+                                MediaTile(
+                                    item = item,
+                                    portrait = true,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    onFocus = {
+                                        activeIndex = index
+                                        model.onMediaFocus(item)
+                                    },
+                                    onClick = { model.open(item) }
+                                )
+                            }
+                        }
+                    }
+                }
+                val current = entries.getOrNull(activeIndex)
+                Text(
+                    current?.title ?: "", color = Ivory, fontSize = 23.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                Text(
+                    listOf(current?.year.orEmpty(), current?.rating?.takeIf(String::isNotBlank)?.let { "★ $it" } ?: "")
+                        .filter(String::isNotBlank).joinToString("  ·  "),
+                    color = Muted, fontSize = 15.sp,
+                    modifier = Modifier.padding(bottom = 48.dp)
+                )
             }
         }
-        Spacer(Modifier.height(70.dp))
     }
 }
 
