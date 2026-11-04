@@ -33,6 +33,7 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.animation:animation")
+    implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.tv:tv-material:1.1.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.9.4")
