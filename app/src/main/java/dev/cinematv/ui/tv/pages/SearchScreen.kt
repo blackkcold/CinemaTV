@@ -19,6 +19,7 @@ import dev.cinematv.data.SearchFilters
 import dev.cinematv.ui.GlassAction
 import dev.cinematv.ui.TvInput
 import dev.cinematv.ui.shared.presentationKey
+import dev.cinematv.ui.tv.components.SearchPagingControl
 import dev.cinematv.ui.tv.components.FocusMediaCard
 import dev.cinematv.ui.tv.design.*
 import dev.cinematv.ui.tv.focus.*
@@ -82,6 +83,7 @@ fun SearchScreen(model: CinemaViewModel) {
             fontSize = 10.sp, modifier = Modifier.padding(horizontal = layout.gutter))
         Text(if (model.busy || model.chartLoading) "正在搜索 · 已找到 ${model.results.size} 部作品" else if (model.results.isNotEmpty()) "找到 ${model.results.size} 部作品" else "从一个片名，开始一段旅程。",
             color = TvColors.Secondary, fontSize = 13.sp, modifier = Modifier.padding(horizontal = layout.gutter, vertical = 6.dp))
+        Box(Modifier.padding(horizontal = layout.gutter)) { SearchPagingControl(model) }
         LazyVerticalGrid(columns = GridCells.Adaptive(layout.posterWidth), state = grid,
             modifier = Modifier.fillMaxSize().focusRestorer(),
             contentPadding = PaddingValues(start = layout.gutter, end = layout.gutter, top = 15.dp, bottom = 45.dp),
