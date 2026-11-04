@@ -93,7 +93,7 @@ class LocalMediaLibrary(
 
     suspend fun setStatus(item: MediaItem, status: LibraryStatus?) = mutate {
         require(item.id.isNotBlank()) { "A library item needs a provider ID" }
-        val saved = storeItemLocked(item)
+        val saved = currentItemOrBootstrapLocked(item)
         val current = entryLocked(saved)
         dao.upsertEntry(current.copy(
             status = if (status == LibraryStatus.FAVORITE) current.status else status?.name,
@@ -105,7 +105,7 @@ class LocalMediaLibrary(
     /** Favorite is independent of watching/watched status, so toggling it does not erase a status. */
     suspend fun toggleFavorite(item: MediaItem) = mutate {
         require(item.id.isNotBlank()) { "A favorite needs a provider ID" }
-        val saved = storeItemLocked(item)
+        val saved = currentItemOrBootstrapLocked(item)
         val current = entryLocked(saved)
         dao.upsertEntry(current.copy(favorite = !current.favorite, updatedAt = now()))
     }
@@ -124,6 +124,7 @@ class LocalMediaLibrary(
 
     suspend fun clearHistory() = mutate {
         dao.deleteProgress()
+        dao.deleteCheckpointEvidence()
         dao.clearHistory()
     }
 
@@ -136,22 +137,34 @@ class LocalMediaLibrary(
     }
 
     private fun saveProgressLocked(item: MediaItem, position: Long, index: Int, duration: Long, timestamp: Long) {
-        val saved = storeItemLocked(item)
+        // A late player callback is not a catalog refresh. Keep the newer cached playlist,
+        // and never manufacture identity by borrowing its URLs/names for a legacy record.
+        val current = currentItemOrBootstrapLocked(item)
         val safeIndex = index.coerceAtLeast(0)
-        val entry = entryLocked(saved)
-        val episodeId = MediaDomainMapper.episodeId(saved, safeIndex)
+        val entry = entryLocked(current)
+        val identity = CheckpointIdentity.resolve(item, index, current)
+        val episodeId = identity.episodeId
+        val evidenceKey = "checkpoint_evidence:$episodeId"
+        if (dao.metadata(evidenceKey) == null)
+            dao.upsertMetadata(LibraryMetadataEntity(evidenceKey, MediaItemCodec.encode(item)))
         val old = dao.progress(episodeId)?.toDomain()
         val progress = EpisodeProgress.record(episodeId, entry.sourceMappingId, safeIndex, position, duration, timestamp, old)
         dao.upsertProgress(EpisodeProgressEntity(progress.episodeId, progress.sourceMappingId,
             progress.episodeIndex, progress.positionMs, progress.durationMs, progress.updatedAt))
-        // Legacy history often had no episode URLs. Keep a real episode row for its recorded index.
-        if (saved.episodes.getOrNull(safeIndex) == null) {
-            dao.upsertEpisodes(listOf(EpisodeEntity(episodeId, MediaDomainMapper.seasonId(saved),
-                entry.sourceMappingId, safeIndex, saved.episodeNames.getOrNull(safeIndex) ?: "第${safeIndex + 1}集", "")))
+        // Keep an archival episode row without replacing a current episode's rotated URL.
+        if (identity.currentIndex == null) {
+            dao.upsertEpisodes(listOf(EpisodeEntity(episodeId, MediaDomainMapper.seasonId(item),
+                entry.sourceMappingId, safeIndex, item.episodeNames.getOrNull(index) ?: "第${safeIndex + 1}集",
+                item.episodes.getOrNull(index).orEmpty())))
         }
-        dao.upsertEntry(entry.copy(historyAt = timestamp, lastEpisodeIndex = safeIndex,
+        dao.upsertEntry(entry.copy(historyAt = timestamp, lastEpisodeIndex = identity.currentIndex ?: -1,
             updatedAt = maxOf(entry.updatedAt, timestamp)))
     }
+
+    /** Flag/progress writes do not carry catalog authority, including delayed player callbacks. */
+    private fun currentItemOrBootstrapLocked(item: MediaItem): MediaItem =
+        dao.source(MediaDomainMapper.entryId(item))?.itemJson?.let(MediaItemCodec::decode)
+            ?: storeItemLocked(item)
 
     private fun entryLocked(item: MediaItem): LibraryEntryEntity {
         val key = MediaDomainMapper.entryId(item)
@@ -161,21 +174,22 @@ class LocalMediaLibrary(
     private fun storeItemLocked(incoming: MediaItem): MediaItem {
         val previous = dao.source(MediaDomainMapper.entryId(incoming))?.itemJson?.let(MediaItemCodec::decode)
         val item = if (previous == null) incoming else MediaSnapshotMerger.merge(previous, incoming)
-        // A legacy flat list had no season number. Enriching that same source listing must not
-        // strand its checkpoints under the unknown-season key. Explicit season 1 -> 2 never moves.
-        if (previous != null && previous.seasonNumber == null && item.seasonNumber != null) {
-            dao.progressForSource(MediaDomainMapper.entryId(item)).forEach { old ->
-                if (old.episodeId == MediaDomainMapper.episodeId(previous, old.episodeIndex)) {
-                    val newId = MediaDomainMapper.episodeId(item, old.episodeIndex)
-                    val existing = dao.progress(newId)
-                    if (existing == null || old.updatedAt > existing.updatedAt)
-                        dao.upsertProgress(old.copy(episodeId = newId))
-                    dao.deleteProgress(old.episodeId)
-                }
+        if (previous != null) {
+            // Preserve one original evidence snapshot per checkpoint, not every URL refresh.
+            dao.progressForSource(MediaDomainMapper.entryId(previous)).forEach { checkpoint ->
+                val key = "checkpoint_evidence:${checkpoint.episodeId}"
+                if (dao.metadata(key) == null)
+                    dao.upsertMetadata(LibraryMetadataEntity(key, MediaItemCodec.encode(previous)))
             }
-        }
-        if (previous != null && MediaDomainMapper.seasonId(previous) != MediaDomainMapper.seasonId(item)) {
-            dao.deleteEpisodes(MediaDomainMapper.entryId(item), MediaDomainMapper.seasonId(previous))
+            val entry = dao.entry(MediaDomainMapper.entryId(item))
+            if (entry?.historyAt != null) {
+                val oldIdentity = MediaDomainMapper.episodeIdentity(previous, entry.lastEpisodeIndex)
+                val oldId = oldIdentity?.let { MediaDomainMapper.episodeId(previous, entry.lastEpisodeIndex) }
+                val newIndex = item.episodes.indices.firstOrNull { MediaDomainMapper.episodeIdentity(item, it) != null &&
+                    MediaDomainMapper.episodeId(item, it) == oldId }
+                // -1 is an explicit unresolved last episode; never substitute episode zero.
+                dao.upsertEntry(entry.copy(lastEpisodeIndex = newIndex ?: -1))
+            }
         }
         val graph = MediaDomainMapper.map(item)
         dao.upsertWork(WorkEntity(graph.work.id, graph.work.title, graph.work.kind.name, graph.work.year))
@@ -195,10 +209,13 @@ class LocalMediaLibrary(
             val records = dao.entries().mapNotNull { entry ->
                 val item = items[entry.sourceMappingId] ?: return@mapNotNull null
                 val last = if (entry.historyAt != null)
-                    progress[MediaDomainMapper.episodeId(item, entry.lastEpisodeIndex)] else null
+                    item.episodes.indices.firstOrNull { it == entry.lastEpisodeIndex &&
+                        MediaDomainMapper.episodeIdentity(item, it) != null }?.let {
+                        progress[MediaDomainMapper.episodeId(item, it)]?.copy(episodeIndex = it)
+                    } else null
                 val state = entry.status?.let { runCatching { LibraryStatus.valueOf(it) }.getOrNull() }
                 LibraryRecord(item.copy(positionMs = last?.positionMs ?: 0,
-                    durationMs = last?.durationMs ?: 0, lastEpisode = last?.episodeIndex ?: 0),
+                    durationMs = last?.durationMs ?: 0, lastEpisode = last?.episodeIndex ?: -1),
                     state, entry.favorite, entry.updatedAt, entry.historyAt)
             }
             LibrarySnapshot(ready = true, records = records, episodeProgress = progress)

@@ -47,7 +47,11 @@ data class MediaItem(
     val catalogProvider: String = "",
     val catalogAttribution: String = "",
     /** Epoch milliseconds; expiry covers the entire licensed catalog metadata record. */
-    val catalogLicenseExpiresAt: Long = 0L
+    val catalogLicenseExpiresAt: Long = 0L,
+    /** Explicit provider episode identifiers, aligned with episodes. Never generated from position. */
+    val episodeIds: List<String> = emptyList(),
+    /** True only when a successful detail response supplied an authoritative playlist, even empty. */
+    val playlistKnown: Boolean = false
 )
 
 data class TvChannel(

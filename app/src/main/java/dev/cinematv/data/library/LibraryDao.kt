@@ -35,6 +35,8 @@ interface LibraryDao {
     fun deleteEpisodes(id: String, seasonId: String)
     @Query("SELECT * FROM episode_progress")
     fun progressRecords(): List<EpisodeProgressEntity>
+    @Query("DELETE FROM library_metadata WHERE `key` LIKE 'checkpoint_evidence:%'")
+    fun deleteCheckpointEvidence()
     @Query("DELETE FROM episode_progress")
     fun deleteProgress()
     @Query("UPDATE library_entries SET historyAt = NULL, lastEpisodeIndex = 0")

@@ -27,7 +27,7 @@ class LocalMediaLibraryTest {
     private val databaseName = "library-migration-test.db"
     private val prefsName = "library-migration-test"
     private val first = MediaItem("42", "Test series", source = TvSource("s", "Source", "https://example.test"),
-        isTv = true, positionMs = 1200, lastEpisode = 1, durationMs = 8000)
+        isTv = true, episodes = listOf("https://example.test/one", "https://example.test/two"), positionMs = 1200, lastEpisode = 1, durationMs = 8000)
     private val second = first.copy(id = "43", title = "Another series", positionMs = 400, lastEpisode = 0)
 
     @Before fun before() {
@@ -111,17 +111,191 @@ class LocalMediaLibraryTest {
         assertTrue(store.snapshot.isFavorite(first))
     }
 
-    @Test fun knownSeasonEnrichmentRekeysOnlyUnknownSeasonProgress() = runBlocking {
+    @Test fun knownSeasonNeverAdoptsUnknownSeasonProgress() = runBlocking {
         val store = library()
         store.saveProgress(first, 1700, 0, 9000)
         val known = first.copy(seasonNumber = 1, episodes = listOf("https://example.test/1"))
         store.cacheItem(known)
-        assertEquals(1700L, store.snapshot.progress(known, 0)?.positionMs)
+        assertNull(store.snapshot.progress(known, 0))
         assertEquals(1700L, store.snapshot.progress(first, 0)?.positionMs)
+        assertEquals(1, store.snapshot.quarantinedProgress.size)
         assertNull(store.snapshot.progress(known.copy(seasonNumber = 2), 0))
         store.cacheItem(known.copy(seasonNumber = 2))
         assertNull(store.snapshot.progress(known.copy(seasonNumber = 2), 0))
-        assertEquals(1700L, store.snapshot.progress(known, 0)?.positionMs)
+        assertNull(store.snapshot.progress(known, 0))
+    }
+
+    @Test fun reorderRotationRemovalAndQuarantineSurviveReopen() = runBlocking {
+        val store = library()
+        val original = first.copy(episodeNames = listOf("Pilot", "Return"))
+        store.saveProgress(original, 1700, 1, 9000)
+        val reordered = original.copy(episodes = listOf("https://cdn.test/b?token=new", "https://cdn.test/a?token=new"),
+            episodeNames = listOf("Return", "Pilot"))
+        store.cacheItem(reordered)
+        assertEquals(1700L, store.snapshot.progress(reordered, 0)?.positionMs)
+        assertEquals(0, store.snapshot.history().single().lastEpisode)
+        assertEquals(1700L, store.snapshot.history().single().positionMs)
+        val removed = reordered.copy(episodes = listOf("https://cdn.test/a?token=latest"), episodeNames = listOf("Pilot"))
+        store.cacheItem(removed)
+        assertNull(store.snapshot.progress(removed, 0))
+        assertEquals(1, store.snapshot.quarantinedProgress.size)
+        db.close()
+        openDatabase()
+        val reopened = library()
+        reopened.initialize()
+        assertEquals(1, reopened.snapshot.quarantinedProgress.size)
+        assertEquals(1700L, reopened.snapshot.quarantinedProgress.single().progress.positionMs)
+        reopened.clearHistory()
+        assertTrue(reopened.snapshot.quarantinedProgress.isEmpty())
+        withContext(Dispatchers.IO) {
+            assertNull(db.libraryDao().metadata("checkpoint_evidence:${MediaDomainMapper.episodeId(original, 1)}"))
+        }
+    }
+
+    @Test fun authoritativeEmptyPlaylistIsPersistedButMetadataOnlyRefreshDoesNotClear() = runBlocking {
+        val store = library()
+        store.saveProgress(first, 1000, 0, 8000)
+        store.cacheItem(first.copy(episodes = emptyList()))
+        assertEquals(1000L, store.snapshot.progress(store.snapshot.history().single(), 0)?.positionMs)
+        store.cacheItem(first.copy(episodes = emptyList(), playlistKnown = true))
+        assertTrue(store.snapshot.history().single().episodes.isEmpty())
+        assertEquals(1, store.snapshot.quarantinedProgress.size)
+        db.close()
+        openDatabase()
+        val reopened = library()
+        reopened.initialize()
+        assertTrue(reopened.snapshot.history().single().playlistKnown)
+        assertTrue(reopened.snapshot.history().single().episodes.isEmpty())
+        assertEquals(1, reopened.snapshot.quarantinedProgress.size)
+    }
+
+    @Test fun metadataOnlyLegacyHistoryCannotBorrowFavoritePlaylistIdentity() = runBlocking {
+        val prefs = context.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
+        val metadataOnly = first.copy(episodes = emptyList(), episodeNames = emptyList(), positionMs = 4567)
+        prefs.edit().putString("favorites", JSONArray(listOf(MediaItemCodec.json(first))).toString())
+            .putString("history", JSONArray(listOf(MediaItemCodec.json(metadataOnly))).toString()).commit()
+        val store = library()
+        store.initialize()
+        assertEquals(first.episodes, store.snapshot.favorites().single().episodes)
+        assertNull(store.snapshot.progress(first, metadataOnly.lastEpisode))
+        val held = store.snapshot.quarantinedProgress.single()
+        assertEquals(4567L, held.progress.positionMs)
+        assertEquals(dev.cinematv.data.library.QuarantineReason.MISSING_OR_AMBIGUOUS_IDENTITY, held.reason)
+        withContext(Dispatchers.IO) {
+            val evidence = requireNotNull(db.libraryDao().metadata("checkpoint_evidence:${held.progress.episodeId}"))
+            assertTrue(MediaItemCodec.decode(evidence).episodes.isEmpty())
+        }
+        db.close()
+        openDatabase()
+        val reopened = library()
+        reopened.initialize()
+        assertNull(reopened.snapshot.progress(first, metadataOnly.lastEpisode))
+        assertEquals(4567L, reopened.snapshot.quarantinedProgress.single().progress.positionMs)
+    }
+
+    @Test fun lateCallbacksNeverReplaceNewerCachedPlaylist() = runBlocking {
+        val store = library()
+        val named = first.copy(episodeNames = listOf("Pilot", "Return"))
+        val variants = listOf(
+            named.copy(episodes = listOf("new-b", "new-a"), episodeNames = listOf("Return", "Pilot")) to 0,
+            named.copy(episodes = listOf("new-a"), episodeNames = listOf("Pilot")) to -1,
+            named.copy(episodes = emptyList(), episodeNames = emptyList(), playlistKnown = true) to -1,
+            named.copy(episodes = listOf("new-a", "new-b")) to 1,
+            named.copy(seasonNumber = 1) to -1
+        )
+        variants.forEachIndexed { index, (template, expectedIndex) ->
+            val played = named.copy(id = "stale-$index")
+            val current = template.copy(id = played.id)
+            store.cacheItem(played)
+            store.cacheItem(current)
+            store.saveProgress(played, 3456, 1, 9000)
+            val saved = store.snapshot.history().single { it.id == played.id }
+            assertEquals(current.episodes, saved.episodes)
+            assertEquals(current.episodeNames, saved.episodeNames)
+            assertEquals(current.seasonNumber, saved.seasonNumber)
+            assertEquals(expectedIndex, saved.lastEpisode)
+            assertEquals(if (expectedIndex >= 0) 3456L else 0L, saved.positionMs)
+        }
+        val urlOnly = first.copy(id = "stale-urls", episodeNames = emptyList())
+        val rotated = urlOnly.copy(episodes = listOf("rotated-a", "rotated-b"))
+        store.cacheItem(rotated)
+        store.saveProgress(urlOnly, 2222, 1, 9000)
+        assertEquals(rotated.episodes, store.snapshot.history().single { it.id == urlOnly.id }.episodes)
+        assertNull(store.snapshot.progress(rotated, 1))
+        assertEquals(2222L, store.snapshot.quarantinedProgress.single {
+            it.progress.sourceMappingId == MediaDomainMapper.entryId(urlOnly)
+        }.progress.positionMs)
+    }
+
+    @Test fun staleFlagMutationsDoNotUndoPlaylistReconciliation() = runBlocking {
+        val store = library()
+        val original = first.copy(episodeNames = listOf("Pilot", "Return"))
+        listOf(
+            original.copy(episodes = listOf("new-b", "new-a"), episodeNames = listOf("Return", "Pilot")),
+            original.copy(episodes = emptyList(), episodeNames = emptyList(), playlistKnown = true)
+        ).forEachIndexed { index, template ->
+            val played = original.copy(id = "flag-stale-$index")
+            val current = template.copy(id = played.id)
+            store.saveProgress(played, 3456, 1, 9000)
+            store.cacheItem(current)
+            // Reproduce playerEnded: late playback checkpoint then WATCHED status.
+            store.saveProgress(played, 4567, 1, 9000)
+            val before = store.snapshot.history().single { it.id == played.id }
+            val heldBefore = store.snapshot.quarantinedProgress
+            store.setStatus(played, LibraryStatus.WATCHED)
+            store.toggleFavorite(played)
+            val after = store.snapshot.history().single { it.id == played.id }
+            assertEquals(current.episodes, after.episodes)
+            assertEquals(current.episodeNames, after.episodeNames)
+            assertEquals(before.lastEpisode, after.lastEpisode)
+            assertEquals(before.positionMs, after.positionMs)
+            assertEquals(heldBefore, store.snapshot.quarantinedProgress)
+            assertEquals(LibraryStatus.WATCHED, store.snapshot.status(played))
+            assertTrue(store.snapshot.isFavorite(played))
+            store.toggleFavorite(played)
+            assertEquals(current.episodes, store.snapshot.history().single { it.id == played.id }.episodes)
+            assertFalse(store.snapshot.isFavorite(played))
+        }
+        db.close()
+        openDatabase()
+        val reopened = library()
+        reopened.initialize()
+        assertTrue(reopened.snapshot.history().single { it.id == "flag-stale-1" }.episodes.isEmpty())
+        assertEquals(-1, reopened.snapshot.history().single { it.id == "flag-stale-1" }.lastEpisode)
+        assertEquals(1, reopened.snapshot.quarantinedProgress.size)
+    }
+
+    @Test fun oldV1PositionCheckpointRemainsIntactAndQuarantinedAfterReopen() = runBlocking {
+        val store = library()
+        store.cacheItem(first)
+        val id = "episode:82033457fbd9dcf9db9da327a317448fb3a1c904f5e1b6484fa88679d93443f4"
+        withContext(Dispatchers.IO) {
+            assertEquals(1, db.openHelper.readableDatabase.version)
+            // Original v1 hash for source listing + unknown season + index 1.
+            // Strip new optional JSON fields to exercise a genuinely old snapshot format.
+            val source = requireNotNull(db.libraryDao().source(MediaDomainMapper.entryId(first)))
+            val oldJson = org.json.JSONObject(source.itemJson).apply {
+                remove("episodeIds"); remove("playlistKnown")
+            }.toString()
+            db.libraryDao().upsertSource(source.copy(itemJson = oldJson))
+            db.libraryDao().upsertProgress(dev.cinematv.data.library.EpisodeProgressEntity(
+                id, MediaDomainMapper.entryId(first), 1, 777, 8000, 12))
+        }
+        db.close()
+        openDatabase()
+        val reopened = library()
+        reopened.initialize()
+        assertNull(reopened.snapshot.progress(first, 1))
+        val held = reopened.snapshot.quarantinedProgress.single()
+        assertEquals(dev.cinematv.data.library.QuarantineReason.LEGACY_POSITION_ONLY, held.reason)
+        assertEquals(777L, held.progress.positionMs)
+        reopened.cacheItem(first.copy(episodes = first.episodes.reversed()))
+        withContext(Dispatchers.IO) {
+            assertEquals(777L, db.libraryDao().progress(id)?.positionMs)
+            assertNotNull(db.libraryDao().metadata("checkpoint_evidence:$id"))
+        }
+        reopened.clearHistory()
+        assertTrue(reopened.snapshot.episodeProgress.isEmpty())
     }
 
     @Test fun newRatingProvenanceDoesNotRetainDoubanRank() = runBlocking {
@@ -139,7 +313,7 @@ class LocalMediaLibraryTest {
         val item = first.copy(aliases = listOf("别名"), actors = listOf("演员"), rating = "9.0",
             ratingSource = "Douban", doubanTopRank = 12, metadataIds = mapOf("tmdb" to "123"),
             episodes = listOf("https://example.test/1", "https://example.test/2", "https://example.test/3"),
-            episodeNames = listOf("", "重复名称", "重复名称"),
+            episodeNames = listOf("", "重复名称", "重复名称"), episodeIds = listOf("a", "", "a"),
             seasonNumber = 2, description = "Description", ratingLicenseExpiresAt = 9_000_000L,
             mediaTypeKnown = false, catalogProvider = "licensed-test-provider", catalogAttribution = "Licensed test data",
             catalogLicenseExpiresAt = 8_000_000L)

@@ -22,6 +22,7 @@ object MediaItemCodec {
         .put("aliases", JSONArray(item.aliases)).put("actors", JSONArray(item.actors))
         .put("ratingSource", item.ratingSource).put("doubanTopRank", item.doubanTopRank)
         .put("metadataIds", JSONObject(item.metadataIds))
+        .put("episodeIds", JSONArray(item.episodeIds)).put("playlistKnown", item.playlistKnown)
         .put("episodeNames", JSONArray(item.episodeNames)).put("seasonNumber", item.seasonNumber)
         .put("ratingLicenseExpiresAt", item.ratingLicenseExpiresAt)
         .put("mediaTypeKnown", item.mediaTypeKnown).put("catalogProvider", item.catalogProvider)
@@ -52,6 +53,7 @@ object MediaItemCodec {
             ratingSource = j.optString("ratingSource"),
             doubanTopRank = if (j.isNull("doubanTopRank")) null else j.optInt("doubanTopRank").takeIf { it > 0 },
             metadataIds = ids, episodeNames = strings(j.optJSONArray("episodeNames")),
+            episodeIds = strings(j.optJSONArray("episodeIds")), playlistKnown = j.optBoolean("playlistKnown", false),
             seasonNumber = if (j.isNull("seasonNumber")) null else j.optInt("seasonNumber").takeIf { it >= 0 },
             ratingLicenseExpiresAt = j.optLong("ratingLicenseExpiresAt").coerceAtLeast(0),
             mediaTypeKnown = j.optBoolean("mediaTypeKnown", true),
