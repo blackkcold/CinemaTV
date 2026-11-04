@@ -22,6 +22,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -64,6 +66,7 @@ fun MobileRootApp(model: CinemaViewModel) {
                             Triple("设置", Page.SETTINGS, "⚙")
                         ).forEach { (label, destination, symbol) ->
                             NavigationBarItem(
+                                modifier = Modifier.semantics { contentDescription = "打开" + label },
                                 selected = page == destination,
                                 onClick = { model.navigate(destination) },
                                 icon = { Text(symbol, fontSize = 18.sp) },
