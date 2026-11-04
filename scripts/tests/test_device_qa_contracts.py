@@ -144,13 +144,14 @@ class DeviceQaContractTest(unittest.TestCase):
     def test_search_submits_visible_ime_and_waits_for_hidden_restored_window(self):
         source = (ROOT / 'app/src/androidTest/java/dev/cinematv/TvUiRegressionTest.kt').read_text()
         search = source.split('performTextReplacement(server.title(0))', 1)[1].split('screenshot("08-search")', 1)[0]
-        markers = ['?.isVisible(WindowInsetsCompat.Type.ime()) == true',
+        markers = ['rule.onNode(hasSetTextAction()).assertIsFocused()',
+                   'awaitPlatformImeVisible("search-submit")',
                    'performImeAction()', '!model.busy && model.results.isNotEmpty()',
                    'awaitHiddenImeAndFullScreen()',
                    'rule.onNodeWithContentDescription(server.title(0)).assertIsDisplayed()']
         positions = [search.index(marker) for marker in markers]
         self.assertEqual(positions, sorted(positions))
-        self.assertEqual(search.count('rule.waitUntil(15000)'), 2)
+        self.assertEqual(search.count('rule.waitUntil(15000)'), 1)
         helper = source.split('private fun awaitHiddenImeAndFullScreen()', 1)[1].split('private fun captureWindow()', 1)[0]
         for marker in ('rule.waitUntil(15000)', '!insets.isVisible(WindowInsetsCompat.Type.ime())',
                        'location.contentEquals(intArrayOf(0, 0))',
@@ -163,6 +164,26 @@ class DeviceQaContractTest(unittest.TestCase):
         self.assertIn('Unexpected window offset ${location.contentToString()}', capture)
         self.assertIn('imeVisible=', capture)
         self.assertIn('softInputMode=', capture)
+
+    def test_visible_ime_wait_observes_platform_without_pumping_compose(self):
+        source = (ROOT / 'app/src/androidTest/java/dev/cinematv/TvUiRegressionTest.kt').read_text()
+        helper = source.split('private fun awaitPlatformImeVisible(', 1)[1].split('private fun awaitHiddenImeAndFullScreen()', 1)[0]
+        for contract in ('val deadline = startedAt + 15000L', 'rule.runOnUiThread {',
+                         'ViewCompat.getRootWindowInsets(decor)',
+                         'insets?.isVisible(WindowInsetsCompat.Type.ime()) == true',
+                         'activity.hasWindowFocus() && visible', 'ready && now <= deadline',
+                         'SystemClock.sleep(minOf(50L, deadline - now))',
+                         'throw AssertionError(diagnostic)', 'ime-wait-failure.txt',
+                         'hardKeyboardHidden=', 'show_ime_with_hard_keyboard'):
+            self.assertIn(contract, helper)
+        # Comments document why the old polling pattern was removed. Executable
+        # code may only observe platform state, never drive rendering or the IME.
+        code = '\n'.join(line for line in helper.splitlines() if not line.strip().startswith('//'))
+        for bypass in ('runOnIdle', 'waitForIdle', 'waitUntil', 'mainClock', 'advanceTime',
+                       '.show()', '.hide()', 'requestFocus(', 'clearFocus(', 'Settings.Secure.put'):
+            self.assertNotIn(bypass, code)
+        self.assertEqual(source.count('awaitPlatformImeVisible("search-submit")'), 1)
+        self.assertEqual(source.count('awaitPlatformImeVisible("search-exit")'), 1)
 
     def test_tv_ime_owner_handles_late_show_without_stealing_destination_focus(self):
         root = (ROOT / 'app/src/main/java/dev/cinematv/ui/tv/TvRootApp.kt').read_text()
@@ -185,7 +206,7 @@ class DeviceQaContractTest(unittest.TestCase):
         source = (ROOT / 'app/src/androidTest/java/dev/cinematv/TvUiRegressionTest.kt').read_text()
         exit_visible = source.split('// Also cover a fully visible keyboard exit', 1)[1].split('search-visible-ime-exit-complete', 1)[0]
         markers = ['model.navigate(Page.SEARCH)', 'rule.onNode(hasSetTextAction()).assertIsFocused()',
-                   '?.isVisible(WindowInsetsCompat.Type.ime()) == true', 'model.navigate(Page.LIVE)',
+                   'awaitPlatformImeVisible("search-exit")', 'model.navigate(Page.LIVE)',
                    'awaitHiddenImeAndFullScreen()',
                    'rule.onNode(hasText(model.channels.first().name) and hasClickAction()).assertIsFocused()',
                    'key(KeyEvent.KEYCODE_DPAD_DOWN)',
