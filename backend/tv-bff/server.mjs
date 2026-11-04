@@ -106,14 +106,14 @@ function requireKey(s, max = 120) {
 /** Exact normalized-name + compatible-year check; never invent a backdrop. */
 export function selectMetadata(title, year, candidates = [], type = 'movie') {
   const normalize = value => String(value || '').normalize('NFKC')
-    .toLowerCase().replace(/[\\p{P}\\p{Z}\\s]+/gu, '');
+    .toLowerCase().replace(/[\p{P}\p{Z}\s]+/gu, '');
   const wanted = normalize(title);
   if (!wanted) return null;
   const allowed = candidates.filter(candidate => {
     const candidateName = type === 'tv' ? candidate.name : candidate.title;
     const original = type === 'tv' ? candidate.original_name : candidate.original_title;
     if (normalize(candidateName) !== wanted && normalize(original) !== wanted) return false;
-    const release = String(type === 'tv' ? candidate.first_air_date : candidate.release_date || '').slice(0, 4);
+    const release = String((type === 'tv' ? candidate.first_air_date : candidate.release_date) || '').slice(0, 4);
     return !year || !release || year === release;
   });
   // Ambiguous year-free titles should never receive an assumed image.
@@ -122,7 +122,7 @@ export function selectMetadata(title, year, candidates = [], type = 'movie') {
 }
 
 function tmdbImage(path) {
-  return typeof path === 'string' && /^\\/[a-zA-Z0-9_\\/-]+\\.(?:jpg|jpeg|png|webp)$/i.test(path)
+  return typeof path === 'string' && /^\/[a-zA-Z0-9_\/-]+\.(?:jpg|jpeg|png|webp)$/i.test(path)
     ? 'https://image.tmdb.org/t/p/original' + path : '';
 }
 
@@ -199,7 +199,7 @@ async function handle(req, res) {
   if (req.method === 'GET' && url.pathname === '/v1/metadata') {
     const title = requireKey(String(url.searchParams.get('title') || '').trim(), 120);
     const year = String(url.searchParams.get('year') || '').trim();
-    if (year && !/^\\d{4}$/.test(year)) throw new ApiError('Invalid year', 400);
+    if (year && !/^\d{4}$/.test(year)) throw new ApiError('Invalid year', 400);
     const type = url.searchParams.get('type') || 'movie';
     if (!['movie', 'tv'].includes(type)) throw new ApiError('Invalid title type', 400);
     const metadata = await resolveMetadata(title, year, type);
