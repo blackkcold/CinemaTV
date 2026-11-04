@@ -30,7 +30,7 @@ fun LibraryScreen(model: CinemaViewModel) {
     var filter by rememberSaveable { mutableStateOf("all") }
     val state = rememberTvListState(model, "page")
     RestorePageFocus(model)
-    LazyColumn(state = state, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(top = layout.contentTop, bottom = 42.dp)) {
+    LazyColumn(state = state, modifier = Modifier.fillMaxSize().padding(top = layout.contentTop), contentPadding = PaddingValues(bottom = 42.dp)) {
         item(key = "heading") {
             Column(Modifier.padding(horizontal = layout.gutter)) {
                 Text("你的观影时光。", color = TvColors.Text, fontSize = 34.sp)

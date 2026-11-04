@@ -114,10 +114,10 @@ fun FocusMediaCard(
                 if (focused) TvColors.Text else Color.White.copy(alpha = if (selected) .6f else .08f), shape))
         }
         if (showCaption) {
-          Text(item.title, color = TvColors.Text, fontSize = 15.sp, fontWeight = FontWeight.Medium,
+          Text(item.title, color = TvColors.Text, fontSize = 15.sp, lineHeight = 20.sp, fontWeight = FontWeight.Medium,
             maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text(item.metadataLine().ifBlank { if (item.isTv) "剧集" else "电影" }, color = TvColors.Secondary,
-            fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            fontSize = 11.sp, lineHeight = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }

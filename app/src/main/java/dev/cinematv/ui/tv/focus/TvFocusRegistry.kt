@@ -43,8 +43,9 @@ fun RestorePageFocus(model: CinemaViewModel, ready: Boolean = true) {
     val fallback = LocalContentFocus.current
     val registry = LocalTvFocusRegistry.current
     val navigationHasFocus = LocalNavigationHasFocus.current
+    val navigationAtEntry = remember(model.focusRoute) { navigationHasFocus }
     LaunchedEffect(model.page, ready) {
-        if (ready && !navigationHasFocus) {
+        if (ready && !navigationAtEntry) {
             // Wait for lazy items and their focus targets to attach after route entry.
             withFrameNanos { }; withFrameNanos { }
             if (!registry.restore(model)) runCatching { fallback.requestFocus() }

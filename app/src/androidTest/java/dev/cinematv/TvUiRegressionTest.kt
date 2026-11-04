@@ -164,6 +164,7 @@ class TvUiRegressionTest {
             model.navigate(Page.HOME)
             model.updateReducedMotion(false)
         }
+        rule.onNodeWithContentDescription(selected).assertIsFocused()
         recordFrameMetrics()
         val metrics = rule.activity.resources.displayMetrics
         File(directory, "viewport.json").writeText(JSONObject()
