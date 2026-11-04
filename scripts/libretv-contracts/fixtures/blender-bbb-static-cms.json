@@ -1,0 +1,21 @@
+{
+  "code": 1,
+  "msg": "Controlled static protocol fixture; not a dynamic source API",
+  "page": 1,
+  "pagecount": 1,
+  "limit": 1,
+  "total": 1,
+  "list": [
+    {
+      "vod_id": "6402b77c-b61f-4a06-96ca-c8420a2becf4",
+      "vod_name": "Big Buck Bunny 60fps 4K - Official Blender Foundation Short Film",
+      "vod_pic": "",
+      "type_name": "Open animated short",
+      "vod_year": "2008",
+      "vod_remarks": "Controlled static fixture; actual linked file is 240p H264/AAC MP4",
+      "vod_content": "A Blender open animated short, supplied here as one controlled protocol test record. Big Buck Bunny © 2008 Blender Foundation / www.bigbuckbunny.org. CC BY 3.0: https://creativecommons.org/licenses/by/3.0/ . Sunflower version: Janus Bager Kristensen and the credited Sunflower contributors. Retain the complete ending credits. The linked Blender-hosted media is unchanged.",
+      "vod_play_from": "blender-official-mp4",
+      "vod_play_url": "Full film (240p MP4)$https://video.blender.org/object-storage/web_videos/6402b77c-b61f-4a06-96ca-c8420a2becf4-240.mp4"
+    }
+  ]
+}
