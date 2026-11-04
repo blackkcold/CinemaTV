@@ -50,7 +50,10 @@ test('BFF end-to-end: bearer auth, LibreTV search normalization, home, detail an
   process.env.BFF_ACCESS_TOKEN = 'integration-test-long-bearer-key';
   process.env.LIBRETV_PASSWORD = '';
   const { createApp } = await import('./server.mjs?integration=authsearch');
-  const app = await serve(createApp());
+  const bffServer = createApp();
+  bffServer.listen(0, '127.0.0.1');
+  await once(bffServer, 'listening');
+  const app = { server: bffServer, base: `http://127.0.0.1:${bffServer.address().port}` };
   t.after(() => app.server.close());
 
   const withoutToken = await fetch(app.base + '/v1/status');
