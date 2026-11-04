@@ -46,6 +46,11 @@ jobs:
           "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0"
           bash scripts/generate-test-media.sh
           python -m pip install 'Pillow==11.3.0'
+      - name: Compile instrumentation before allocating emulator memory
+        run: |
+          free -m
+          gradle --no-daemon --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process :app:assembleDebug :app:assembleDebugAndroidTest
+          free -m
       - name: Enable KVM
         run: sudo chmod 666 /dev/kvm
       - uses: reactivecircus/android-emulator-runner@v2
@@ -59,7 +64,7 @@ jobs:
           # emulator connection during screenshot readback in this suite.
           emulator-build: '15004761'
           disable-animations: false
-          emulator-options: '-no-window -no-audio -gpu swiftshader -feature -Vulkan -no-snapshot -no-boot-anim -memory 3072'
+          emulator-options: '-no-window -no-audio -gpu swiftshader -feature -Vulkan -no-snapshot -no-boot-anim -memory 2048'
           script: bash scripts/run-device-qa.sh '${{ matrix.size }}' '${{ matrix.density }}' '${{ matrix.classes }}'
 
       - uses: actions/upload-artifact@v4

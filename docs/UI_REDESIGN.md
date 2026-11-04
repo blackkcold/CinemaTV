@@ -80,3 +80,8 @@ runs exhibited renderer stalls and lost emulator connections. Test execution is 
 and partial device captures/logs are recovered on timeout. See Android's official
 [graphics options](https://developer.android.com/studio/run/emulator-acceleration)
 and [emulator troubleshooting](https://developer.android.com/studio/run/emulator-troubleshooting).
+
+Instrumentation APKs are compiled before the emulator starts. Device execution
+uses a 1GB Gradle heap, two workers and a 2GB emulator to avoid competing with the
+compiler's 3GB heap. Live test markers, host memory and failure kernel logs remain
+available if the emulator process disappears before UTP can pull screenshots.
