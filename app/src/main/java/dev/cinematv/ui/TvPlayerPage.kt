@@ -102,6 +102,7 @@ fun TvPlayerPage(model: CinemaViewModel) {
     var interaction by remember(uri) { mutableIntStateOf(0) }
     val rootFocus = remember(uri) { FocusRequester() }
     val playFocus = remember(uri) { FocusRequester() }
+    val panelFocus = remember(uri) { FocusRequester() }
 
     DisposableEffect(player) {
         val listener = object : Player.Listener {
@@ -142,7 +143,11 @@ fun TvPlayerPage(model: CinemaViewModel) {
         }
     }
     LaunchedEffect(controlsVisible, panel) {
-        if (controlsVisible && panel == null) playFocus.requestFocus()
+        when {
+            !controlsVisible -> rootFocus.requestFocus()
+            panel != null -> panelFocus.requestFocus()
+            else -> playFocus.requestFocus()
+        }
     }
 
     val seek: (Long) -> Unit = { delta ->
@@ -269,7 +274,10 @@ fun TvPlayerPage(model: CinemaViewModel) {
                     PlayerPanel.SUBTITLE -> "字幕"
                     PlayerPanel.SPEED -> "播放速度"
                 }, color = Ivory, fontSize = 23.sp)
-                GlassAction("← 返回播放", Modifier.fillMaxWidth().height(45.dp)) { panel = null; interaction++ }
+                GlassAction("← 返回播放",
+                    Modifier.focusRequester(panelFocus).fillMaxWidth().height(45.dp)) {
+                    panel = null; interaction++
+                }
                 if (active == PlayerPanel.SPEED) {
                     listOf(.5f,.75f,1f,1.25f,1.5f,2f).forEach { speed ->
                         GlassAction("${speed}×", Modifier.fillMaxWidth().height(43.dp),
