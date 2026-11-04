@@ -55,6 +55,9 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_2
+          # Android's archived stable build; newer 37.2.13 runners lost the
+          # emulator connection during screenshot readback in this suite.
+          emulator-build: '15004761'
           disable-animations: false
           emulator-options: '-no-window -no-audio -gpu swiftshader -feature -Vulkan -no-snapshot -no-boot-anim -memory 3072'
           script: bash scripts/run-device-qa.sh '${{ matrix.size }}' '${{ matrix.density }}' '${{ matrix.classes }}'

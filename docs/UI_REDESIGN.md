@@ -73,9 +73,10 @@ for failures. It also requires all 14 full-resolution captures, matching viewpor
 metadata, a nonempty focus trace and rendered frame samples. Emulator P95/P99 are
 informational. Golden updates require visual review, not automatic acceptance.
 
-The emulator uses the supported `swiftshader` mode and disables Vulkan for this
-GLES UI suite. `swiftshader_indirect` is deprecated in emulator 36.4.9; the earlier
-37.2.13 CI runs also exhibited stalled renderer jobs. Test execution is bounded
+The emulator is pinned to Android's archived stable 36.4.10 build 15004761,
+uses the supported `swiftshader` mode and disables Vulkan for this GLES UI suite.
+`swiftshader_indirect` is deprecated in emulator 36.4.9; the earlier 37.2.13 CI
+runs exhibited renderer stalls and lost emulator connections. Test execution is bounded
 and partial device captures/logs are recovered on timeout. See Android's official
 [graphics options](https://developer.android.com/studio/run/emulator-acceleration)
 and [emulator troubleshooting](https://developer.android.com/studio/run/emulator-troubleshooting).
