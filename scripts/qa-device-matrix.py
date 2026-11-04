@@ -4,15 +4,15 @@ import json
 import sys
 
 DEVICES = [
-    {"name": "phone", "api": 30, "size": "1080x1920", "density": 420,
+    {"name": "phone", "target": "google_apis", "api": 30, "size": "1080x1920", "density": 420,
      "classes": "dev.cinematv.MobileNavigationSmokeTest,dev.cinematv.TvLaunchSmokeTest,dev.cinematv.MobilePlaybackSmokeTest,dev.cinematv.data.LocalMediaLibraryTest,dev.cinematv.data.RepositoryContractTest,dev.cinematv.MobileGlassButtonTest,dev.cinematv.CinemaBrandStartupTest"},
-    {"name": "tv1080", "api": 33, "size": "1920x1080", "density": 320,
+    {"name": "tv1080", "target": "default", "api": 33, "size": "1920x1080", "density": 320,
      "classes": "dev.cinematv.TvUiRegressionTest,dev.cinematv.GlassMaterialSmokeTest,dev.cinematv.ui.typography.NotoFontsDeviceTest"},
-    {"name": "tv4k", "api": 33, "size": "3840x2160", "density": 640,
+    {"name": "tv4k", "target": "default", "api": 33, "size": "3840x2160", "density": 640,
      "classes": "dev.cinematv.TvUiRegressionTest,dev.cinematv.GlassMaterialSmokeTest,dev.cinematv.ui.typography.NotoFontsDeviceTest"},
     # Minimum-supported Android: offline fonts, glass fallback and brand motion,
     # without duplicating the full navigation/player matrix or skipping AGSL.
-    {"name": "compat26", "api": 26, "size": "1920x1080", "density": 320,
+    {"name": "compat26", "target": "google_apis", "api": 26, "size": "1920x1080", "density": 320,
      "classes": "dev.cinematv.ui.typography.NotoFontsDeviceTest,dev.cinematv.GlassMaterialSmokeTest#materialSurvivesFocusPressReducedMotionMissingArtAndFailure,dev.cinematv.CinemaBrandStartupTest"},
 ]
 

@@ -35,6 +35,41 @@ class NotoTypographyContractTest(unittest.TestCase):
         self.assertFalse((ROOT / 'app/noto-fonts.gradle.kts').exists())
         self.assertIn('noCompress += listOf("ttc", "ttf")', build)
 
+    def test_ci_font_cache_uses_only_exact_lock_and_asset_path(self):
+        expected_key = "noto-fonts-v1-${{ hashFiles('scripts/fonts/noto-fonts.lock.json') }}"
+        for name in ('android.yml', 'tv-smoke.yml'):
+            workflow = (ROOT / '.github/workflows' / name).read_text()
+            blocks = re.findall(
+                r'^      - name: Restore pinned offline Noto fonts\n(.*?)(?=^      - |\Z)',
+                workflow, flags=re.MULTILINE | re.DOTALL)
+            self.assertEqual(len(blocks), 1, name)
+            block = blocks[0]
+            self.assertIn('uses: actions/cache@v4', block)
+            self.assertIn('path: app/build/generated/notoAssets/fonts\n', block)
+            self.assertIn('key: ' + expected_key + '\n', block)
+            self.assertNotIn('restore-keys:', block)
+            self.assertNotIn('if:', block)
+
+    def test_font_cache_does_not_skip_verification_or_standalone_build(self):
+        for name, build_step in (('android.yml', 'Build, lint and test'),
+                                 ('tv-smoke.yml', 'Compile instrumentation before allocating emulator memory')):
+            workflow = (ROOT / '.github/workflows' / name).read_text()
+            verify = '      - name: Verify exact Noto font bytes before further gates\n        run: python3 scripts/fonts/verify-noto-fonts.py\n'
+            self.assertEqual(workflow.count(verify), 1, name)
+            self.assertLess(workflow.index('Restore pinned offline Noto fonts'), workflow.index(build_step))
+            self.assertLess(workflow.index(build_step), workflow.index(verify))
+            block = re.search(r'^      - name: ' + re.escape(build_step) +
+                              r'\n(.*?)(?=^      - |\Z)', workflow,
+                              flags=re.MULTILINE | re.DOTALL).group(1)
+            self.assertNotIn('cache-hit', block)
+            self.assertNotIn('if:', block)
+            self.assertIn(':app:assembleDebug', block)
+            if name == 'tv-smoke.yml':
+                self.assertLess(workflow.index(verify), workflow.index('      - name: Enable KVM'))
+                self.assertIn('  workflow_dispatch:', workflow)
+                self.assertIn('  schedule:', workflow)
+                self.assertIn('  workflow_call:', workflow)
+
     def test_both_surfaces_use_provider_and_font_only_theme_hook(self):
         source = ROOT / 'app/src/main/java/dev/cinematv'
         self.assertIn('CinemaNotoProvider {', (source / 'MainActivity.kt').read_text())

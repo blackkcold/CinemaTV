@@ -11,11 +11,15 @@ import androidx.activity.ComponentActivity
 import androidx.test.platform.app.InstrumentationRegistry
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.platform.testTag
@@ -34,30 +38,55 @@ import org.junit.Test
 class GlassMaterialSmokeTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
 
-    /** Observe a real window frame without forceRedraw, PixelCopy or bitmap readback.
-     * The latch wait runs on the instrumentation thread, never the UI thread.
+    /** Arm before the measured mutation: waiting for idle first can consume its only
+     * frame, and invalidating DecorView alone may leave cached Compose content clean.
+     * No force-redraw, PixelCopy or bitmap readback is used.
      */
-    private fun awaitHardwareFrame() {
-        compose.waitForIdle()
+    private fun renderStage(stage: String, materialDraws: AtomicInteger, mutation: () -> Unit) {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val activity = compose.activity
+        fun foregroundOnMain(): Boolean {
+            val decor = activity.window.decorView
+            return !activity.isFinishing && !activity.isDestroyed && activity.hasWindowFocus() &&
+                decor.isAttachedToWindow && decor.isShown && decor.isHardwareAccelerated
+        }
+        fun foreground(): Boolean {
+            var ready = false
+            instrumentation.runOnMainSync {
+                ready = foregroundOnMain()
+            }
+            return ready
+        }
+        // Wait for this test activity, never dismiss or steal focus from another window.
+        compose.waitUntil(timeoutMillis = 10_000) { foreground() }
+        val previousDraws = materialDraws.get()
         val thread = HandlerThread("glass-smoke-frame").apply { start() }
         val completed = CountDownLatch(1)
+        val callbacks = AtomicInteger()
+        val lastVsync = AtomicLong(-1)
         val requestedAt = System.nanoTime()
         val listener = Window.OnFrameMetricsAvailableListener { _, metrics, _ ->
-            if (metrics.getMetric(FrameMetrics.INTENDED_VSYNC_TIMESTAMP) >= requestedAt) completed.countDown()
+            callbacks.incrementAndGet()
+            val vsync = metrics.getMetric(FrameMetrics.INTENDED_VSYNC_TIMESTAMP)
+            lastVsync.set(vsync)
+            if (vsync >= requestedAt) completed.countDown()
         }
         var registered = false
         try {
             instrumentation.runOnMainSync {
-                val decor = activity.window.decorView
-                check(!activity.isFinishing && !activity.isDestroyed && decor.isAttachedToWindow)
-                check(decor.isHardwareAccelerated) { "Glass draw smoke requires a hardware window" }
+                check(foregroundOnMain()) { "$stage: hardware test activity lost foreground before mutation" }
                 activity.window.addOnFrameMetricsAvailableListener(listener, Handler(thread.looper))
                 registered = true
-                decor.postInvalidateOnAnimation()
             }
-            assertTrue("No completed hardware frame within 10 seconds", completed.await(10, TimeUnit.SECONDS))
+            android.util.Log.i("CinemaTVGlassQa", "Armed frame stage=$stage")
+            mutation() // Includes initial setContent; listener is already installed.
+            compose.waitForIdle()
+            val rendered = completed.await(10, TimeUnit.SECONDS)
+            check(foreground()) { "$stage: test activity lost foreground while awaiting frame" }
+            assertTrue("$stage: no fresh hardware frame in 10s; callbacks=${callbacks.get()}, " +
+                "lastVsync=${lastVsync.get()}, requestedAt=$requestedAt", rendered)
+            assertTrue("$stage: material did not draw on hardware after mutation", materialDraws.get() > previousDraws)
+            android.util.Log.i("CinemaTVGlassQa", "Completed frame stage=$stage callbacks=${callbacks.get()} materialDraws=${materialDraws.get()}")
         } finally {
             if (registered) instrumentation.runOnMainSync {
                 activity.window.removeOnFrameMetricsAvailableListener(listener)
@@ -86,19 +115,25 @@ class GlassMaterialSmokeTest {
         val reduced = mutableStateOf(false)
         val failure = GlassFailureLatch()
         val diagnostics = GlassDrawDiagnostics()
-        compose.setContent {
-            CompositionLocalProvider(LocalGlassBackdrop provides frame.value,
-                LocalGlassFailureLatch provides failure,
-                LocalGlassDrawDiagnostics provides diagnostics,
-                LocalTvEffects provides TvEffects(reduced.value, GlassQuality.ENHANCED)) {
-                Box(Modifier.size(160.dp, 45.dp).testTag("glass")) {
-                    GlassControlMaterial(focused.value, pressed.value, false, false, Modifier.matchParentSize())
+        val materialDraws = AtomicInteger()
+        fun render(stage: String, mutation: () -> Unit) = renderStage(stage, materialDraws, mutation)
+        render("initial") {
+            compose.setContent {
+                CompositionLocalProvider(LocalGlassBackdrop provides frame.value,
+                    LocalGlassFailureLatch provides failure,
+                    LocalGlassDrawDiagnostics provides diagnostics,
+                    LocalTvEffects provides TvEffects(reduced.value, GlassQuality.ENHANCED)) {
+                    Box(Modifier.size(160.dp, 45.dp).testTag("glass")) {
+                        GlassControlMaterial(focused.value, pressed.value, false, false,
+                            Modifier.matchParentSize().drawWithContent {
+                                drawContent()
+                                if (drawContext.canvas.nativeCanvas.isHardwareAccelerated) materialDraws.incrementAndGet()
+                            })
+                    }
                 }
             }
         }
-        fun render() { awaitHardwareFrame() }
-        render()
-        compose.runOnIdle { focused.value = true }; render()
+        render("focused") { compose.runOnIdle { focused.value = true } }
         compose.runOnIdle {
             assertFalse("Shader failed before intentional failure", failure.failed)
             if (Build.VERSION.SDK_INT >= 33) assertTrue(
@@ -107,24 +142,24 @@ class GlassMaterialSmokeTest {
             )
         }
         val focusedDraws = compose.runOnIdle { diagnostics.successfulLensDraws }
-        compose.runOnIdle { pressed.value = true }; render()
+        render("pressed") { compose.runOnIdle { pressed.value = true } }
         val pressedDraws = compose.runOnIdle {
             if (Build.VERSION.SDK_INT >= 33) assertTrue(diagnostics.successfulLensDraws > focusedDraws)
             diagnostics.successfulLensDraws
         }
-        compose.runOnIdle { pressed.value = false; reduced.value = true }; render()
+        render("reduced-motion") { compose.runOnIdle { pressed.value = false; reduced.value = true } }
         compose.runOnIdle { assertEquals(pressedDraws, diagnostics.successfulLensDraws) }
-        compose.runOnIdle { frame.value = null; reduced.value = false }; render()
+        render("missing-art") { compose.runOnIdle { frame.value = null; reduced.value = false } }
         compose.runOnIdle { assertEquals(pressedDraws, diagnostics.successfulLensDraws) }
-        compose.runOnIdle {
+        render("latched-failure") { compose.runOnIdle {
             failure.attempt<Unit> { throw IllegalArgumentException("simulated shader failure") }
             frame.value = GlassBackdropFrame(bitmap, Offset.Zero, Size(640f, 360f))
-        }; render()
-        compose.runOnIdle {
+        } }
+        render("unfocused") { compose.runOnIdle {
             assertTrue(failure.failed)
             assertEquals(pressedDraws, diagnostics.successfulLensDraws)
             focused.value = false
-        }; render()
+        } }
         // Coil owns real frames; this fixture remains alive through composition disposal.
     }
 }

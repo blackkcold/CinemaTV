@@ -34,11 +34,19 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
+      - name: Restore pinned offline Noto fonts
+        uses: actions/cache@v4
+        with:
+          path: app/build/generated/notoAssets/fonts
+          # Font bytes are platform-independent; Ubuntu APK and device jobs share this key.
+          key: noto-fonts-v1-${{ hashFiles('scripts/fonts/noto-fonts.lock.json') }}
       - name: Build, lint and test
         run: |
           bash scripts/generate-test-media.sh
           gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug
           npm --prefix backend/tv-bff test
+      - name: Verify exact Noto font bytes before further gates
+        run: python3 scripts/fonts/verify-noto-fonts.py
       - name: Require executed Android JUnit tests
         run: |
           find app/build/test-results/testDebugUnitTest -name 'TEST-*.xml' -print -quit | grep -q . || { echo "Android tests absent (NO-SOURCE)"; exit 1; }

@@ -75,3 +75,22 @@ npm --prefix backend/tv-bff test
 豆瓣 TOP250 / 评分筛选要求明确来源、有效许可到期时间与实际排名。可以接入运营者有权使用的目录，或在取得适用书面授权后启用独立的 BFF 获取模块。获取模块默认关闭，不附带抓取数据，且尚未进行获准的真实端点验证；不能把配置声明当作授权证明。客户端区分完整、部分、旧缓存及访问限制，不会将 TMDB 或 LibreTV 评分标为豆瓣。配置契约见 [BFF 文档](../backend/tv-bff/README.md)，来源审查及边界见[豆瓣获取说明](DOUBAN_ACQUISITION.md)。
 
 本地数据库、设置和播放链接排除于 Android 云备份及设备迁移；当前没有跨设备同步或导出恢复功能。卸载仍会删除本地数据。
+
+
+### Device QA system-image provenance
+
+TV1080 and TV4K acceptance use the official AOSP/default Android 33 x86_64
+system image (`system-images;android-33;default;x86_64`). Phone API30 and
+compatibility API26 retain `google_apis`. API levels, viewport sizes, density,
+2048 MB emulator memory, Lavapipe configuration, UI assertions and golden
+thresholds are unchanged. AOSP uses its own launcher and IME; the tests still
+require actual IME visibility, submission, dismissal and restored window geometry.
+
+Earlier Google-image TV evidence is a different environment and does not establish
+acceptance for this AOSP matrix. This change avoids the observed NexusLauncher
+cold-boot ANR and Google background-startup workload; it does not suppress ANRs or
+guarantee a pass. A recorded ANR in a fresh emulator boot fails setup before tests.
+The official Google image index lists Android 33 default x86_64 revision 2
+(`x86_64-33_r02.zip`, 694005732 bytes, SHA1
+`d4698590184a21fe1e8754284130ad3006b5fc79`), verified on 2026-11-04:
+https://dl.google.com/android/repository/sys-img/android/sys-img2-3.xml
