@@ -33,14 +33,17 @@ class TvUiRegressionTest {
         val trace = rule.onAllNodes(isFocused()).fetchSemanticsNodes().joinToString { it.config.toString() }
         File(directory, "focus-trace.txt").appendText("key=$code route=${model.focusRoute}\n$trace\n")
     }
-    private fun screenshot(name: String) {
+    private fun screenshot(name: String, waitForArt: Boolean = true) {
         rule.waitForIdle()
-        if (model.page != Page.PLAYER) {
+        try {
+          if (waitForArt && model.page != Page.PLAYER) {
             val art = (if (model.page == Page.DETAIL) model.selected else model.focused ?: model.featured.firstOrNull())?.backdrop
             if (!art.isNullOrBlank()) rule.waitUntil(8000) { rule.activity.decodedScene == art }
+          }
+        } finally {
+          val bitmap = rule.onRoot().captureToImage().asAndroidBitmap()
+          File(directory, "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
         }
-        val bitmap = rule.onRoot().captureToImage().asAndroidBitmap()
-        File(directory, "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
     @Before fun connectFixture() {
         server = UiFixtureServer(InstrumentationRegistry.getInstrumentation().context)
@@ -54,7 +57,7 @@ class TvUiRegressionTest {
         rule.waitForIdle()
     }
     @After fun exportFinalState() {
-        runCatching { screenshot("99-final-state") }.onFailure {
+        runCatching { screenshot("99-final-state", waitForArt = false) }.onFailure {
             File(directory, "capture-error.txt").writeText(it.stackTraceToString())
         }
         if (::server.isInitialized) server.close()

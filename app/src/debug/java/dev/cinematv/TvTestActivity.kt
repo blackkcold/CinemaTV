@@ -11,7 +11,7 @@ import dev.cinematv.ui.tv.TvRootApp
 /** Non-exported debug-only host. Fixtures live exclusively in androidTest. */
 class TvTestActivity : ComponentActivity() {
     val model: CinemaViewModel by viewModels()
-    var decodedScene: String? = null
+    @Volatile var decodedScene: String? = null
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         @Suppress("DEPRECATION")

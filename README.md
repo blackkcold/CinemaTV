@@ -1,94 +1,95 @@
 # CinemaTV
 
-**CinemaTV** is an open-source, native Android TV / Google TV and Android phone video browsing and playback client for a **self-hosted LibreTV** instance.
+A native Android TV / Google TV and Android phone client for a self-hosted LibreTV instance.
+Kotlin, Jetpack Compose for TV and Media3; separate TV and touch layouts.
 
-**Release status: v0.2.0 Preview (debug-signed, when its CI finishes)**. Main branch is not hardware-certified. Stable release is blocked by [Release Gate #1](https://github.com/blackkcold/CinemaTV/issues/1).
+**Main branch: immersive UI rebuild for v0.4.0 Preview.** Releases are debug-signed
+previews. Physical TV certification and production signing remain tracked in
+[Release Gate #1](https://github.com/blackkcold/CinemaTV/issues/1).
 
-[Download preview APK from Releases](https://github.com/blackkcold/CinemaTV/releases/tag/v0.3.0-preview) · [CI builds](https://github.com/blackkcold/CinemaTV/actions/workflows/android.yml) · [中文安装与设备测试指南](docs/INSTALL.md) · [Release readiness tracker](https://github.com/blackkcold/CinemaTV/issues/1)
+[Download releases](https://github.com/blackkcold/CinemaTV/releases) ·
+[Build and QA](https://github.com/blackkcold/CinemaTV/actions/workflows/android.yml) ·
+[中文安装指南](docs/INSTALL.md) · [UI rebuild decisions](docs/UI_REDESIGN.md)
 
-## Features available in preview
+## Features
 
-- **Native TV presentation**: immersive cinematic hero, dark/frosted-glass top navigation, landscape content rails, center-focused poster Cover Flow, movies, series, search, library, settings and live.
-- **LibreTV protocol adapter**: auth/session cookie, recommended movies/TV, aggregate search, detail/episodes, optional custom CMS sources and M3U subscriptions.
-- **Media3**: integrated ExoPlayer with seek, per-episode resume, TV audio/subtitle/video track panels, speed selection, decoder fallback, 256 MiB bounded VOD cache and limited same-title/same-episode source failover.
-- **Live**: M3U discovery with XMLTV now/next and a future-program guide.
-- **Local library**: five-state shelves, favorites, watched items and per-episode progress.
-- **Optional Node 22 BFF**: bearer-authenticated API with optional TMDB title/year-verified 16:9 backdrops; requires self-managed service configuration. No content feeds are included.
-- **Continuous verification**: actual Android JUnit tests, AndroidTest APK compile, Node BFF tests, APK archive/signature validation and a separate emulator smoke workflow.
+| Area | Behavior |
+|---|---|
+| TV browsing | Full-screen decoded scene, floating navigation, responsive hero, landscape rails and center-focused discovery |
+| Movies / series | Distinct poster-wall and landscape-card layouts; filters use available category/year/rating data |
+| Focus | Route/rail/title identity, scroll restoration, controlled horizontal traversal, dialog and player return targets |
+| Artwork | Conservative title/year matching, bounded cache/prefetch, validated landscape dimensions, original fallback |
+| Glass / motion | Basic, still-image backdrop and opt-in enhanced highlight modes; low-memory/API fallback and reduced motion |
+| Search / library | Progressive NDJSON results, search history, continue watching and five library states |
+| Playback | Media3, episode resume and measured duration, floating TV controls, track/speed panels, background pause |
+| Live | M3U subscriptions, channel groups, XMLTV current/next and scrollable future guide |
+| Phone | Five tabs, separate touch screens and fitted portrait/landscape playback with rotation continuity |
+| Service | Direct LibreTV auth/session/source adapter; optional independently hosted metadata BFF |
 
-## Build
+The APK contains no public content feeds, credentials or copyrighted posters.
+UI QA uses fictional titles, original vector artwork and a synthetic H.264/AAC
+clip confined to the instrumentation APK.
 
-Requirements: JDK 17, Android SDK compileSdk 36 / build tools 36.0.0, Gradle 8.13 (or use GitHub Actions).
+## Build and test
+
+JDK 17, Gradle 8.13, Android SDK 36 / build tools 36.0.0.
 
 ```bash
-gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug
+gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug
 npm --prefix backend/tv-bff test
 ```
 
-APK output: `app/build/outputs/apk/debug/app-debug.apk`.
+APK: `app/build/outputs/apk/debug/app-debug.apk`.
+
+The Actions build validates the APK archive and signature. UI QA covers a portrait
+phone (API 30) plus 1920×1080 and 3840×2160 TV UI viewports (API 33). `[ui-qa]`
+commits run the full instrumentation matrix; `[preview-release]` additionally
+publishes only after build and all UI jobs pass **at that commit**. Screenshots,
+JUnit results and informational emulator frame metrics accompany the preview.
 
 ## Setup
 
-1. Install the preview APK on an Android TV / Google TV device (API 26+).
-2. In Settings, supply the URL for **your own** LibreTV server and sign in if required.
-3. Use the LibreTV server's configured CMS sources or add your own authorized sources.
-4. Browse, search and play content that you are lawfully permitted to access.
-5. For live TV, configure your own M3U/XMLTV subscriptions.
+1. Install on Android 8.0 / API 26 or later.
+2. Open Settings and connect your self-hosted LibreTV instance; sign in when required.
+3. Use the server's configured sources or add your authorized CMS / M3U sources.
+4. Optionally configure a TV BFF with an operator-managed TMDB token for matched landscape art.
 
-**No media streams or copyrighted posters are bundled with this repository.** See the [installation guide](docs/INSTALL.md).
+[Full installation and device QA guide](docs/INSTALL.md).
 
 ## Architecture
 
-```text
-Native TV UI (Compose)
-  ├─ CinemaViewModel / focus-aware navigation
-  ├─ LibreTvRepository ──────────────> LibreTV backend
-  └─ Media3 playback + bounded cache
-Optional Node TV-BFF ───────────────> LibreTV backend
-```
+- [`ui/tv/`](app/src/main/java/dev/cinematv/ui/tv): design tokens, scene/glass/cards,
+  focus registry, floating navigation and independent TV pages.
+- [`ui/mobile/`](app/src/main/java/dev/cinematv/ui/mobile): Material 3 touch UI.
+- `CinemaViewModel`: shared presentation, navigation and local-library state.
+- `data/`: sole LibreTV protocol decoding and persistence boundary.
+- `playback/` and `ui/TvPlayerPage.kt`: player ownership, lifecycle and TV overlay.
+- [`backend/tv-bff/`](backend/tv-bff): optional dependency-free Node metadata adapter.
 
-See [architecture notes](docs/ARCHITECTURE.md) and [handoff rules](AGENTS.md).
+[Architecture](docs/ARCHITECTURE.md) · [Engineering constraints](AGENTS.md).
 
-## Known limitations
+## Current limits
 
-The current UI uses performant translucent/frosted surfaces rather than a fully validated real-time optical Liquid Glass shader. It has not been visually signed off against the provided screenshots on actual TVs. It does **not** yet offer a full custom TV subtitle/audio-track panel, multi-backend playback, device pairing, metadata enrichment, smart source health dashboard, or cross-device sync. The preview has not passed a hardware compatibility matrix or production key signing. These items are tracked in [issue #1](https://github.com/blackkcold/CinemaTV/issues/1).
+The preview is not a physical-device or production-signing certification. True
+framebuffer optical refraction, four-hour playback/codec/HDR hardware coverage,
+Room migration, cross-device sync, QR pairing and additional playback engines remain
+outside this UI release. Still-image glass never samples a video Surface.
 
-## Licensing and safety
+## Original branding
 
-CinemaTV-authored code is under the [MIT License](LICENSE). It is an independent original Android client; no DpadTV, FongMi or LibreTV code is copied into this repository. LibreTV and third-party libraries have independent licenses. Public deployment should use HTTPS; never check credentials, tokens, private signing keys or user source subscriptions into GitHub.
+Editable SVGs live in [`design/branding/`](design/branding/). The black motion-blur
+app icon, white player glyph and centered 320×180 TV banner remain unchanged.
 
-## Features added since v0.1.0 Preview
-
-Main includes experimental opt-in Android 13+ AGSL specular glass, progressive
-LibreTV NDJSON search, remote focus restoration, source probes, error classification,
-enhanced live EPG, five-state library and a QA-gated release signing workflow.
-Code compilation is not a replacement for physical TV acceptance testing.
-
-**Stable release is not certified.** True backdrop refraction, reference-image
-pixel matching, additional hardware media compatibility, secure QR pairing,
-full secondary playback engine, long-run stability tests and production signing
-remain open in Release Gate #1.
-
-### TMDB / metadata notice
-This product may use the TMDB API through an independently configured BFF but
-is not endorsed or certified by TMDB. Users/operators must follow TMDB's
-attribution, API and image-use conditions. No TMDB access key is bundled.
-
-## Brand assets and phone support (development)
-
-- All source graphics are **original editable SVG** under [`design/branding/`](design/branding/).
-- The app icon is a white minimal player glyph on a predominantly black field with restrained horizontal motion-blurred light streaks.
-- The **TV banner is 320 × 180 px at runtime**, designed from a 1280 × 720 SVG. Both the player symbol and CinemaTV wordmark use the precise horizontal centerline (`x=640` in source).
-- Android launchers use adaptive icon foreground/background resources; TV launchers use a PNG banner. Android PNGs are regenerated automatically when SVG sources change.
-- Phone builds offer a touch-first UI with portrait orientation, home, browse, search, detail, playback, live, library and settings. The same backend credentials and player engine are shared with TV.
-- Device selection is based on Android television UI mode; a phone is **not** shown the TV D-pad layout.
-- Android emulator smoke tests validate launch/navigation. This does not certify any physical TV, codec, GPU or full liquid-glass implementation.
-
-See [branding guidance](design/branding/README.md) and [installation guide](docs/INSTALL.md). Stable release is still gated by physical hardware certification.
-
-## New branding previews
-
-| Standard app launcher icon | Center-aligned Android TV banner |
+| App icon | TV banner |
 |---|---|
-| ![CinemaTV launcher icon](app/src/main/res/drawable-nodpi/ic_launcher_legacy.png) | ![CinemaTV TV banner](app/src/main/res/drawable-nodpi/tv_banner.png) |
+| ![CinemaTV app icon](app/src/main/res/drawable-nodpi/ic_launcher_legacy.png) | ![CinemaTV TV banner](app/src/main/res/drawable-nodpi/tv_banner.png) |
 
+## Licensing
+
+CinemaTV-authored code and test art use the [MIT License](LICENSE). No DpadTV,
+FongMi or LibreTV implementation source is copied. Third-party libraries and
+metadata services retain their own licenses and attribution conditions.
+
+This product may use the TMDB API through an independently configured BFF but
+is not endorsed or certified by TMDB. No API key is bundled. Public service
+connections should use HTTPS.

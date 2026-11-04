@@ -15,8 +15,8 @@ class UiFixtureServer(private val context: Context) : AutoCloseable {
     private val workers = Executors.newCachedThreadPool()
     @Volatile private var running = true
     val base = "http://127.0.0.1:${server.localPort}"
-    val poster = "android.resource://dev.cinematv/drawable/qa_poster"
-    fun backdrop(index: Int) = "android.resource://dev.cinematv/drawable/qa_scene_${if (index % 2 == 0) "warm" else "cool"}"
+    val poster = "android.resource://dev.cinematv/${R.drawable.qa_poster}"
+    fun backdrop(index: Int) = "android.resource://dev.cinematv/${if (index % 2 == 0) R.drawable.qa_scene_warm else R.drawable.qa_scene_cool}"
     private val names = listOf("旷野之声", "蓝色回响", "远行的人", "深海来信", "山间一日", "光的方向")
     fun title(index: Int, tv: Boolean = false): String =
         (if (tv) "夜航计划" else names[index % names.size]) + if (index >= (if (tv) 1 else 6)) " · ${index + 1}" else ""

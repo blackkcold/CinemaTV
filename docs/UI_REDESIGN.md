@@ -34,3 +34,26 @@ emulator evidence and remaining physical-device limits are recorded at release.
 Official API references reviewed:
 - https://developer.android.com/training/tv/playback/compose/lists
 - https://developer.android.com/develop/ui/compose/touch-input/focus/focus-restoration
+
+## Implemented structure
+
+The legacy `Pages.kt` has been retired. TV routes now use the new theme,
+composition-local layout/effects policy, live focus registry, full scene and
+independent pages. Player and mobile layouts share business state while keeping
+input and rendering behavior separate. Progress records accept new duration and
+art fields without invalidating older records.
+
+## Automated acceptance
+
+- JVM: focus memory, scroll state, metadata identity, catalog filtering, true
+  duration progress and graphics fallback policy.
+- BFF: protocol/auth integration, exact title/year matching and ambiguity rejection.
+- TV: default focus, repeated horizontal moves across viewport edges, offscreen
+  return, title/detail selection, library dialog, catalog/discovery/search/live/
+  settings, playback panel Back, saved duration/position and frame sample export.
+- Phone: launcher/banner, portrait navigation and playback across rotation.
+- Scene capture waits for the requested art to decode. UTP exports screenshots
+  before uninstalling test packages. Reviewed original-fixture PNGs are the visual
+  regression baseline; Apple screenshots are not used as copyrighted pixel goldens.
+
+Physical hardware and signed-stable gates stay open until measured evidence exists.

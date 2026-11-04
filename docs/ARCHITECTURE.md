@@ -1,51 +1,79 @@
 # CinemaTV architecture
 
-## Intent and provenance
-The project is a clean-room Android TV application. DpadTV and FongMi are architecture references only; their source files are NOT imported. LibreTV remains a separately deployed upstream service.
+## Boundaries
 
-## Layers
-- Compose presentation + TV focus components
-- CinemaViewModel as application state and navigation owner
-- LibreTvRepository as sole LibreTV protocol boundary
-- Media3 ExoPlayer as independent playback owner
-- Optional TV-BFF with self-hosted TMDB exact-match metadata enrichment
+CinemaTV is an original MIT-licensed native client. LibreTV remains a separately
+deployed service. Source JSON parsing stays in `data/`; TV and mobile presentations
+share the ViewModel, domain identity, repository and playback factory.
 
-## API contract verified against LibreSpark/LibreTV
-- GET /api/status -> passwordRequired, verified, defaultSources[], defaultLiveSources[]
-- POST /api/auth {password} -> Set-Cookie
-- GET /api/douban?type=movie|tv -> {items:[{id,title,cover,rating}]}
-- POST /api/search {wd,sources,filterAdult} -> {list,failures}
-- GET /api/detail?id=<vodId>&source=<encoded JSON config> -> {episodes,videoInfo}
-- GET /api/live/playlist?url=<encoded M3U URL> -> {channels,groups}
-- GET /api/live/epg?url=<xmltv>&channel=<tvgId> -> {programs,current,next}
+| Layer | Responsibility |
+|---|---|
+| `ui/tv/design` | TV theme, constraint-based dp dimensions, motion and conservative effects policy |
+| `ui/tv/components` | Validated scene, bounded still-image glass, focusable cards, rails and floating navigation |
+| `ui/tv/focus` | Live requester registry; no View references escape composition |
+| `ui/tv/pages` | Independent home, discovery, catalogs, search, details, live, library and settings |
+| `ui/mobile` | Touch Material 3 screens and portrait/landscape video presentation |
+| `CinemaViewModel` | Routes, presentation state, service jobs and library updates |
+| `FocusCoordinator` | Logical item keys and list/grid scroll positions per route/region/title |
+| `data` | LibreTV schemas, authentication, source identity, metadata cache and local records |
+| `playback` | Media3 construction, bounded cache and foreground/background lifecycle |
+| `ui/TvPlayerPage.kt` | TV video Surface and remote controller/track panel ownership |
+| `backend/tv-bff` | Independently configured TMDB exact-match metadata adapter |
 
-## Privacy
-- No server credentials embedded in APK.
-- Password is sent only on explicit submit and never persisted.
-- Session cookie kept in memory; re-login after process death.
-- Server URL and user-managed sources stored in local preferences.
-- Avoid sending source URLs to third-party metadata services.
-- HTTP is supported only for private/self-hosted setups at the user's risk; use HTTPS in production.
+## Rendering
 
-## Functional specification
-Home, explore, movies, series, search, detail, player, live, library and settings routes. Material-like remote focus and Back behavior; no touch dependencies.
+A scene validates landscape aspect and decoded size before swapping; it keeps the
+previous decoded still during loading. Posters remain posters. Missing art uses
+original atmospheric Canvas art. Adjacent still prefetch is bounded and disabled
+in basic mode. Glass samples only the same still, clipped to a small surface;
+video Surfaces are never blurred or sampled. AGSL highlights are explicit opt-in,
+with API/memory/reduced-motion fallback.
 
-## Known scope gaps
-This source tree is an implementation in progress, not a production-certified TV product. Advanced real-time refraction, metadata reconciliation, cross-device sync, automatic source failover, codec fallback and DRM are not yet implemented. The repository CI status is authoritative for compile success.
+TV dimensions derive from dp constraints rather than hard-coded 1920px. Five main
+navigation entries and separate tools retain safe screen gutters. Movies and series
+share card behavior but have different compositions.
 
-## Development architecture additions
+## Focus and state
 
-- **Domain matching:** conservative same-title/same-year checks prevent false
-  cross-origin media switching and deduplicate progressive search results.
-- **Media3 controls:** Compose owns D-pad controls while PlayerView owns the
-  video surface. Never blur Media3's video Surface.
-- **Backdrop:** 16:9 metadata is optional and supplied by a self-hosted BFF
-  using operator-managed TMDB credentials. Client BFF access token remains
-  in memory, not in plaintext preferences.
-- **Optical sheen:** Android 13+ AGSL highlights are opt-in and are NOT
-  equivalent to realtime backdrop sampling/refraction. Low-end fallback is
-  a static gradient.
-- **Persistence:** current bookmarks/source/library records use Android
-  SharedPreferences; Room and cross-device synchronization remain release gaps.
-- **CI:** Android JVM tests and AndroidTest compilation are mandatory; emulator
-  and real-TV hardware validation are separately tracked.
+The root owns a live requester registry. Logical focus and scroll bookmarks live
+in the ViewModel's `FocusCoordinator`; title sessions isolate detail state from
+other works. Stable provider/id keys survive progressive search and metadata
+updates. Rails own horizontal key traversal, bringing offscreen targets into the
+lazy viewport before requesting focus. Vertical rows retain their focus groups.
+Dialogs and player panels restore their actual trigger. TV controls remain
+focusable in touch-capable emulator environments; phone UI stays independent.
+
+## LibreTV contract
+
+- `GET /api/status`: password/verification state and source configurations
+- `POST /api/auth`: explicit password submit and in-memory session cookie
+- `GET /api/douban?type=movie|tv`: recommendations; optional supplied art/metadata
+- `POST /api/search[?stream=1]`: aggregate JSON or progressive NDJSON search
+- `GET /api/detail?id=...&source=...`: episode URLs and work information
+- `GET /api/live/playlist?url=...`: M3U channels
+- `GET /api/live/epg?url=...&channel=...`: XMLTV programs
+
+The optional BFF receives only title, year and type for metadata. It rejects
+ambiguous matches and absent requested release years; image paths are validated.
+Client metadata cache is bounded with positive/negative expiry. Tokens remain in
+memory. No source or playback URLs are sent to TMDB.
+
+## Playback and persistence
+
+A player is created per playback URI, paused when the activity stops and released
+on disposal. Resume follows episode identity. Measured duration is persisted with
+position; unknown duration never yields a made-up percentage. Main library,
+history and preferences remain backward-compatible SharedPreferences records
+with optional added fields. Media3 VOD cache is capped at 256 MiB; live bypasses it.
+
+## QA and release
+
+CI runs JVM/BFF tests, AndroidTest compilation, Lint and APK archive/signature
+verification. Full UI QA runs phone and two TV viewports with a local protocol
+fixture, original art, synthetic H.264/AAC media and screenshot/frame evidence.
+UTP's additional-output directory retains files before APK uninstall. Preview
+publishing depends on build and UI jobs for the exact commit.
+
+Physical TV, low-end SoC, HDR/codec breadth, long soak, reference fidelity and
+production signing are separately tracked in `RELEASE_CHECKLIST.md`; emulator
+frame timings are evidence, not hardware certification.

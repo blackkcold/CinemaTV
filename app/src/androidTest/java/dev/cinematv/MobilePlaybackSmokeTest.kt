@@ -41,6 +41,7 @@ class MobilePlaybackSmokeTest {
         val video = rule.onNodeWithContentDescription("视频画面").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
         val root = rule.onRoot().fetchSemanticsNode().boundsInRoot
         assertTrue(video.height <= root.height + 1 && video.width <= root.width + 1)
+        rule.onNodeWithContentDescription("视频画面").performTouchInput { click() }
         capture("mobile-player-landscape")
         rule.onNodeWithText("← 返回").performClick()
         rule.runOnIdle {
