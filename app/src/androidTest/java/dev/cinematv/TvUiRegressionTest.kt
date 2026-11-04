@@ -56,7 +56,8 @@ class TvUiRegressionTest {
             val target = if (rule.onAllNodes(isDialog()).fetchSemanticsNodes().isNotEmpty()) rule.onNode(isDialog()) else rule.onRoot()
             target.performKeyInput { pressKey(composeKey) }
         }
-        rule.waitForIdle()
+        // Semantics fetch already waits for Compose and Android drawing to idle.
+        // A separate wait here repeats that barrier for every remote event.
         val trace = rule.onAllNodes(isFocused()).fetchSemanticsNodes().joinToString { it.config.toString() }
         File(directory, "focus-trace.txt").appendText("key=$code route=${model.focusRoute}\n$trace\n")
     }
@@ -74,7 +75,6 @@ class TvUiRegressionTest {
     private fun awaitBundledFonts() {
         rule.waitUntil(15000) { rule.activity.bundledFontsReady || rule.activity.fontLoadFailures.isNotEmpty() }
         assertTrue("Bundled Noto failed: ${rule.activity.fontLoadFailures}", rule.activity.bundledFontsReady)
-        rule.waitForIdle()
     }
     private fun awaitPlatformImeVisible(stage: String) {
         // The editor is already composed/focused before this call. IME startup is
@@ -133,7 +133,8 @@ class TvUiRegressionTest {
     }
     private fun captureWindow(): Bitmap {
         awaitBundledFonts()
-        rule.waitForIdle()
+        // This synchronized root fetch also settles any font-driven composition.
+        // TvWindowCapture still requires its own actual rendered-frame fence.
         val root = rule.onRoot().fetchSemanticsNode()
         check(root.positionInWindow.x == 0f && root.positionInWindow.y == 0f) {
             "Expected a full-screen Compose root"
@@ -381,20 +382,28 @@ class TvUiRegressionTest {
             val value = metrics.getMetric(FrameMetrics.TOTAL_DURATION) / 1000000.0
             if (value > 0) frames.add(value)
         }
-        rule.runOnIdle { rule.activity.window.addOnFrameMetricsAvailableListener(listener, Handler(thread.looper)) }
-        repeat(8) {
-            key(KeyEvent.KEYCODE_DPAD_RIGHT)
-            key(KeyEvent.KEYCODE_DPAD_DOWN)
-            key(KeyEvent.KEYCODE_DPAD_LEFT)
-            key(KeyEvent.KEYCODE_DPAD_UP)
+        // The preceding focus assertion and each key's focus trace synchronize
+        // the UI. Listener bookkeeping needs only the UI thread, not extra frames.
+        try {
+            rule.runOnUiThread { rule.activity.window.addOnFrameMetricsAvailableListener(listener, Handler(thread.looper)) }
+            repeat(8) {
+                key(KeyEvent.KEYCODE_DPAD_RIGHT)
+                key(KeyEvent.KEYCODE_DPAD_DOWN)
+                key(KeyEvent.KEYCODE_DPAD_LEFT)
+                key(KeyEvent.KEYCODE_DPAD_UP)
+            }
+        } finally {
+            try {
+                rule.runOnUiThread { rule.activity.window.removeOnFrameMetricsAvailableListener(listener) }
+            } finally {
+                thread.quitSafely(); thread.join(2000)
+            }
         }
-        rule.runOnIdle { rule.activity.window.removeOnFrameMetricsAvailableListener(listener) }
-        thread.quitSafely(); thread.join(2000)
         val values = synchronized(frames) { frames.toList().sorted() }
         android.util.Log.i("CinemaTVQa", "frame sample complete: ${values.size} frames")
         assertTrue("Frame evidence must contain rendered frames", values.isNotEmpty())
         File(directory, "frames.json").writeText(JSONObject().put("frames", values.size)
             .put("p95Ms", values[((values.size - 1) * .95).toInt()]).put("p99Ms", values[((values.size - 1) * .99).toInt()])
-            .put("over16_7ms", values.count { it > 16.7 }).put("renderer", "Android emulator / Lavapipe (CI configuration; runtime GPU not queried); informational, not hardware certification").toString(2))
+            .put("over16_7ms", values.count { it > 16.7 }).put("renderer", "Android emulator / software renderer; see emulator launch log for actual GPU; informational, not hardware certification").toString(2))
     }
 }
