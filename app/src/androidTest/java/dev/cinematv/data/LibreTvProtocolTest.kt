@@ -53,11 +53,12 @@ class LibreTvProtocolTest {
             override fun getSharedPreferences(name: String, mode: Int): SharedPreferences =
                 context.getSharedPreferences(prefName, mode)
         }
-        repo = LibreTvRepository(isolated, LocalMediaLibrary({ db }) {
-            LegacyLibraryImport(emptyList(), emptyList(), emptyList())
-        }).apply {
-            configureServer(server.base)
-            addSource("Fixture source", "${server.base}/provider")
+        repo = LibreTvRepository(isolated, LocalMediaLibrary(
+            databaseProvider = { db },
+            legacyProvider = { LegacyLibraryImport(emptyList(), emptyList(), emptyList()) }
+        )).apply {
+            configureServer(this@LibreTvProtocolTest.server.base)
+            addSource("Fixture source", "${this@LibreTvProtocolTest.server.base}/provider")
         }
     }
 
