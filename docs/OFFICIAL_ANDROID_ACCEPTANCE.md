@@ -1,6 +1,6 @@
 # Isolated official LibreTV Android acceptance
 
-This gate is prepared, **not yet executed on Android**. The separate official positive-protocol run 41905547692 passed 27 assertions, but it does not substitute for this gate.
+At preparation, this gate had **not yet executed on Android**. Its actual outcome must come from the release's linked full-device run and `official-android-result.json`, not from this design description. The separate official positive-protocol run 41905547692 passed 27 assertions, but it does not substitute for this gate.
 
 `tv-smoke.yml` includes `OfficialLibreTvPlaybackAcceptanceTest` on phone/API 30 and TV 1080p/API 33 only. The 4K/API 33 and compatibility/API 26 jobs remain offline with respect to this extra integration. The matrix otherwise retains existing navigation, focus and synthetic playback coverage.
 

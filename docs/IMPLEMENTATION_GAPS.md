@@ -17,7 +17,52 @@ progressive search, provenance-aware filtering, capacity budgets, approved visua
 assets and regional offline Noto typography are implemented. The issues below do
 not imply those existing capabilities are placeholders.
 
-## Product gaps to close
+## Follow-on implementation snapshot (2026-11-04, 20:35 UTC)
+
+The list below is the original audit, retained to explain why work was needed. It
+is not a statement that those gaps remain unchanged.
+
+- Episode identity/quarantine: [PR14](https://github.com/blackkcold/CinemaTV/pull/14),
+  merged after Android build/Lint/JVM checks. Unknown legacy positional records are
+  preserved without speculative transfer. Room runtime regressions are queued below.
+- Bounded source resolution and protocol handling:
+  [PR15](https://github.com/blackkcold/CinemaTV/pull/15), merged after build/Lint/JVM
+  checks, including real stalled-socket cancellation tests. Android loopback protocol
+  scenarios are registered for the combined device gate.
+- Ordinary catalog paging and library cleanup controls:
+  [PR16](https://github.com/blackkcold/CinemaTV/pull/16), merged after build/Lint/JVM
+  checks. Partial/expired-page and intentional cleanup UI tests are registered.
+- Explicit work/season/source navigation:
+  [PR17](https://github.com/blackkcold/CinemaTV/pull/17), merged after build/Lint/JVM
+  checks. Unknown identity stays unknown. Manual local associations are implemented
+  separately in [PR21](https://github.com/blackkcold/CinemaTV/pull/21), with full-group
+  stale-evidence checks, reversible overlay and source-review fixes. They remain
+  draft pending Android acceptance, not assumed complete from host tests.
+- Identity-safe playback recovery and stale checkpoint ownership:
+  [PR18](https://github.com/blackkcold/CinemaTV/pull/18), merged after build/Lint/JVM
+  checks. No automatic cross-provider progress guessing remains.
+- A newly found automatic unlicensed `/api/douban` fallback and transport-labeled
+  scores are removed in [PR20](https://github.com/blackkcold/CinemaTV/pull/20).
+  Android build/Lint/JVM checks passed; merge is held until actual combined device
+  acceptance. Local personalized records and configured catalog services remain.
+- [PR19](https://github.com/blackkcold/CinemaTV/pull/19) adds a real unmodified
+  LibreTV 2.21.1 contract runner. Its controlled static source passed
+  [27 positive checks](https://github.com/blackkcold/CinemaTV/actions/runs/41905547692),
+  alongside the earlier 52 negative/auth/configuration checks. This does not prove
+  dynamic CMS filtering or Android playback. Historical cloud DNS failure is kept.
+- [PR22](https://github.com/blackkcold/CinemaTV/pull/22) adds direct Android repository
+  to Media3 acceptance through that official server on phone and TV1080, within the
+  existing four-device matrix. It requires rendered frames, clock advancement,
+  pause/resume and checkpoint reload. It is prepared, not yet executed.
+
+At the snapshot above, the full integrated phone/TV1080/TV4K/API26 matrix, exact
+source-tree provenance, new UI focus/Back behavior and release artifact verification
+were pending. Later successful results must be identified by their actual release
+provenance and CI run rather than inferred from this planning snapshot.
+Prior v0.5 emulator results cannot stand in for these modified paths. No stable
+certification, private-backend access or live Douban rights is implied.
+
+## Original product gaps identified at v0.5
 
 1. **Source resolution and real upstream semantics.** `LibreTvRepository.detail`
    currently tries only the first title/year candidate for a catalog work. A bad

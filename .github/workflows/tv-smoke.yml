@@ -127,6 +127,8 @@ jobs:
               bash scripts/run-device-qa.sh '${{ matrix.size }}' '${{ matrix.density }}' '${{ matrix.classes }}'
             fi
 
+      - name: Record successful device provenance for preview promotion
+        run: python3 scripts/preview-release.py receipt --device '${{ matrix.name }}' --classes '${{ matrix.classes }}' --output qa/promotion-receipt.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
