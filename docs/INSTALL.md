@@ -2,7 +2,7 @@
 
 ## 下载与兼容性
 
-- [v0.5.0-preview 下载页](https://github.com/blackkcold/CinemaTV/releases/tag/v0.5.0-preview)：APK、界面截图、自动化验收证据及 SHA-256。
+- [发布页](https://github.com/blackkcold/CinemaTV/releases)：仅在同一提交通过完整门禁后发布 v0.5.0-preview APK、截图、验收证据及 SHA-256。源码中的版本号不代表已经发布。
 - 同一 APK 支持 Android TV / Google TV 和 Android 手机；最低 Android 8.0（API 26）。包名 `dev.cinematv`，版本 `0.5.0-preview`，versionCode `6`。
 - 本版使用 Android Debug 签名。不同 CI 构建的调试密钥可能不同；如出现 `INSTALL_FAILED_UPDATE_INCOMPATIBLE`，需先备份配置再卸载重装。卸载会清空本地历史和设置。
 
@@ -22,7 +22,7 @@ APK 不提供默认公共片源、账号或媒体内容。公网连接请使用 
 
 在服务端设置 `LIBRETV_URL`、可选 `LIBRETV_PASSWORD`、`BFF_ACCESS_TOKEN`（至少16字符）和 `TMDB_READ_ACCESS_TOKEN`，再在客户端「连接与账户」填写 BFF 地址和令牌。客户端不会向 TMDB 发送播放地址。
 
-「画面与性能」提供自动、基础、背景磨砂和增强高光，以及减少动态效果。低内存和旧系统会降级；Android 13 以下不能启用增强高光。磨砂采样仅来自静态剧照，视频 Surface 不参与采样。缺少合格横图时显示原创氛围背景。
+「画面与性能」提供自动、基础、背景磨砂、镜片折射，以及减少动态效果。TV 的镜片折射需 Android 13+、硬件绘制和合格静态剧照，并且仅作用于聚焦的小尺寸按钮边缘；低内存、旧系统、减少动态、缺图或绘制失败自动使用静态层次。手机按钮使用相同 V4 静态层次，不宣称实时折射。视频 Surface 不参与采样。缺少合格横图时显示原创氛围背景。详见 [效果与成本边界](GLASS_V4.md)。
 
 ## 本版功能
 
@@ -45,6 +45,7 @@ APK 不提供默认公共片源、账号或媒体内容。公网连接请使用 
 | 手机 | API 30，1080×1920，含横屏播放和旋转 |
 | TV 界面 | API 33，1920×1080 / density 320 |
 | TV 界面 | API 33，3840×2160 / density 640 |
+| 最低 API 兼容性 | API 26，仅离线字体、静态按钮与品牌降级，不代替完整导航/播放矩阵 |
 
 TV 界面测试使用模拟器中的专用原生测试 Activity，不等同于真实 Android TV 系统或硬件认证。测试中的虚构片名、原创矢量画面及合成 H.264/AAC 片段均只用于测试；片段不进入用户 APK。
 
@@ -61,7 +62,9 @@ npm --prefix backend/tv-bff test
 
 `[ui-qa]` 提交触发完整设备矩阵，`[preview-release]` 在同一提交全部通过后发布预览包。发布附件包含截图对比结果、JUnit 报告、焦点轨迹和帧数据。
 
-原创播放器 SVG 和居中的宽版 TV Banner 位于 `design/branding/`。如需重新导出 Android PNG，安装 `rsvg-convert` 后运行 `bash scripts/render-branding.sh`。
+经确认的 A1 Logo、字标和静态 TV Banner 位于 `design/branding/`。品牌 CI 只校验已审阅素材，不自动重写。`scripts/render-branding.sh` 仅输出到显式指定的审阅目录，需比对确认后才能替换打包素材。应用内保留简短且不阻塞交互的动态；低档与减少动态使用静态。
+
+字体离线打包 Noto Sans 与 Noto Sans CJK，并保留 OFL 许可。按内容语言或系统区域选择 SC/TC/HK/JP/KR 字形，不转换简繁文字。首次构建须下载固定哈希的官方文件；安装后无需字体网络访问。字体数据约 20.63 MB，尚不能将此数值当成 APK 总大小或运行内存。详见 [字体实现和许可](NOTO_TYPOGRAPHY.md)。
 
 ## v0.5 本地片库与目录
 

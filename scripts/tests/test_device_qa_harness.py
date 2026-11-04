@@ -16,20 +16,75 @@ matrix = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(matrix)
 
 
+# Exact relevant lines from the failed API 33 4K setup-windows.txt, before
+# resize. A healthy full dumpsys window has no mDisplayFrozen=false field.
+API33_READY_WINDOW = """    mSafeMode=false mSystemReady=true mSystemBooted=true
+  mCurrentFocus=Window{73af1b9 u0 com.google.android.apps.nexuslauncher/com.google.android.apps.nexuslauncher.NexusLauncherActivity}
+    mAwake=true mScreenOnEarly=true mScreenOnFully=true
+    mKeyguardDrawComplete=true mWindowManagerDrawComplete=true
+"""
+
+
+class DeviceWindowReadinessTest(unittest.TestCase):
+    def ready(self, window, boot="1"):
+        source = (SCRIPTS / "run-device-qa.sh").read_text()
+        predicate = source.split("device_window_ready() {", 1)[1].split("\nwait_for_device_window()", 1)[0]
+        result = subprocess.run(["bash", "-euo", "pipefail", "-c",
+                                 "device_window_ready() {" + predicate +
+                                 '\ndevice_window_ready "$1" "$2"', "test", boot, window],
+                                capture_output=True, text=True, timeout=2)
+        return result.returncode == 0
+
+    def test_api33_ready_without_display_frozen_field(self):
+        self.assertNotIn("mDisplayFrozen", API33_READY_WINDOW)
+        self.assertTrue(self.ready(API33_READY_WINDOW))
+        self.assertTrue(self.ready(API33_READY_WINDOW + "mDisplayFrozen=false\n"))
+
+    def test_explicit_freeze_or_missing_positive_readiness_is_rejected(self):
+        self.assertFalse(self.ready(API33_READY_WINDOW + "mDisplayFrozen=true\n"))
+        self.assertFalse(self.ready(API33_READY_WINDOW, boot="0"))
+        for field in ("mAwake", "mScreenOnFully", "mWindowManagerDrawComplete"):
+            for replacement in ("", field + "=false"):
+                with self.subTest(field=field, replacement=replacement):
+                    self.assertFalse(self.ready(API33_READY_WINDOW.replace(field + "=true", replacement)))
+        self.assertFalse(self.ready(API33_READY_WINDOW.replace("mCurrentFocus=", "mPreviousFocus=")))
+
+
 class DeviceMatrixTest(unittest.TestCase):
     def test_default_retains_all_acceptance_targets_and_classes(self):
         self.assertEqual(matrix.select("all"), {"include": [
             {"name": "phone", "api": 30, "size": "1080x1920", "density": 420,
-             "classes": "dev.cinematv.MobileNavigationSmokeTest,dev.cinematv.TvLaunchSmokeTest,dev.cinematv.MobilePlaybackSmokeTest,dev.cinematv.data.LocalMediaLibraryTest,dev.cinematv.data.RepositoryContractTest"},
+             "classes": "dev.cinematv.MobileNavigationSmokeTest,dev.cinematv.TvLaunchSmokeTest,dev.cinematv.MobilePlaybackSmokeTest,dev.cinematv.data.LocalMediaLibraryTest,dev.cinematv.data.RepositoryContractTest,dev.cinematv.MobileGlassButtonTest,dev.cinematv.CinemaBrandStartupTest"},
             {"name": "tv1080", "api": 33, "size": "1920x1080", "density": 320,
-             "classes": "dev.cinematv.TvUiRegressionTest"},
+             "classes": "dev.cinematv.TvUiRegressionTest,dev.cinematv.GlassMaterialSmokeTest,dev.cinematv.ui.typography.NotoFontsDeviceTest"},
             {"name": "tv4k", "api": 33, "size": "3840x2160", "density": 640,
-             "classes": "dev.cinematv.TvUiRegressionTest"},
+             "classes": "dev.cinematv.TvUiRegressionTest,dev.cinematv.GlassMaterialSmokeTest,dev.cinematv.ui.typography.NotoFontsDeviceTest"},
+            {"name": "compat26", "api": 26, "size": "1920x1080", "density": 320,
+             "classes": "dev.cinematv.ui.typography.NotoFontsDeviceTest,dev.cinematv.GlassMaterialSmokeTest#materialSurvivesFocusPressReducedMotionMissingArtAndFailure,dev.cinematv.CinemaBrandStartupTest"},
         ]})
 
     def test_each_target_is_exact_subset(self):
         for target in matrix.DEVICES:
             self.assertEqual(matrix.select(target["name"])["include"], [target])
+
+    def test_workflow_offers_every_target_and_all_test_classes_exist(self):
+        root = SCRIPTS.parent
+        workflow = (root / ".github/workflows/tv-smoke.yml").read_text()
+        self.assertIn("options: [all, phone, tv1080, tv4k, compat26]", workflow)
+        for device in matrix.DEVICES:
+            for selector in device["classes"].split(","):
+                class_name, _, method = selector.partition("#")
+                path = root / "app/src/androidTest/java" / (class_name.replace(".", "/") + ".kt")
+                source = path.read_text()
+                self.assertIn("package " + class_name.rsplit(".", 1)[0], source)
+                if method:
+                    self.assertIn("fun " + method + "(", source)
+        compatibility = matrix.select("compat26")["include"][0]
+        self.assertEqual(compatibility["api"], 26)
+        self.assertNotIn("TvUiRegressionTest", compatibility["classes"])
+        brand_targets = [device["name"] for device in matrix.DEVICES
+                         if "dev.cinematv.CinemaBrandStartupTest" in device["classes"].split(",")]
+        self.assertEqual(brand_targets, ["phone", "compat26"])
 
     def test_unknown_target_fails_closed(self):
         for target in ("unknown", "", "ALL", "phone,tv1080"):
@@ -59,11 +114,22 @@ name = Path(sys.argv[0]).name
 args = sys.argv[1:]
 with Path(name + "-calls.jsonl").open("a") as log:
     log.write(json.dumps(args) + "\n")
+if name == "sleep":
+    # Only virtualize the shell readiness sample interval. Python log/Gradle
+    # waits and the real timeout executable retain their real clocks.
+    if args != ["1"]:
+        sys.exit("Unexpected readiness sleep: " + repr(args))
+    sys.exit(0)
 if name == "timeout":
     if os.environ.get("MOCK_REAL_TIMEOUT") == "1" and "gradle" in args:
         args[args.index("12m")] = "0.1s"
     os.execv(os.environ["REAL_TIMEOUT"], ["timeout", *args])
 if name == "adb":
+    if args == ["shell", "getprop", "sys.boot_completed"]:
+        print("1")
+    if args == ["shell", "dumpsys", "window"]:
+        print(os.environ.get("MOCK_WINDOW", "mCurrentFocus=Window{123 u0 com.google.android.apps.nexuslauncher/.NexusLauncherActivity}\nmAwake=true mScreenOnFully=true mWindowManagerDrawComplete=true"))
+        sys.exit(0)
     if args == ["get-state"]:
         print("device")
         sys.exit(int(os.environ["MOCK_DIAGNOSTIC_STATUS"]))
@@ -98,6 +164,11 @@ if name == "gradle":
         directory = Path("app/build/outputs/connected_android_test_additional_output/device/ui-evidence")
         directory.mkdir(parents=True)
         (directory / "captured.png").write_text("exported evidence")
+    if os.environ.get("MOCK_CONFLICT_EVIDENCE") == "1":
+        for name in ("first", "second"):
+            directory = Path("app/build/outputs/connected_android_test_additional_output") / name / "ui-evidence"
+            directory.mkdir(parents=True, exist_ok=True)
+            (directory / "same.png").write_text(name)
     sys.exit(int(os.environ["MOCK_GRADLE_STATUS"]))
 if name in ("free", "sudo"):
     print("host diagnostic fixture")
@@ -111,7 +182,7 @@ if name == "ps":
 class DeviceRunnerTest(unittest.TestCase):
     def run_harness(self, *, gradle=0, evidence=0, goldens=0, setup=0, setup_command="size",
                     diagnostics=0, tv=False, four_k=False, exported=False, device_evidence=False,
-                    real_timeout=False):
+                    real_timeout=False, window=None, conflict_evidence=False):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             binaries = root / "bin"
@@ -119,7 +190,8 @@ class DeviceRunnerTest(unittest.TestCase):
             scripts = root / "scripts"
             scripts.mkdir()
             shutil.copy(SCRIPTS / "run-device-qa.sh", scripts)
-            for name in ("adb", "gradle", "timeout", "free", "sudo", "ps"):
+            shutil.copy(SCRIPTS / "merge-ui-evidence.py", scripts)
+            for name in ("adb", "gradle", "timeout", "free", "sudo", "ps", "sleep"):
                 path = binaries / name
                 path.write_text(f"#!{sys.executable}\n" + STUB)
                 path.chmod(0o755)
@@ -136,7 +208,10 @@ class DeviceRunnerTest(unittest.TestCase):
                        MOCK_SETUP_COMMAND=setup_command, MOCK_DIAGNOSTIC_STATUS=str(diagnostics),
                        MOCK_EXPORTED_EVIDENCE=str(int(exported)),
                        MOCK_DEVICE_EVIDENCE=str(int(device_evidence)),
-                       MOCK_REAL_TIMEOUT=str(int(real_timeout)))
+                       MOCK_REAL_TIMEOUT=str(int(real_timeout)),
+                       MOCK_CONFLICT_EVIDENCE=str(int(conflict_evidence)))
+            if window is not None:
+                env["MOCK_WINDOW"] = window
             classes = "dev.cinematv.TvUiRegressionTest" if tv else "dev.cinematv.MobileNavigationSmokeTest"
             size, density = ("3840x2160", "640") if four_k else ("1920x1080", "320")
             result = subprocess.run(["bash", str(scripts / "run-device-qa.sh"), size, density, classes],
@@ -144,7 +219,7 @@ class DeviceRunnerTest(unittest.TestCase):
             self.files = {str(path.relative_to(root)): path.read_text()
                           for path in root.rglob("*") if path.is_file() and "bin" not in path.parts}
             self.calls = {name: [json.loads(line) for line in self.files.get(name + "-calls.jsonl", "").splitlines()]
-                          for name in ("adb", "gradle", "timeout", "free", "sudo", "ps")}
+                          for name in ("adb", "gradle", "timeout", "free", "sudo", "ps", "sleep")}
             stages = self.files["qa/stages.tsv"]
             return result.returncode, stages, "qa/device.log" in self.files, bool(self.calls["gradle"])
 
@@ -217,6 +292,44 @@ class DeviceRunnerTest(unittest.TestCase):
                 self.assertTrue(diagnostics)
                 self.assertFalse(any(args[:2] == ["shell", "settings"] for args in self.calls["adb"]))
 
+    def test_wake_avoids_input_dispatch_and_waits_around_resize(self):
+        code, _, _, invoked = self.run_harness()
+        self.assertEqual(code, 0)
+        self.assertTrue(invoked)
+        calls = self.calls["adb"]
+        wake = calls.index(["shell", "svc", "power", "stayon", "true"])
+        size = calls.index(["shell", "wm", "size", "1920x1080"])
+        checks = [i for i, args in enumerate(calls) if args == ["shell", "getprop", "sys.boot_completed"]]
+        self.assertEqual(len(checks), 4)
+        self.assertEqual(self.calls["sleep"], [["1"], ["1"]])
+        self.assertLess(wake, checks[0])
+        self.assertLess(checks[0], size)
+        self.assertLess(size, checks[2])
+        self.assertFalse(any(args[:2] == ["shell", "input"] for args in calls))
+
+    def test_actual_api33_ready_snapshot_reaches_instrumentation(self):
+        code, _, _, invoked = self.run_harness(window=API33_READY_WINDOW)
+        self.assertEqual(code, 0)
+        self.assertTrue(invoked)
+        self.assertEqual(self.calls["sleep"], [["1"], ["1"]])
+
+    def test_large_window_dump_does_not_sigpipe_under_pipefail(self):
+        window = ("mCurrentFocus=Window{123 u0 com.android.launcher3/.Launcher}\n"
+                  "mAwake=true mScreenOnFully=true mWindowManagerDrawComplete=true\n" + "window detail\n" * 6000)
+        code, _, _, invoked = self.run_harness(window=window)
+        self.assertEqual(code, 0)
+        self.assertTrue(invoked)
+
+    def test_anr_is_preserved_and_fails_before_instrumentation(self):
+        for package in ("com.google.android.apps.nexuslauncher", "dev.cinematv"):
+            with self.subTest(package=package):
+                window = f"mCurrentFocus=Window{{123 u0 Application Not Responding: {package}}}"
+                code, _, _, invoked = self.run_harness(window=window)
+                self.assertNotEqual(code, 0)
+                self.assertFalse(invoked)
+                self.assertIn(window, self.files["qa/setup-windows.txt"])
+                self.assertFalse(any("force-stop" in args or "input" in args for args in self.calls["adb"]))
+
     def test_gradle_retains_memory_and_worker_limits(self):
         self.run_harness()
         self.assertEqual(self.calls["gradle"], [[
@@ -253,6 +366,15 @@ class DeviceRunnerTest(unittest.TestCase):
         self.assertEqual(self.files["qa/ui-evidence/captured.png"], "exported evidence")
         self.assertLess(stages.index("evidence-export\t"), stages.index("evidence\t"))
         self.assertFalse(any(args[:1] == ["pull"] for args in self.calls["adb"]))
+
+    def test_conflicting_class_evidence_fails_export_before_goldens(self):
+        code, stages, diagnostics, invoked = self.run_harness(tv=True, conflict_evidence=True)
+        self.assertTrue(invoked)
+        self.assertEqual(code, 1)
+        self.assertIn("evidence-export\t1\t", stages)
+        self.assertNotIn("goldens\t", stages)
+        self.assertTrue(diagnostics)
+        self.assertNotIn("qa/ui-evidence/same.png", self.files)
 
     def test_failure_recovers_partial_device_evidence(self):
         code, _, _, _ = self.run_harness(gradle=7, device_evidence=True)

@@ -64,8 +64,11 @@ jobs:
           if-no-files-found: warn
   ui-qa:
     needs: apk
-    if: contains(github.event.head_commit.message, '[ui-qa]') || contains(github.event.head_commit.message, '[preview-release]') || (startsWith(github.ref, 'refs/tags/v') && (contains(github.ref_name, '-preview') || contains(github.ref_name, '-rc')))
+    if: contains(github.event.head_commit.message, '[ui-qa]') || contains(github.event.head_commit.message, '[preview-release]') || (github.event_name == 'pull_request' && (contains(github.event.pull_request.title, '[ui-qa]') || contains(github.event.pull_request.title, '[ui-tv4k]'))) || (startsWith(github.ref, 'refs/tags/v') && (contains(github.ref_name, '-preview') || contains(github.ref_name, '-rc')))
     uses: ./.github/workflows/tv-smoke.yml
+    with:
+      # A diagnostic PR can test 4K alone. Main/tag release candidates still use all.
+      target: ${{ github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[ui-tv4k]') && 'tv4k' || 'all' }}
   preview:
     needs: [apk, ui-qa]
     if: (github.event_name == 'push' && github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, '[preview-release]')) || (startsWith(github.ref, 'refs/tags/v') && (contains(github.ref_name, '-preview') || contains(github.ref_name, '-rc')))

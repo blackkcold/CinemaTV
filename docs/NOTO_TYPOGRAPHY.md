@@ -66,8 +66,11 @@ These are packaging/mapping-eligibility checks, **not** measurements of RSS, PSS
 startup time or Typeface internal allocations. We do not assume five regional
 Typeface builders share all native data merely because their TTC tables are shared.
 Native parsing, shaping and glyph caches may still allocate per face; low-RAM device
-profiling remains required. There was no local built APK to inspect when this source
-change was prepared, so successful packaging is gated on the real APK/device test.
+profiling remains required. The build from PR #5 at `dbef072` produced a **44,732,874-byte APK**
+(SHA256 `a9f02d931597b6aa4ff5310394faa7d720bdd05d722469637b54f3b60dd30ab3`).
+Direct archive inspection verified all three font entries are STORED with the
+locked hashes and both OFL files are present. Device `openFd` and native rendering
+checks remain separately gated; these archive facts are not a runtime pass.
 
 ## Coverage boundaries
 

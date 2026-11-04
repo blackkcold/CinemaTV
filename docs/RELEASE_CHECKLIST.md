@@ -40,7 +40,7 @@ Open Release Gate blockers: **NOT ZERO**
 This checklist is a gate, not a certification statement. Do not publish stable
 until actual hardware evidence is recorded and Release Gate #1 is closed.
 
-## v0.4.0 preview automation
+## Preview automation
 
 Preview publication is separately gated on the exact source commit: APK archive
 and debug-signature validation, Lint, JVM/BFF tests, phone instrumentation, and

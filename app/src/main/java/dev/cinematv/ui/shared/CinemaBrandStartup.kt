@@ -46,12 +46,17 @@ fun CinemaBrandSession(
     content: @Composable () -> Unit,
 ) {
     val context = LocalContext.current
-    val lowRam = remember(context) {
-        (context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager)?.isLowRamDevice ?: true
+    val capabilities = LocalBrandMotionCapabilities.current
+    val deviceLowCost = remember(context) {
+        (context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager)?.let {
+            brandDeviceNeedsStaticMotion(it.isLowRamDevice, it.memoryClass)
+        } ?: true
     }
+    val lowRam = capabilities?.let { brandDeviceNeedsStaticMotion(it.lowRam, it.memoryClassMb) } ?: deviceLowCost
+    val animatorsEnabled = capabilities?.animatorsEnabled ?: ValueAnimator.areAnimatorsEnabled()
     var finished by rememberSaveable { mutableStateOf(false) }
     val elapsed = remember { Animatable(if (finished) 6000f else 0f) }
-    val animate = !reducedMotion && !lowCost && !lowRam && ValueAnimator.areAnimatorsEnabled() && !finished
+    val animate = !reducedMotion && !lowCost && !lowRam && animatorsEnabled && !finished
     LaunchedEffect(animate) {
         if (animate) {
             try {
@@ -62,13 +67,21 @@ fun CinemaBrandSession(
             }
         }
     }
-    CompositionLocalProvider(LocalBrandMotion provides BrandMotion(elapsed, !reducedMotion && !lowCost && !lowRam && ValueAnimator.areAnimatorsEnabled())) {
+    CompositionLocalProvider(LocalBrandMotion provides BrandMotion(elapsed, !reducedMotion && !lowCost && !lowRam && animatorsEnabled, finished)) {
         content()
     }
 }
 
-private data class BrandMotion(val elapsed: Animatable<Float, AnimationVector1D>, val enabled: Boolean)
-private val LocalBrandMotion = staticCompositionLocalOf<BrandMotion?> { null }
+/** Internal capability seam for runtime tests; production always reads Android services. */
+internal data class BrandMotionCapabilities(val lowRam: Boolean, val memoryClassMb: Int, val animatorsEnabled: Boolean)
+internal val LocalBrandMotionCapabilities = staticCompositionLocalOf<BrandMotionCapabilities?> { null }
+
+internal data class BrandMotion(
+    val elapsed: Animatable<Float, AnimationVector1D>,
+    val enabled: Boolean,
+    val finished: Boolean,
+)
+internal val LocalBrandMotion = staticCompositionLocalOf<BrandMotion?> { null }
 
 /** Header-only, decorative treatment: no overlay and no new focus target. */
 @Composable
