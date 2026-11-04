@@ -39,3 +39,13 @@ Open Release Gate blockers: **NOT ZERO**
 
 This checklist is a gate, not a certification statement. Do not publish stable
 until actual hardware evidence is recorded and Release Gate #1 is closed.
+
+## v0.4.0 preview automation
+
+Preview publication is separately gated on the exact source commit: APK archive
+and debug-signature validation, Lint, JVM/BFF tests, phone instrumentation, and
+1080p/4K Compose TV scenarios with reviewed visual comparisons. Missing screenshots,
+focus traces, viewport metadata or rendered frame samples block publication.
+The release notes link the executing workflow and the evidence ZIP carries its
+reports. These automated preview checks do not check off the physical hardware
+or private-signing requirements above.
