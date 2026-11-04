@@ -395,6 +395,18 @@ class LibreTvRepository(context: Context) {
         prefs.edit().putString("history", JSONArray(list.map { itemJson(it) }).toString()).apply()
     }
 
+    fun searchHistory(): List<String> = runCatching {
+        val data = JSONArray(prefs.getString("search_history", "[]") ?: "[]")
+        (0 until data.length()).mapNotNull { data.optString(it).takeIf(String::isNotBlank) }
+    }.getOrDefault(emptyList())
+
+    fun rememberSearch(keyword: String) {
+        val term = keyword.trim().take(100)
+        if (term.isBlank()) return
+        val next = listOf(term) + searchHistory().filterNot { it.equals(term, ignoreCase = true) }
+        prefs.edit().putString("search_history", JSONArray(next.take(25)).toString()).apply()
+    }
+
     fun history(): List<MediaItem> = runCatching {
         parseArray(JSONArray(prefs.getString("history", "[]") ?: "[]")) { j ->
             MediaItem(

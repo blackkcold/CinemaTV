@@ -47,6 +47,8 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
     var playerReturnPage by mutableStateOf(Page.DETAIL)
         private set
     var query by mutableStateOf("")
+    var searchHistory by mutableStateOf(repo.searchHistory())
+        private set
     var serverAddress by mutableStateOf(repo.server)
     var metadataAddress by mutableStateOf(repo.metadataServer)
     var metadataAccessToken by mutableStateOf("")
@@ -288,6 +290,8 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
         if (wd.isBlank()) return
         navigate(Page.SEARCH)
         searchJob?.cancel()
+        repo.rememberSearch(wd)
+        searchHistory = repo.searchHistory()
         searchJob = viewModelScope.launch {
             busy = true
             results = emptyList()

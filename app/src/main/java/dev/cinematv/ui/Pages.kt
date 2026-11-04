@@ -271,15 +271,43 @@ fun SearchPage(model: CinemaViewModel) {
             )
             GlassAction("搜索", Modifier.width(150.dp).height(58.dp), prominent = true, onClick = model::search)
         }
-        Spacer(Modifier.height(22.dp))
-        if (model.busy) CircularProgressIndicator(color = Accent)
-        else if (model.results.isEmpty()) EmptyMessage("输入关键词开始搜索", Modifier.fillMaxWidth().height(200.dp))
-        else LazyVerticalGrid(
+        Spacer(Modifier.height(18.dp))
+        if (model.searchHistory.isNotEmpty()) {
+            Text("最近搜索", color = Muted, fontSize = 14.sp)
+            Spacer(Modifier.height(9.dp))
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                items(model.searchHistory, key = { it }) { keyword ->
+                    GlassAction(keyword, Modifier.widthIn(min = 105.dp, max = 210.dp).height(43.dp)) {
+                        model.query = keyword; model.search()
+                    }
+                }
+            }
+            Spacer(Modifier.height(14.dp))
+        }
+        if (model.busy) {
+            Text("正在逐源搜索，已返回 ${model.results.size} 部作品…",
+                color = Accent, fontSize = 14.sp)
+            Spacer(Modifier.height(12.dp))
+        }
+        if (model.results.isEmpty() && model.busy) {
+            CircularProgressIndicator(color = Accent)
+        } else if (model.results.isEmpty()) {
+            Text("热门推荐", color = Ivory, fontSize = 20.sp)
+            Spacer(Modifier.height(14.dp))
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(13.dp)) {
+                items((model.featured + model.tvShows).take(10), key = { it.id }) { item ->
+                    GlassAction(item.title, Modifier.width(185.dp).height(50.dp)) {
+                        model.query = item.title; model.search()
+                    }
+                }
+            }
+        } else LazyVerticalGrid(
             columns = GridCells.Fixed(5), verticalArrangement = Arrangement.spacedBy(22.dp),
             horizontalArrangement = Arrangement.spacedBy(18.dp), contentPadding = PaddingValues(bottom = 55.dp)
         ) {
             items(model.results, key = { it.source?.key.orEmpty() + it.id }) { item ->
-                MediaTile(item, onFocus = { model.onMediaFocus(item) }, onClick = { model.open(item) })
+                MediaTile(item, onFocus = { model.onMediaFocus(item, "search-grid") },
+                    onClick = { model.open(item) })
             }
         }
     }
