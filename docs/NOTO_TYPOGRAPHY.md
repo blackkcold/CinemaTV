@@ -143,12 +143,22 @@ rejects redirects, non-200 responses, excess length or hash mismatch, has connec
 read timeouts, and downloads to a temporary file before replacing the final file.
 Invalid input fails the build. No partial file becomes a packaged font.
 
-First build requires access to raw.githubusercontent.com. Once generated, an
-unchanged build reuses Gradle outputs; `--offline` works with verified local files.
-`clean` removes them, so an offline clean build needs these exact files restored
-into `app/build/generated/notoAssets/fonts` from a trusted build cache. A missing or
-invalid file under `--offline` fails with an actionable message. The APK is entirely
-offline for fonts after installation, independent of the build cache/network.
+A cold build without verified local assets requires access to raw.githubusercontent.com.
+The durable download cache lives in `.cache/cinematv-noto-fonts`, outside both
+`build/` task outputs and `.gradle/`. Actions restores only that directory with an
+exact lock-hash `noto-fonts-v2` key. The task checks size and SHA256 before reuse,
+then copies through a verified temporary file into generated assets. Only generated
+assets enter the APK, so the cache does not add another packaged font copy.
+
+This separation fixes a reproduced Gradle 8.13 lifecycle issue: when task execution
+history is absent, BasePlugin deletes stale generated outputs before `doFirst` or
+`doLast`, even if Actions has just restored valid font bytes there. Restoring into
+the output directory was therefore not a reliable cache. The dedicated cache
+survives `clean`, deleted task history and a fresh checkout with no generated files.
+`--offline` can restore from that verified cache, repair corrupt generated output,
+or seed the cache from valid generated files. If neither copy is valid, it fails
+with an actionable message. The APK remains entirely offline for fonts after
+installation, independent of the build cache/network.
 
 ## Deterministic screenshot host
 
@@ -164,10 +174,13 @@ installs the provider; native font evidence is separately captured by the device
 
 - `python scripts/fonts/verify-noto-gradle.py --gradle /path/to/gradle --report /tmp/noto-task-evidence`:
   executes the actual Groovy task in an SDK-free temporary Gradle project, with
-  the real lock and downloads. Verifies cold download, offline reuse, same-length
-  corruption rejection, online repair and missing-offline rejection. It checks
-  hashes, no orphan `.part` files and no offline mutation. Gradle 8.13 completed
-  all five cases locally on 2026-11-04; this is not an Android build/Lint pass.
+  the real lock, BasePlugin and official downloads. Ten scenarios cover genuine
+  cold download, offline reuse, clean, deleted execution history, cache-only fresh
+  checkout, corrupt-output repair, invalid-cache rejection, online repair,
+  missing-offline rejection and verified-output migration. The deleted-history
+  case requires the stale-output deletion log and successful verified-cache reuse.
+  Hashes and orphan `.part` files are checked throughout. Gradle 8.13 completed all
+  ten cases locally on 2026-11-04; this is not an Android build/Lint pass.
   Uses an isolated writable Gradle home; honors a credential-free HTTPS proxy
   when supplied by the environment. Logs remain in the requested report directory.
 - `python scripts/fonts/verify-noto-fonts.py`: standard-library offline verification

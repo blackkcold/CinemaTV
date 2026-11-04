@@ -32,14 +32,16 @@ class DeviceQaContractTest(unittest.TestCase):
         self.assertNotIn('emu-crash', device)
         self.assertNotIn('minidump', device)
 
-    def test_media_dependency_is_installed_before_fixture_generation(self):
+    def test_committed_media_is_validated_before_compile_without_tool_downloads(self):
         workflow = (ROOT / '.github/workflows/tv-smoke.yml').read_text()
         device = workflow.split('\n  instrumented:\n', 1)[1]
-        update = device.index('sudo apt-get update')
-        install = device.index('sudo apt-get install --no-install-recommends -y ffmpeg')
-        generate = device.index('bash scripts/generate-test-media.sh')
-        self.assertLess(update, install)
-        self.assertLess(install, generate)
+        validate = device.index('bash scripts/generate-test-media.sh')
+        compile_apks = device.index(':app:assembleDebug :app:assembleDebugAndroidTest')
+        self.assertLess(validate, compile_apks)
+        self.assertNotIn('apt-get', device)
+        self.assertNotIn('--regenerate', device)
+        self.assertNotIn('download-artifact', device)
+        self.assertIn('uses: actions/checkout@v4', device)
 
     def test_capture_markers_bracket_readback_and_png_before_recycling(self):
         source = (ROOT / 'app/src/androidTest/java/dev/cinematv/TvUiRegressionTest.kt').read_text()
