@@ -63,6 +63,22 @@ class TvUiRegressionTest {
         assertTrue("Bundled Noto failed: ${rule.activity.fontLoadFailures}", rule.activity.bundledFontsReady)
         rule.waitForIdle()
     }
+    private fun awaitHiddenImeAndFullScreen() {
+        // Observe production IME ownership. This helper never dismisses it.
+        rule.waitUntil(15000) {
+            val windowRestored = rule.runOnIdle {
+                val decor = rule.activity.window.decorView
+                val insets = ViewCompat.getRootWindowInsets(decor)
+                val location = IntArray(2)
+                decor.getLocationOnScreen(location)
+                rule.activity.hasWindowFocus() && insets != null &&
+                    !insets.isVisible(WindowInsetsCompat.Type.ime()) &&
+                    location.contentEquals(intArrayOf(0, 0))
+            }
+            val root = rule.onRoot().fetchSemanticsNode()
+            windowRestored && root.positionInWindow.x == 0f && root.positionInWindow.y == 0f
+        }
+    }
     private fun captureWindow(): Bitmap {
         awaitBundledFonts()
         rule.waitForIdle()
@@ -170,20 +186,7 @@ class TvUiRegressionTest {
         rule.onNode(hasSetTextAction()).performImeAction()
         rule.waitUntil(15000) { !model.busy && model.results.isNotEmpty() }
         // Results alone do not establish that IME hide/adjust-pan has finished.
-        // Observe the production submit handler's hide; never dismiss it here.
-        rule.waitUntil(15000) {
-            val windowRestored = rule.runOnIdle {
-                val decor = rule.activity.window.decorView
-                val insets = ViewCompat.getRootWindowInsets(decor)
-                val location = IntArray(2)
-                decor.getLocationOnScreen(location)
-                rule.activity.hasWindowFocus() && insets != null &&
-                    !insets.isVisible(WindowInsetsCompat.Type.ime()) &&
-                    location.contentEquals(intArrayOf(0, 0))
-            }
-            val root = rule.onRoot().fetchSemanticsNode()
-            windowRestored && root.positionInWindow.x == 0f && root.positionInWindow.y == 0f
-        }
+        awaitHiddenImeAndFullScreen()
         android.util.Log.i("CinemaTVQa", "search-ime-hidden; full-screen geometry restored")
         rule.onNodeWithContentDescription(server.title(0)).assertIsDisplayed()
         screenshot("08-search")
@@ -192,12 +195,40 @@ class TvUiRegressionTest {
         key(KeyEvent.KEYCODE_BACK)
         assertEquals(Page.SEARCH, model.page)
         assertTrue(model.results.isNotEmpty())
-
+        rule.onNode(hasSetTextAction()).assertIsFocused()
+        // Leave the restored editor immediately, including its pending IME show.
+        // The destination must recover without a test-only keyboard dismissal.
         rule.runOnIdle { model.navigate(Page.LIVE) }
         rule.waitUntil(15000) { model.channels.size == 18 }
+        awaitHiddenImeAndFullScreen()
+        assertEquals(Page.LIVE, model.page)
+        rule.onNode(hasSetTextAction()).assertDoesNotExist()
+        android.util.Log.i("CinemaTVQa", "search-exit-ime-hidden; LIVE full-screen geometry restored")
         key(KeyEvent.KEYCODE_DPAD_DOWN)
         rule.waitUntil(15000) { model.epgPrograms.isNotEmpty() }
+        awaitHiddenImeAndFullScreen()
         screenshot("09-live")
+
+        // Also cover a fully visible keyboard exit, not only a pending show.
+        rule.runOnIdle { model.navigate(Page.SEARCH) }
+        rule.onNode(hasSetTextAction()).assertIsFocused()
+        rule.waitUntil(15000) {
+            rule.runOnIdle {
+                ViewCompat.getRootWindowInsets(rule.activity.window.decorView)
+                    ?.isVisible(WindowInsetsCompat.Type.ime()) == true
+            }
+        }
+        android.util.Log.i("CinemaTVQa", "search-exit-visible-ime; navigating LIVE")
+        rule.runOnIdle { model.navigate(Page.LIVE) }
+        awaitHiddenImeAndFullScreen()
+        assertEquals(Page.LIVE, model.page)
+        rule.onNode(hasSetTextAction()).assertDoesNotExist()
+        rule.onNode(hasText(model.channels.first().name) and hasClickAction()).assertIsFocused()
+        key(KeyEvent.KEYCODE_DPAD_DOWN)
+        rule.onNode(hasText(model.channels[1].name) and hasClickAction()).assertIsFocused()
+        rule.waitUntil(15000) { model.epgPrograms.isNotEmpty() }
+        awaitHiddenImeAndFullScreen()
+        android.util.Log.i("CinemaTVQa", "search-visible-ime-exit-complete; LIVE D-pad focus preserved")
         rule.onNodeWithContentDescription("打开片库").performClick()
         screenshot("10-library")
         rule.onNodeWithContentDescription("打开设置").performSemanticsAction(SemanticsActions.RequestFocus) { it() }

@@ -113,19 +113,54 @@ class DeviceQaContractTest(unittest.TestCase):
         search = source.split('performTextReplacement(server.title(0))', 1)[1].split('screenshot("08-search")', 1)[0]
         markers = ['?.isVisible(WindowInsetsCompat.Type.ime()) == true',
                    'performImeAction()', '!model.busy && model.results.isNotEmpty()',
-                   '!insets.isVisible(WindowInsetsCompat.Type.ime())',
-                   'location.contentEquals(intArrayOf(0, 0))',
-                   'windowRestored && root.positionInWindow.x == 0f && root.positionInWindow.y == 0f',
+                   'awaitHiddenImeAndFullScreen()',
                    'rule.onNodeWithContentDescription(server.title(0)).assertIsDisplayed()']
         positions = [search.index(marker) for marker in markers]
         self.assertEqual(positions, sorted(positions))
-        self.assertEqual(search.count('rule.waitUntil(15000)'), 3)
+        self.assertEqual(search.count('rule.waitUntil(15000)'), 2)
+        helper = source.split('private fun awaitHiddenImeAndFullScreen()', 1)[1].split('private fun captureWindow()', 1)[0]
+        for marker in ('rule.waitUntil(15000)', '!insets.isVisible(WindowInsetsCompat.Type.ime())',
+                       'location.contentEquals(intArrayOf(0, 0))',
+                       'windowRestored && root.positionInWindow.x == 0f && root.positionInWindow.y == 0f'):
+            self.assertIn(marker, helper)
+        self.assertNotIn('.hide()', helper)
         for bypass in ('hideSoftInput', 'closeSoftKeyboard', 'model.search()', 'KEYCODE_BACK', 'Type.ime()).hide'):
             self.assertNotIn(bypass, search)
         capture = (ROOT / 'app/src/androidTest/java/dev/cinematv/TvWindowCapture.kt').read_text()
         self.assertIn('Unexpected window offset ${location.contentToString()}', capture)
         self.assertIn('imeVisible=', capture)
         self.assertIn('softInputMode=', capture)
+
+    def test_tv_ime_owner_handles_late_show_without_stealing_destination_focus(self):
+        root = (ROOT / 'app/src/main/java/dev/cinematv/ui/tv/TvRootApp.kt').read_text()
+        policy = (ROOT / 'app/src/main/java/dev/cinematv/ui/tv/TvImePolicy.kt').read_text()
+        self.assertIn('val imeVisible = WindowInsets.isImeVisible', root)
+        self.assertIn('LaunchedEffect(model.page, imeVisible)', root)
+        self.assertIn('if (shouldHideTvIme(model.page, imeVisible)) keyboard?.hide()', root)
+        self.assertIn('imeVisible && page != Page.SEARCH && page != Page.SETTINGS', policy)
+        self.assertNotIn('clearFocus(', root)
+        test = (ROOT / 'app/src/androidTest/java/dev/cinematv/TvUiRegressionTest.kt').read_text()
+        exit_search = test.split('assertEquals(Page.SEARCH, model.page)', 1)[1].split('screenshot("09-live")', 1)[0]
+        markers = ['rule.onNode(hasSetTextAction()).assertIsFocused()', 'model.navigate(Page.LIVE)',
+                   'awaitHiddenImeAndFullScreen()', 'assertEquals(Page.LIVE, model.page)',
+                   'rule.onNode(hasSetTextAction()).assertDoesNotExist()', 'key(KeyEvent.KEYCODE_DPAD_DOWN)']
+        positions = [exit_search.index(marker) for marker in markers]
+        self.assertEqual(positions, sorted(positions))
+        self.assertNotIn('.hide()', exit_search)
+
+    def test_visible_search_ime_exit_preserves_live_channel_focus(self):
+        source = (ROOT / 'app/src/androidTest/java/dev/cinematv/TvUiRegressionTest.kt').read_text()
+        exit_visible = source.split('// Also cover a fully visible keyboard exit', 1)[1].split('search-visible-ime-exit-complete', 1)[0]
+        markers = ['model.navigate(Page.SEARCH)', 'rule.onNode(hasSetTextAction()).assertIsFocused()',
+                   '?.isVisible(WindowInsetsCompat.Type.ime()) == true', 'model.navigate(Page.LIVE)',
+                   'awaitHiddenImeAndFullScreen()',
+                   'rule.onNode(hasText(model.channels.first().name) and hasClickAction()).assertIsFocused()',
+                   'key(KeyEvent.KEYCODE_DPAD_DOWN)',
+                   'rule.onNode(hasText(model.channels[1].name) and hasClickAction()).assertIsFocused()']
+        positions = [exit_visible.index(marker) for marker in markers]
+        self.assertEqual(positions, sorted(positions))
+        for bypass in ('.hide()', 'clearFocus(', 'closeSoftKeyboard'):
+            self.assertNotIn(bypass, exit_visible)
 
 
 if __name__ == '__main__':
