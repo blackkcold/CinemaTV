@@ -8,6 +8,7 @@ import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import java.io.File
 
@@ -33,7 +34,8 @@ object PlaybackFactory {
     }
 
     fun create(context: Context, cacheVod: Boolean): ExoPlayer {
-        if (!cacheVod) return ExoPlayer.Builder(context).build()
+        val renderers = DefaultRenderersFactory(context).setEnableDecoderFallback(true)
+        if (!cacheVod) return ExoPlayer.Builder(context, renderers).build()
         val http = DefaultHttpDataSource.Factory()
             .setAllowCrossProtocolRedirects(true)
             .setUserAgent("CinemaTV/0.1 (Android TV)")
@@ -43,7 +45,7 @@ object PlaybackFactory {
             .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
         val mediaSource = DefaultMediaSourceFactory(context)
             .setDataSourceFactory(source)
-        return ExoPlayer.Builder(context)
+        return ExoPlayer.Builder(context, renderers)
             .setMediaSourceFactory(mediaSource)
             .build()
     }
