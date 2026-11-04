@@ -9,7 +9,9 @@ import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
@@ -19,6 +21,11 @@ import java.net.URL
 import java.net.URLEncoder
 import java.util.concurrent.ConcurrentHashMap
 import java.time.Instant
+import java.util.concurrent.TimeUnit
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -36,7 +43,12 @@ class LibreTvRepository(context: Context, val library: LocalMediaLibrary = Local
     @Volatile var persistenceWarning: String = ""
         private set
     private val prefs = context.getSharedPreferences("cinema_settings", Context.MODE_PRIVATE)
-    private var sessionCookie: String? = null
+    @Volatile private var sessionCookie: String? = null
+    private val jsonClient = OkHttpClient.Builder()
+        .connectTimeout(8, TimeUnit.SECONDS).readTimeout(25, TimeUnit.SECONDS)
+        .callTimeout(75, TimeUnit.SECONDS)
+        .followRedirects(false).followSslRedirects(false).retryOnConnectionFailure(false)
+        .build()
     var server: String
         get() = prefs.getString("server", "") ?: ""
         private set(value) { prefs.edit().putString("server", value).apply() }
@@ -223,33 +235,37 @@ class LibreTvRepository(context: Context, val library: LocalMediaLibrary = Local
 
     private fun encode(raw: String) = URLEncoder.encode(raw, "UTF-8")
 
-    private fun request(path: String, method: String = "GET", body: JSONObject? = null): JSONObject {
+    private suspend fun request(path: String, method: String = "GET", body: JSONObject? = null): JSONObject {
         if (server.isBlank()) throw IOException("请先配置 LibreTV 服务器")
-        val conn = (URL(server + path).openConnection() as HttpURLConnection).apply {
-            requestMethod = method
-            connectTimeout = 8000
-            readTimeout = 16000
-            instanceFollowRedirects = false
-            setRequestProperty("Accept", "application/json")
-            sessionCookie?.let { setRequestProperty("Cookie", it) }
-            if (body != null) {
-                doOutput = true
-                setRequestProperty("Content-Type", "application/json; charset=utf-8")
-            }
-        }
-        try {
-            if (body != null) conn.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
-            val status = conn.responseCode
-            conn.getHeaderField("Set-Cookie")?.substringBefore(';')?.takeIf { it.contains('=') }?.let { sessionCookie = it }
-            val text = (if (status in 200..299) conn.inputStream else conn.errorStream)
-                ?.bufferedReader(Charsets.UTF_8)?.use { it.readText() } ?: ""
+        val request = Request.Builder().url(server + path)
+            .header("Accept", "application/json")
+            .method(method, body?.toString()?.toRequestBody("application/json; charset=utf-8".toMediaType()))
+            .apply { sessionCookie?.let { header("Cookie", it) } }
+            .build()
+        return withCancellableCall(jsonClient.newCall(request)) { response ->
+            val status = response.code
+            response.header("Set-Cookie")?.substringBefore(';')?.takeIf { it.contains('=') }?.let { sessionCookie = it }
+            if (status == 401) sessionCookie = null
+            val text = response.body?.byteStream()
+                ?.bufferedReader(Charsets.UTF_8)?.use { reader ->
+                    val output = StringBuilder()
+                    val buffer = CharArray(8192)
+                    while (true) {
+                        currentCoroutineContext().ensureActive()
+                        val count = reader.read(buffer)
+                        if (count < 0) break
+                        if (output.length + count > 4_194_304) throw LibreTvProtocolException("LibreTV 响应过大")
+                        output.append(buffer, 0, count)
+                    }
+                    output.toString()
+                }.orEmpty()
             if (status !in 200..299) {
                 if (status == 401) sessionCookie = null
                 val message = runCatching { JSONObject(text).optString("error") }.getOrDefault("")
-                throw IOException("HTTP $status: ${message.ifBlank { "服务暂不可用" }}")
+                throw LibreTvHttpException(status, message)
             }
-            return JSONObject(text)
-        } finally { conn.disconnect() }
+            JSONObject(text)
+        }
     }
 
     private fun sourceFrom(j: JSONObject): TvSource? {
@@ -381,11 +397,21 @@ class LibreTvRepository(context: Context, val library: LocalMediaLibrary = Local
         }
     }
 
+    private fun mediaType(data: JSONObject): Boolean? = when {
+        data.has("isTv") && !data.isNull("isTv") -> data.optBoolean("isTv")
+        data.optString("type").lowercase() == "tv" -> true
+        data.optString("type").lowercase() == "movie" -> false
+        data.optString("typeName").trim() in setOf("电影", "动作片", "喜剧片", "爱情片", "科幻片", "恐怖片", "剧情片", "战争片") -> false
+        data.optString("typeName").trim() in setOf("电视剧", "连续剧", "国产剧", "欧美剧", "日韩剧", "港台剧", "香港剧", "台湾剧", "日本剧", "韩国剧", "海外剧") -> true
+        else -> null // Animation, documentary and variety may be films or series.
+    }
+
     private fun decodeSearchList(items: JSONArray?, active: List<TvSource>): List<MediaItem> =
         parseArray(items) { j ->
             val name = j.optString("name")
             val source = active.firstOrNull { it.key == j.optString("sourceKey") }
-                ?: TvSource(j.optString("sourceKey"), j.optString("sourceName"), j.optString("sourceUrl"))
+                ?: active.firstOrNull { it.url == j.optString("sourceUrl") }
+                ?: return@parseArray null
             if (name.isBlank() || j.optString("vodId").isBlank() ||
                 (!source.url.startsWith("https://") && !source.url.startsWith("http://"))) null else MediaItem(
                 id = j.optString("vodId"),
@@ -393,8 +419,8 @@ class LibreTvRepository(context: Context, val library: LocalMediaLibrary = Local
                 poster = j.optString("pic"),
                 year = j.optString("year"),
                 category = j.optString("typeName"),
-                isTv = j.optBoolean("isTv", j.optString("type").equals("tv", true)),
-                mediaTypeKnown = j.has("isTv") || j.optString("type") in listOf("tv", "movie"),
+                isTv = mediaType(j) ?: false,
+                mediaTypeKnown = mediaType(j) != null,
                 aliases = strings(j.opt("aliases")).ifEmpty { strings(j.opt("vod_sub")) },
                 actors = strings(j.opt("actors")).ifEmpty { strings(j.opt("vod_actor")) },
                 rating = j.optString("rating"), ratingSource = "LibreTV",
@@ -408,106 +434,175 @@ class LibreTvRepository(context: Context, val library: LocalMediaLibrary = Local
         .put("filterAdult", true)
         .put("sources", JSONArray(active.map(::sourceJson)))
 
-    suspend fun search(keyword: String): List<MediaItem> = withContext(Dispatchers.IO) {
-        val active = sources().filter { it.enabled }
+    private fun outcomes(items: JSONArray?): List<SourceSearchOutcome> = parseArray(items) { j ->
+        SourceSearchOutcome(j.optString("sourceKey"), j.optBoolean("ok", false),
+            j.optString("error"), j.optBoolean("timedOut", false),
+            if (j.has("ms") && !j.isNull("ms")) j.optLong("ms").coerceAtLeast(0L) else null)
+    }
+
+    suspend fun searchSnapshot(keyword: String): SearchSnapshot = withContext(Dispatchers.IO) {
+        val active = sources().filter { it.enabled }.take(50)
         require(active.isNotEmpty()) { "请先在设置中添加点播源" }
         val response = request("/api/search", "POST", searchPayload(keyword, active))
-        decodeSearchList(response.optJSONArray("list"), active)
+        if (response.optJSONArray("list") == null) throw LibreTvProtocolException("LibreTV 搜索响应缺少列表")
+        SearchSnapshot(decodeSearchList(response.optJSONArray("list"), active),
+            outcomes(response.optJSONArray("failures")), complete = true)
     }
+
+    suspend fun search(keyword: String): List<MediaItem> = searchSnapshot(keyword).items
 
     /**
      * LibreTV sends one NDJSON 'source' event per completed origin, then one
      * 'done' event with authoritative order. Every intermediate emission is
      * usable, cancellation closes the network stream immediately.
      */
-    fun searchProgressively(keyword: String): Flow<List<MediaItem>> = callbackFlow {
-        val active = sources().filter { it.enabled }
-        require(active.isNotEmpty()) { "请先在设置中添加点播源" }
-        val conn = (URL(server + "/api/search?stream=1").openConnection() as HttpURLConnection).apply {
-            requestMethod = "POST"
-            connectTimeout = 8000
-            readTimeout = 30000
-            instanceFollowRedirects = false
-            setRequestProperty("Accept", "application/x-ndjson")
-            setRequestProperty("Content-Type", "application/json; charset=utf-8")
-            sessionCookie?.let { setRequestProperty("Cookie", it) }
-            doOutput = true
+    fun searchProgressively(keyword: String): Flow<List<MediaItem>> = searchSnapshots(keyword).map { it.items }
+
+    private fun readBoundedLine(reader: java.io.BufferedReader, budget: Int): String? {
+        val line = StringBuilder()
+        while (true) {
+            val value = reader.read()
+            if (value < 0) return line.toString().takeIf { it.isNotEmpty() }
+            if (value == '\n'.code) return line.toString()
+            if (line.length >= budget) throw LibreTvProtocolException("LibreTV 搜索响应过大")
+            line.append(value.toChar())
         }
+    }
+
+    fun searchSnapshots(keyword: String): Flow<SearchSnapshot> = callbackFlow {
+        val active = sources().filter { it.enabled }.take(50)
+        require(active.isNotEmpty()) { "请先在设置中添加点播源" }
+        val call = jsonClient.newBuilder().readTimeout(30, TimeUnit.SECONDS).build().newCall(
+            Request.Builder().url(server + "/api/search?stream=1")
+                .header("Accept", "application/x-ndjson")
+                .apply { sessionCookie?.let { header("Cookie", it) } }
+                .post(searchPayload(keyword, active).toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
+                .build()
+        )
         val network = launch(Dispatchers.IO) {
           try {
-            conn.outputStream.use {
-                it.write(searchPayload(keyword, active).toString().toByteArray(Charsets.UTF_8))
-            }
-            if (conn.responseCode !in 200..299) {
-                throw IOException("LibreTV 流式搜索失败：HTTP ${conn.responseCode}")
-            }
-            var accumulated = emptyList<MediaItem>()
-            var completed = false
-            conn.inputStream.bufferedReader(Charsets.UTF_8).use { reader ->
-                while (true) {
-                    ensureActive()
-                    val line = reader.readLine() ?: break
-                    if (line.isBlank()) continue
-                    val event = JSONObject(line)
-                    val batch = decodeSearchList(event.optJSONArray("list"), active)
-                    when (event.optString("type")) {
-                        "source" -> {
-                            accumulated = (accumulated + batch).distinctBy {
-                                (it.source?.key ?: "") + "/" + it.id
+            call.execute().use { response ->
+                val status = response.code
+                if (status !in 200..299) {
+                    if (status == 401) sessionCookie = null
+                    val message = response.body?.byteStream()?.bufferedReader()?.use { reader ->
+                        val output = StringBuilder()
+                        val buffer = CharArray(1024)
+                        while (output.length < 8192) {
+                            val count = reader.read(buffer, 0, minOf(buffer.size, 8192 - output.length))
+                            if (count < 0) break
+                            output.append(buffer, 0, count)
+                        }
+                        output.toString()
+                    }
+                        ?.let { runCatching { JSONObject(it).optString("error") }.getOrDefault("") }.orEmpty()
+                    throw LibreTvHttpException(status, message)
+                }
+                var accumulated = emptyList<MediaItem>()
+                var completed = false
+                var observed = emptyList<SourceSearchOutcome>()
+                var receivedChars = 0
+                requireNotNull(response.body) { "LibreTV 搜索响应为空" }.byteStream().bufferedReader(Charsets.UTF_8).use { reader ->
+                    while (true) {
+                        ensureActive()
+                        val line = readBoundedLine(reader, 4_194_304 - receivedChars) ?: break
+                        receivedChars += line.length + 1
+                        if (receivedChars > 4_194_304) throw IOException("LibreTV 搜索响应过大")
+                        if (line.isBlank()) continue
+                        val event = JSONObject(line)
+                        if (event.optJSONArray("list") == null) throw LibreTvProtocolException("LibreTV 搜索事件缺少列表")
+                        val batch = decodeSearchList(event.optJSONArray("list"), active)
+                        when (event.optString("type")) {
+                            "source" -> {
+                                accumulated = (accumulated + batch).distinctBy {
+                                    (it.source?.key ?: "") + "/" + it.id
+                                }
+                                val outcome = outcomes(JSONArray().put(event)).single()
+                                observed = observed.filterNot { it.sourceKey == outcome.sourceKey } + outcome
+                                send(SearchSnapshot(accumulated, observed))
                             }
-                            send(accumulated)
-                        }
-                        "done" -> {
-                            completed = true
-                            send(batch)
-                        }
-                        else -> {
-                            if (event.has("list")) {
+                            "done" -> {
                                 completed = true
-                                send(batch)
+                                val failures = outcomes(event.optJSONArray("failures"))
+                                observed = observed.filterNot { old -> failures.any { it.sourceKey == old.sourceKey } } +
+                                    failures.map { failure -> failure.copy(ms = observed.firstOrNull { it.sourceKey == failure.sourceKey }?.ms) }
+                                send(SearchSnapshot(batch, observed, complete = true))
+                                break
+                            }
+                            else -> {
+                                // Older proxies returned one ordinary JSON search response.
+                                if (event.optString("type").isBlank() && event.has("list")) {
+                                    completed = true
+                                    send(SearchSnapshot(batch, outcomes(event.optJSONArray("failures")), complete = true))
+                                    break
+                                } else throw IOException("LibreTV 搜索事件类型无效")
                             }
                         }
                     }
                 }
+                if (!completed) throw IOException("LibreTV 搜索流未完成（缺少 done）")
+                close()
             }
-            if (!completed) send(accumulated)
-            close()
           } catch (cancelled: kotlinx.coroutines.CancellationException) {
             throw cancelled
           } catch (error: Exception) { close(error) }
-          finally { conn.disconnect() }
+          finally { call.cancel() }
         }
-        awaitClose { conn.disconnect(); network.cancel() }
+        awaitClose { call.cancel(); network.cancel() }
     }.flowOn(Dispatchers.IO)
 
-    suspend fun detail(requested: MediaItem): MediaItem = withContext(Dispatchers.IO) {
+    suspend fun detail(requested: MediaItem, onProgress: (ResolutionProgress) -> Unit = {}): MediaItem = withContext(Dispatchers.IO) {
         val item = requireNotNull(requested.usableMetadata()) { "目录授权已过期，请刷新后重试；本地记录仍保留。" }
-        val entry = if (item.source == null) {
-            search(item.title).firstOrNull {
-                MediaIdentity.isSameWork(item.title, item.year, it.title, it.year) &&
-                    (!it.mediaTypeKnown || !item.mediaTypeKnown || it.isTv == item.isTv) &&
-                    (it.seasonNumber == null || item.seasonNumber == null || it.seasonNumber == item.seasonNumber)
-            } ?: throw IOException("未找到可确认与《${item.title}》匹配的播放来源")
-        } else item
+        val detailed = if (item.source == null) {
+            CatalogSourceResolver(::searchSnapshot) { entry -> fetchDetail(entry, item) }.resolve(item, onProgress)
+        } else fetchDetail(item, item).also {
+            require(SourceResolutionPolicy.matches(item, it)) { "播放详情与所选作品不匹配" }
+            require(it.episodes.all(SourceResolutionPolicy::usableUrl)) { "未找到可用的 HTTP(S) 播放地址" }
+        }
+        try {
+            library.cacheItem(detailed)
+            persistenceWarning = ""
+        } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+        catch (error: Exception) { persistenceWarning = "本地片库暂不可写；播放仍可用，旧记录已保留。" }
+        library.snapshot.applyProgress(detailed)
+    }
+
+    private suspend fun fetchDetail(entry: MediaItem, item: MediaItem): MediaItem {
         val src = requireNotNull(entry.source)
         val path = "/api/detail?id=${encode(entry.id)}&source=${encode(sourceJson(src).toString())}"
         val j = request(path)
         val info = j.optJSONObject("videoInfo") ?: JSONObject()
-        val episodes = j.optJSONArray("episodes") ?: JSONArray()
-        val detailed = entry.copy(
-            isTv = if (info.has("isTv")) info.optBoolean("isTv") else if (info.optString("type") in listOf("tv", "movie")) info.optString("type") == "tv" else item.isTv || entry.isTv,
-            mediaTypeKnown = info.has("isTv") || info.optString("type") in listOf("tv", "movie") || item.mediaTypeKnown || entry.mediaTypeKnown,
+        val reportedKey = info.optString("sourceKey").takeUnless { it.isBlank() || it == "null" }
+        val reportedUrl = info.optString("sourceUrl").takeUnless { it.isBlank() || it == "null" }
+        if ((reportedKey != null && reportedKey != src.key) || (reportedUrl != null && reportedUrl != src.url)) {
+            throw LibreTvProtocolException("LibreTV 详情来源与请求不符")
+        }
+        val episodes = j.optJSONArray("episodes") ?: throw LibreTvProtocolException("LibreTV 详情响应缺少播放列表")
+        if ((0 until episodes.length()).any { episodes.opt(it) !is String }) {
+            throw LibreTvProtocolException("LibreTV 播放列表格式无效")
+        }
+        return entry.copy(
+            title = info.optString("title").trim().takeUnless { it.isBlank() || it == "null" } ?: entry.title,
+            isTv = mediaType(info) ?: if (entry.mediaTypeKnown) entry.isTv else item.isTv,
+            mediaTypeKnown = mediaType(info) != null || item.mediaTypeKnown || entry.mediaTypeKnown,
             backdrop = entry.backdrop.ifBlank { item.backdrop },
             description = info.optString("desc"),
             poster = info.optString("cover").ifBlank { entry.poster },
             category = info.optString("typeName").ifBlank { entry.category },
             year = info.optString("year").ifBlank { entry.year },
             aliases = strings(info.opt("aliases")).ifEmpty { entry.aliases.ifEmpty { item.aliases } },
-            actors = strings(info.opt("actors")).ifEmpty { strings(info.opt("vod_actor")).ifEmpty { entry.actors.ifEmpty { item.actors } } },
+            actors = strings(info.opt("actor")).ifEmpty { strings(info.opt("actors")).ifEmpty {
+                strings(info.opt("vod_actor")).ifEmpty { entry.actors.ifEmpty { item.actors } }
+            } },
             episodeNames = info.optJSONArray("episodeNames")?.let { names ->
                 (0 until names.length()).map { names.optString(it) }
             }.orEmpty(),
-            seasonNumber = info.optInt("season", 0).takeIf { it > 0 } ?: entry.seasonNumber ?: item.seasonNumber,
+            episodeIds = info.optJSONArray("episodeIds")?.let { ids ->
+                (0 until ids.length()).map { ids.optString(it) }
+            }.orEmpty(),
+            // A new authoritative playlist must not inherit a cached/catalog season. Unknown
+            // season is meaningful to checkpoint quarantine, even when labels are reused.
+            seasonNumber = info.optInt("season", 0).takeIf { it > 0 },
             // Title resolution is not an authoritative cross-provider ID mapping.
             metadataIds = entry.metadataIds,
             rating = item.rating.ifBlank { entry.rating }, ratingSource = item.ratingSource.ifBlank { entry.ratingSource },
@@ -515,14 +610,9 @@ class LibreTvRepository(context: Context, val library: LocalMediaLibrary = Local
             doubanTopRank = item.doubanTopRank ?: entry.doubanTopRank,
             catalogProvider = item.catalogProvider, catalogAttribution = item.catalogAttribution,
             catalogLicenseExpiresAt = item.catalogLicenseExpiresAt,
-            episodes = (0 until episodes.length()).map { episodes.optString(it) }
+            episodes = (0 until episodes.length()).map { episodes.optString(it) },
+            playlistKnown = true
         )
-        try {
-            library.cacheItem(detailed)
-            persistenceWarning = ""
-        } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
-        catch (error: Exception) { persistenceWarning = "本地片库暂不可写；播放仍可用，旧记录已保留。" }
-        library.snapshot.applyProgress(detailed)
     }
 
     suspend fun channels(source: LiveSource): List<TvChannel> = withContext(Dispatchers.IO) {
