@@ -8,6 +8,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import dev.cinematv.data.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 
 enum class Page { HOME, EXPLORE, MOVIES, SERIES, SEARCH, LIVE, LIBRARY, SETTINGS, DETAIL, PLAYER }
 
@@ -61,6 +63,13 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
         private set
     var libraryVersion by mutableStateOf(0)
         private set
+    var alternatives by mutableStateOf<List<MediaItem>>(emptyList())
+        private set
+    var activeChannel by mutableStateOf<TvChannel?>(null)
+        private set
+    var epgPrograms by mutableStateOf<List<TvProgram>>(emptyList())
+        private set
+    private var epgJob: Job? = null
     var playingEpisode by mutableStateOf(0)
         private set
 
@@ -155,12 +164,40 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
     fun open(item: MediaItem) {
         page = Page.DETAIL
         selected = item
+        alternatives = emptyList()
         busy = true
         viewModelScope.launch {
             runCatching { repo.detail(item) }
                 .onSuccess { selected = it }
                 .onFailure { message = "详情读取失败：${it.message}" }
             busy = false
+        }
+    }
+
+    fun findAlternatives() {
+        val item = selected ?: return
+        viewModelScope.launch {
+            busy = true
+            runCatching { repo.search(item.title) }
+                .onSuccess { items ->
+                    alternatives = items.filter { it.title.equals(item.title, ignoreCase = true) }
+                        .ifEmpty { items.filter { it.title.contains(item.title) }.take(12) }
+                        .distinctBy { it.source?.url }
+                }
+                .onFailure { message = "换源失败：${it.message}" }
+            busy = false
+        }
+    }
+
+    fun focusChannel(channel: TvChannel) {
+        if (activeChannel?.id == channel.id) return
+        activeChannel = channel
+        epgPrograms = emptyList()
+        epgJob?.cancel()
+        val source = activeLiveSource ?: return
+        epgJob = viewModelScope.launch {
+            delay(350)
+            runCatching { repo.epg(source, channel) }.onSuccess { epgPrograms = it }
         }
     }
 
@@ -216,6 +253,8 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
 
     fun loadChannels(source: LiveSource) {
         activeLiveSource = source
+        activeChannel = null
+        epgPrograms = emptyList()
         viewModelScope.launch {
             busy = true
             runCatching { repo.channels(source) }.onSuccess { channels = it }

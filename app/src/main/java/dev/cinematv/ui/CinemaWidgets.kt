@@ -47,6 +47,7 @@ fun GlassAction(
     modifier: Modifier = Modifier,
     selected: Boolean = false,
     prominent: Boolean = false,
+    onFocus: () -> Unit = {},
     onClick: () -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
@@ -64,7 +65,7 @@ fun GlassAction(
             .clip(RoundedCornerShape(26.dp))
             .background(bg)
             .border(1.dp, if (focused) Color.White else Color.White.copy(alpha = .16f), RoundedCornerShape(26.dp))
-            .onFocusChanged { focused = it.isFocused }
+            .onFocusChanged { focused = it.isFocused; if (it.isFocused) onFocus() }
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {

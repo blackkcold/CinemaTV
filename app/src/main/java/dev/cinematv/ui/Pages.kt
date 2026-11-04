@@ -223,6 +223,19 @@ fun DetailPage(model: CinemaViewModel) {
             Row(horizontalArrangement = Arrangement.spacedBy(13.dp)) {
                 GlassAction("▶ 立即播放", Modifier.width(168.dp).height(52.dp), prominent = true) { model.playEpisode(0) }
                 GlassAction("加入 / 取消收藏", Modifier.width(196.dp).height(52.dp)) { model.toggleFavorite() }
+                GlassAction("更换片源", Modifier.width(165.dp).height(52.dp)) { model.findAlternatives() }
+            }
+            if (model.alternatives.isNotEmpty()) {
+                Spacer(Modifier.height(24.dp))
+                Text("可用来源", color = Ivory, fontSize = 20.sp)
+                Spacer(Modifier.height(12.dp))
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    items(model.alternatives) { option ->
+                        GlassAction(option.source?.name ?: "片源", Modifier.width(170.dp).height(48.dp)) {
+                            model.open(option)
+                        }
+                    }
+                }
             }
             Spacer(Modifier.height(40.dp))
             Text("剧集 / 播放列表  ·  ${item.episodes.size}", color = Ivory, fontSize = 22.sp, fontWeight = FontWeight.Bold)
@@ -260,7 +273,14 @@ fun LivePage(model: CinemaViewModel) {
                 }
             }
         }
-        Spacer(Modifier.height(22.dp))
+        Spacer(Modifier.height(14.dp))
+        model.activeChannel?.let { channel ->
+            val now = System.currentTimeMillis()
+            val current = model.epgPrograms.firstOrNull { now in it.start until it.stop }
+            Text("当前频道：${channel.name}  ·  ${current?.title ?: "暂无节目单"}",
+                color = Accent, fontSize = 16.sp)
+        }
+        Spacer(Modifier.height(16.dp))
         if (model.busy) CircularProgressIndicator(color = Accent)
         else if (model.channels.isEmpty()) EmptyMessage("暂无频道", Modifier.fillMaxWidth().height(140.dp))
         else LazyVerticalGrid(
@@ -268,7 +288,8 @@ fun LivePage(model: CinemaViewModel) {
             verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(bottom = 45.dp)
         ) {
             items(model.channels, key = { it.id }) { channel ->
-                GlassAction(channel.name, Modifier.fillMaxWidth().height(62.dp)) { model.playChannel(channel) }
+                GlassAction(channel.name, Modifier.fillMaxWidth().height(62.dp),
+                    onFocus = { model.focusChannel(channel) }) { model.playChannel(channel) }
             }
         }
     }
@@ -324,7 +345,15 @@ fun SettingsPage(model: CinemaViewModel) {
                 Modifier.weight(1.7f).height(59.dp))
             GlassAction("添加", Modifier.width(120.dp).height(59.dp)) { model.addSource(false) }
         }
-        Text("已有点播源：${model.sources.joinToString(" / ") { it.name }.ifBlank { "无" }}", color = Muted, fontSize = 14.sp)
+        Text("已配置点播源（自定义来源可移除）：", color = Muted, fontSize = 14.sp)
+        model.sources.forEach { source ->
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                Text(source.name, color = Ivory, fontSize = 15.sp, modifier = Modifier.weight(1f))
+                if (source.key.startsWith("custom_")) GlassAction("移除", Modifier.width(96.dp).height(36.dp)) {
+                    model.removeSource(source.url)
+                }
+            }
+        }
         Spacer(Modifier.height(10.dp))
         Text("添加直播源（M3U）", fontSize = 21.sp, color = Ivory, fontWeight = FontWeight.SemiBold)
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -333,7 +362,15 @@ fun SettingsPage(model: CinemaViewModel) {
             GlassAction("添加", Modifier.width(120.dp).height(59.dp)) { model.addSource(true) }
         }
         TvInput(model.liveEpg, { model.liveEpg = it }, "可选：XMLTV 节目单 URL", Modifier.fillMaxWidth().height(59.dp))
-        Text("已有直播源：${model.liveSources.joinToString(" / ") { it.name }.ifBlank { "无" }}", color = Muted, fontSize = 14.sp)
+        Text("已配置直播源（自定义来源可移除）：", color = Muted, fontSize = 14.sp)
+        model.liveSources.forEach { source ->
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                Text(source.name, color = Ivory, fontSize = 15.sp, modifier = Modifier.weight(1f))
+                if (source.key.startsWith("custom_")) GlassAction("移除", Modifier.width(96.dp).height(36.dp)) {
+                    model.removeSource(source.url, live = true)
+                }
+            }
+        }
         Spacer(Modifier.height(10.dp))
         Text("注意：HTTP 连接不加密，请在公网部署时使用 HTTPS。仅添加你有权访问的内容源。",
             color = Muted, fontSize = 14.sp)
