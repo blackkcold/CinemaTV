@@ -51,7 +51,8 @@ class MobilePlaybackSmokeTest {
         }
     }
     private fun capture(name: String) {
-        val folder = File(rule.activity.getExternalFilesDir(null), "ui-evidence").apply { mkdirs() }
+        val folder = File(InstrumentationRegistry.getArguments().getString("additionalTestOutputDir")
+            ?: rule.activity.getExternalFilesDir(null)!!.absolutePath, "ui-evidence").apply { mkdirs() }
         rule.onRoot().captureToImage().asAndroidBitmap().let { bitmap ->
             File(folder, "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
         }

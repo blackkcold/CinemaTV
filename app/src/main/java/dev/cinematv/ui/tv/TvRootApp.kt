@@ -20,7 +20,7 @@ import dev.cinematv.ui.tv.focus.*
 import dev.cinematv.ui.tv.pages.*
 
 @Composable
-fun TvRootApp(model: CinemaViewModel) {
+fun TvRootApp(model: CinemaViewModel, onSceneDecoded: (String?) -> Unit = {}) {
     CinemaTvTheme(model.reducedMotion, model.glassQuality) {
         val savedPages = rememberSaveableStateHolder()
         val registry = remember { TvFocusRegistry() }
@@ -38,7 +38,7 @@ fun TvRootApp(model: CinemaViewModel) {
             Box(Modifier.fillMaxSize().background(TvColors.Background)) {
                 if (model.page != Page.PLAYER) BackdropLayer(
                     if (model.page == Page.DETAIL) model.selected else model.focused ?: model.featured.firstOrNull()
-                ) { decodedArt = it }
+                ) { decodedArt = it; onSceneDecoded(it) }
                 savedPages.SaveableStateProvider(model.focusRoute) {
                   key(model.focusRoute) {
                     when (model.page) {

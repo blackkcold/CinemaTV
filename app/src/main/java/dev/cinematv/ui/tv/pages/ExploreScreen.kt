@@ -11,6 +11,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
+import androidx.compose.ui.input.key.*
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -35,10 +36,17 @@ fun ExploreScreen(model: CinemaViewModel) {
     val inset = (layout.width - cardWidth) / 2
     val entry = LocalContentFocus.current
     val nav = LocalNavigationFocus.current
+    val registry = LocalTvFocusRegistry.current
+    var requestMovement by remember { mutableStateOf(false) }
     RestorePageFocus(model)
     LaunchedEffect(active, items.size) {
         if (items.isNotEmpty()) {
             if (effects.reducedMotion) list.scrollToItem(active) else list.animateScrollToItem(active)
+            if (requestMovement) {
+                withFrameNanos { }; withFrameNanos { }
+                items.getOrNull(active)?.let { registry.request(model.focusRoute, "coverflow", it.presentationKey) }
+                requestMovement = false
+            }
         }
     }
     Column(Modifier.fillMaxSize().padding(top = layout.contentTop), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -59,6 +67,14 @@ fun ExploreScreen(model: CinemaViewModel) {
                     modifier = Modifier.width(cardWidth).focusRequester(target)
                         .then(if (index == active) Modifier.focusRequester(entry) else Modifier)
                         .focusProperties { up = nav }
+                        .onPreviewKeyEvent { event ->
+                            if (event.type != KeyEventType.KeyDown || event.key !in listOf(Key.DirectionLeft, Key.DirectionRight)) false
+                            else {
+                                val next = (active + if (event.key == Key.DirectionRight) 1 else -1).coerceIn(0, items.lastIndex)
+                                if (next != active) { requestMovement = true; active = next }
+                                true
+                            }
+                        }
                         .graphicsLayer { scaleX = scale; scaleY = scale; rotationY = tilt; alpha = if (center) 1f else .67f; cameraDistance = 16f * density })
             }
         }

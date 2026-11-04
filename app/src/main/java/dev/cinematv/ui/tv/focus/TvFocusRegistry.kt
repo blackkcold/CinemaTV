@@ -13,10 +13,11 @@ class TvFocusRegistry {
         targets[Triple(route, region, key)] = requester
     }
     fun detach(route: String, region: String, key: String) { targets.remove(Triple(route, region, key)) }
+    fun request(route: String, region: String, key: String): Boolean =
+        targets[Triple(route, region, key)]?.let { runCatching { it.requestFocus() }.getOrDefault(false) } ?: false
     fun restore(model: CinemaViewModel): Boolean {
         val last = model.focusCoordinator.last(model.focusRoute) ?: return false
-        val target = targets[Triple(model.focusRoute, last.region, last.itemKey)] ?: return false
-        return runCatching { target.requestFocus() }.getOrDefault(false)
+        return request(model.focusRoute, last.region, last.itemKey)
     }
 }
 

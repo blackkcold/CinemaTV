@@ -11,6 +11,7 @@ import dev.cinematv.ui.tv.TvRootApp
 /** Non-exported debug-only host. Fixtures live exclusively in androidTest. */
 class TvTestActivity : ComponentActivity() {
     val model: CinemaViewModel by viewModels()
+    var decodedScene: String? = null
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         @Suppress("DEPRECATION")
@@ -18,7 +19,7 @@ class TvTestActivity : ComponentActivity() {
             View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
         setContent {
             BackHandler(enabled = model.page != Page.HOME) { model.back() }
-            TvRootApp(model)
+            TvRootApp(model) { decodedScene = it }
         }
     }
 }

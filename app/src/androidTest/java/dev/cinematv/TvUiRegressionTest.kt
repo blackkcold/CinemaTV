@@ -25,13 +25,20 @@ class TvUiRegressionTest {
     @get:Rule val rule = createAndroidComposeRule<TvTestActivity>()
     private lateinit var server: UiFixtureServer
     private val model get() = rule.activity.model
-    private val directory get() = File(rule.activity.getExternalFilesDir(null), "ui-evidence").apply { mkdirs() }
+    private val directory get() = File(InstrumentationRegistry.getArguments().getString("additionalTestOutputDir")
+        ?: rule.activity.getExternalFilesDir(null)!!.absolutePath, "ui-evidence").apply { mkdirs() }
     private fun key(code: Int) {
         InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(code)
         rule.waitForIdle()
+        val trace = rule.onAllNodes(isFocused()).fetchSemanticsNodes().joinToString { it.config.toString() }
+        File(directory, "focus-trace.txt").appendText("key=$code route=${model.focusRoute}\n$trace\n")
     }
     private fun screenshot(name: String) {
         rule.waitForIdle()
+        if (model.page != Page.PLAYER) {
+            val art = (if (model.page == Page.DETAIL) model.selected else model.focused ?: model.featured.firstOrNull())?.backdrop
+            if (!art.isNullOrBlank()) rule.waitUntil(8000) { rule.activity.decodedScene == art }
+        }
         val bitmap = rule.onRoot().captureToImage().asAndroidBitmap()
         File(directory, "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
@@ -57,6 +64,7 @@ class TvUiRegressionTest {
         rule.onNodeWithText("观看详情").assertIsFocused()
         screenshot("01-home")
         key(KeyEvent.KEYCODE_DPAD_DOWN)
+        rule.onNodeWithContentDescription(server.title(0)).assertIsFocused()
         repeat(9) { key(KeyEvent.KEYCODE_DPAD_RIGHT) }
         val selected = server.title(9)
         rule.onNodeWithContentDescription(selected).assertIsFocused()

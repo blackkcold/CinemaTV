@@ -6,6 +6,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -20,7 +21,7 @@ import dev.cinematv.ui.tv.design.*
 import dev.cinematv.ui.tv.focus.*
 
 @Composable
-fun CinemaHero(item: MediaItem?, model: CinemaViewModel, eyebrow: String = "为热爱故事的你", compact: Boolean = false) {
+fun CinemaHero(item: MediaItem?, model: CinemaViewModel, eyebrow: String = "为热爱故事的你", compact: Boolean = false, belowFocus: FocusRequester? = null) {
     val layout = LocalTvLayout.current
     val entry = LocalContentFocus.current
     val navigation = LocalNavigationFocus.current
@@ -39,12 +40,12 @@ fun CinemaHero(item: MediaItem?, model: CinemaViewModel, eyebrow: String = "为�
                 maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth(.85f))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(top = 4.dp)) {
                 GlassAction(if (item == null) "连接服务器" else "观看详情",
-                    Modifier.focusRequester(entry).focusRequester(target).focusProperties { up = navigation }
+                    Modifier.focusRequester(entry).focusRequester(target).focusProperties { up = navigation; down = belowFocus ?: FocusRequester.Default }
                         .width(148.dp).height(45.dp), prominent = true,
                     onFocus = { model.focusCoordinator.remember(model.focusRoute, "hero", "primary") }) {
                     if (item == null) model.navigate(Page.SETTINGS) else model.open(item)
                 }
-                GlassAction("搜索影片", Modifier.width(128.dp).height(45.dp)) { model.navigate(Page.SEARCH) }
+                GlassAction("搜索影片", Modifier.focusProperties { down = belowFocus ?: FocusRequester.Default }.width(128.dp).height(45.dp)) { model.navigate(Page.SEARCH) }
             }
         }
     }

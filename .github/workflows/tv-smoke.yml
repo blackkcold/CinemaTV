@@ -65,4 +65,5 @@ jobs:
             qa/
             app/build/reports/androidTests/
             app/build/outputs/androidTest-results/
+            app/build/outputs/connected_android_test_additional_output/
           if-no-files-found: error
