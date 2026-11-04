@@ -3,6 +3,9 @@ package dev.cinematv.data
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
@@ -162,14 +165,8 @@ class LibreTvRepository(context: Context) {
         }
     }
 
-    suspend fun search(keyword: String): List<MediaItem> = withContext(Dispatchers.IO) {
-        val active = sources()
-        require(active.isNotEmpty()) { "请先在设置中添加点播源" }
-        val payload = JSONObject().put("wd", keyword.trim())
-            .put("filterAdult", true)
-            .put("sources", JSONArray(active.map(::sourceJson)))
-        val response = request("/api/search", "POST", payload)
-        parseArray(response.optJSONArray("list")) { j ->
+    private fun decodeSearchList(items: JSONArray?, active: List<TvSource>): List<MediaItem> =
+        parseArray(items) { j ->
             val name = j.optString("name")
             val source = active.firstOrNull { it.key == j.optString("sourceKey") }
                 ?: TvSource(j.optString("sourceKey"), j.optString("sourceName"), j.optString("sourceUrl"))
@@ -182,7 +179,77 @@ class LibreTvRepository(context: Context) {
                 source = source
             )
         }
+
+    private fun searchPayload(keyword: String, active: List<TvSource>) = JSONObject()
+        .put("wd", keyword.trim())
+        .put("filterAdult", true)
+        .put("sources", JSONArray(active.map(::sourceJson)))
+
+    suspend fun search(keyword: String): List<MediaItem> = withContext(Dispatchers.IO) {
+        val active = sources()
+        require(active.isNotEmpty()) { "请先在设置中添加点播源" }
+        val response = request("/api/search", "POST", searchPayload(keyword, active))
+        decodeSearchList(response.optJSONArray("list"), active)
     }
+
+    /**
+     * LibreTV sends one NDJSON 'source' event per completed origin, then one
+     * 'done' event with authoritative order. Every intermediate emission is
+     * usable, cancellation closes the network stream immediately.
+     */
+    fun searchProgressively(keyword: String): Flow<List<MediaItem>> = flow {
+        val active = sources()
+        require(active.isNotEmpty()) { "请先在设置中添加点播源" }
+        val conn = (URL(server + "/api/search?stream=1").openConnection() as HttpURLConnection).apply {
+            requestMethod = "POST"
+            connectTimeout = 8000
+            readTimeout = 30000
+            instanceFollowRedirects = false
+            setRequestProperty("Accept", "application/x-ndjson")
+            setRequestProperty("Content-Type", "application/json; charset=utf-8")
+            sessionCookie?.let { setRequestProperty("Cookie", it) }
+            doOutput = true
+        }
+        try {
+            conn.outputStream.use {
+                it.write(searchPayload(keyword, active).toString().toByteArray(Charsets.UTF_8))
+            }
+            if (conn.responseCode !in 200..299) {
+                throw IOException("LibreTV 流式搜索失败：HTTP ${conn.responseCode}")
+            }
+            var accumulated = emptyList<MediaItem>()
+            var completed = false
+            conn.inputStream.bufferedReader(Charsets.UTF_8).use { reader ->
+                while (true) {
+                    val line = reader.readLine() ?: break
+                    if (line.isBlank()) continue
+                    val event = JSONObject(line)
+                    val batch = decodeSearchList(event.optJSONArray("list"), active)
+                    when (event.optString("type")) {
+                        "source" -> {
+                            accumulated = (accumulated + batch).distinctBy {
+                                (it.source?.key ?: "") + "/" + it.id
+                            }
+                            emit(SearchAggregator.group(accumulated))
+                        }
+                        "done" -> {
+                            completed = true
+                            emit(SearchAggregator.group(batch))
+                        }
+                        else -> {
+                            if (event.has("list")) {
+                                completed = true
+                                emit(SearchAggregator.group(batch))
+                            }
+                        }
+                    }
+                }
+            }
+            if (!completed) emit(SearchAggregator.group(accumulated))
+        } finally {
+            conn.disconnect()
+        }
+    }.flowOn(Dispatchers.IO)
 
     suspend fun detail(item: MediaItem): MediaItem = withContext(Dispatchers.IO) {
         val entry = if (item.source == null) {

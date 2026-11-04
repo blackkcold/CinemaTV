@@ -10,6 +10,7 @@ import dev.cinematv.data.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collect
 
 enum class Page { HOME, EXPLORE, MOVIES, SERIES, SEARCH, LIVE, LIBRARY, SETTINGS, DETAIL, PLAYER }
 
@@ -71,6 +72,7 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
     var epgPrograms by mutableStateOf<List<TvProgram>>(emptyList())
         private set
     private var epgJob: Job? = null
+    private var searchJob: Job? = null
     var failoverBusy by mutableStateOf(false)
         private set
     var failoverMessage by mutableStateOf("")
@@ -213,11 +215,21 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
         val wd = query.trim()
         if (wd.isBlank()) return
         navigate(Page.SEARCH)
-        viewModelScope.launch {
+        searchJob?.cancel()
+        searchJob = viewModelScope.launch {
             busy = true
-            runCatching { repo.search(wd) }
-                .onSuccess { results = it; if (it.isEmpty()) message = "没有找到相关影片" }
-                .onFailure { results = emptyList(); message = it.message ?: "搜索失败" }
+            results = emptyList()
+            runCatching {
+                repo.searchProgressively(wd).collect { partial ->
+                    results = partial
+                }
+            }.onFailure { failure ->
+                if (failure is kotlinx.coroutines.CancellationException) return@launch
+                runCatching { repo.search(wd) }
+                    .onSuccess { results = SearchAggregator.group(it) }
+                    .onFailure { message = it.message ?: "搜索失败" }
+            }
+            if (results.isEmpty() && message.isBlank()) message = "没有找到相关影片"
             busy = false
         }
     }

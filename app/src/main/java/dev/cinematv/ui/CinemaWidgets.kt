@@ -174,7 +174,8 @@ fun MediaTile(
         }
         Text(item.title, color = Ivory, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text(
-            listOf(item.year, item.category, item.rating.takeIf { it.isNotBlank() }?.let { "★ $it" } ?: "")
+            listOf(item.year, item.category, item.rating.takeIf { it.isNotBlank() }?.let { "★ $it" } ?: "",
+                if (item.sourceCount > 1) "片源 ${item.sourceCount}" else "")
                 .filter(String::isNotBlank).joinToString(" · ").ifBlank { "影视作品" },
             color = Muted, fontSize = 12.sp, maxLines = 1
         )

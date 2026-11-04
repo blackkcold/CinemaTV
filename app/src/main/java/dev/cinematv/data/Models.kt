@@ -27,7 +27,8 @@ data class MediaItem(
     val episodes: List<String> = emptyList(),
     val isTv: Boolean = false,
     val positionMs: Long = 0L,
-    val lastEpisode: Int = 0
+    val lastEpisode: Int = 0,
+    val sourceCount: Int = 1
 )
 
 data class TvChannel(
