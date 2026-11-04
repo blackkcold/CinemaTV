@@ -21,9 +21,23 @@ class GlassSmokeContractTest(unittest.TestCase):
         self.assertIn('decor.isHardwareAccelerated', source)
         self.assertIn('INTENDED_VSYNC_TIMESTAMP', source)
         self.assertIn('completed.await(10, TimeUnit.SECONDS)', source)
+        self.assertIn('activity.hasWindowFocus()', source)
+        self.assertIn('materialDraws.get() > previousDraws', source)
         self.assertIn('finally {', source)
         self.assertIn('removeOnFrameMetricsAvailableListener(listener)', source)
         self.assertIn('thread.quitSafely()', source)
+
+    def test_listener_is_armed_before_mount_and_every_measured_mutation(self):
+        source = (ROOT / 'app/src/androidTest/java/dev/cinematv/GlassMaterialSmokeTest.kt').read_text()
+        helper = source.split('private fun renderStage', 1)[1].split('@Test fun agslCompiles', 1)[0]
+        self.assertLess(helper.index('addOnFrameMetricsAvailableListener'), helper.index('mutation()'))
+        self.assertLess(helper.index('mutation()'), helper.index('compose.waitForIdle()'))
+        self.assertNotIn('postInvalidateOnAnimation()', helper)
+        self.assertLess(source.index('render("initial")'), source.index('compose.setContent'))
+        for stage in ('focused', 'pressed', 'reduced-motion', 'missing-art', 'latched-failure', 'unfocused'):
+            self.assertIn('render("' + stage + '")', source)
+        self.assertIn('drawContent()', source)
+        self.assertIn('materialDraws.incrementAndGet()', source)
 
 
 if __name__ == '__main__':

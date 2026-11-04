@@ -4,8 +4,11 @@ import android.app.Activity
 import android.graphics.Bitmap
 import android.os.Handler
 import android.os.HandlerThread
+import android.os.SystemClock
 import android.view.FrameMetrics
 import android.view.Window
+import android.view.ViewGroup
+import androidx.compose.ui.platform.ComposeView
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.test.platform.app.InstrumentationRegistry
@@ -20,35 +23,45 @@ internal object TvWindowCapture {
     fun capture(activity: Activity, rootWidth: Int, rootHeight: Int): Bitmap {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val automation = instrumentation.uiAutomation
-        fun checkForeground() {
-            instrumentation.runOnMainSync {
-                check(!activity.isFinishing && !activity.isDestroyed && activity.hasWindowFocus()) {
-                    "Capture requires the live, focused test activity"
+        fun checkForeground(waitForRoot: Boolean = false) {
+            val deadline = SystemClock.uptimeMillis() + TimeUnit.SECONDS.toMillis(TIMEOUT_SECONDS)
+            var lastPackage: String? = null
+            do {
+                instrumentation.runOnMainSync {
+                    check(!activity.isFinishing && !activity.isDestroyed && activity.hasWindowFocus()) {
+                        "Capture requires the live, focused test activity"
+                    }
+                    val decor = activity.window.decorView
+                    check(decor.isAttachedToWindow && decor.isShown && decor.isHardwareAccelerated)
+                    check(decor.width == rootWidth && decor.height == rootHeight) {
+                        "Compose root must cover the complete activity window"
+                    }
+                    val location = IntArray(2)
+                    decor.getLocationOnScreen(location)
+                    check(location.contentEquals(intArrayOf(0, 0))) {
+                        "Unexpected window offset ${location.contentToString()}; " +
+                            "imeVisible=${ViewCompat.getRootWindowInsets(decor)?.isVisible(WindowInsetsCompat.Type.ime())}; " +
+                            "softInputMode=${activity.window.attributes.softInputMode}"
+                    }
                 }
-                val decor = activity.window.decorView
-                check(decor.isAttachedToWindow && decor.isShown && decor.isHardwareAccelerated)
-                check(decor.width == rootWidth && decor.height == rootHeight) {
-                    "Compose root must cover the complete activity window"
+                val activeRoot = automation.rootInActiveWindow
+                try {
+                    lastPackage = activeRoot?.packageName?.toString()
+                    if (activeRoot != null && activeRoot.packageName?.toString() == activity.packageName) return
+                } finally {
+                    @Suppress("DEPRECATION")
+                    activeRoot?.recycle()
                 }
-                val location = IntArray(2)
-                decor.getLocationOnScreen(location)
-                check(location.contentEquals(intArrayOf(0, 0))) {
-                    "Unexpected window offset ${location.contentToString()}; " +
-                        "imeVisible=${ViewCompat.getRootWindowInsets(decor)?.isVisible(WindowInsetsCompat.Type.ime())}; " +
-                        "softInputMode=${activity.window.attributes.softInputMode}"
-                }
-            }
-            val activeRoot = checkNotNull(automation.rootInActiveWindow) { "No active accessibility window" }
-            try {
-                check(activeRoot.packageName?.toString() == activity.packageName) {
-                    "Foreground window is not ${activity.packageName}: ${activeRoot.packageName}"
-                }
-            } finally {
-                @Suppress("DEPRECATION")
-                activeRoot.recycle()
-            }
+                if (!waitForRoot || SystemClock.uptimeMillis() >= deadline) break
+                SystemClock.sleep(100)
+            } while (SystemClock.uptimeMillis() < deadline)
+            error("Expected active accessibility window ${activity.packageName}; " +
+                "last package=${lastPackage ?: "<missing>"}; initialWait=$waitForRoot")
         }
-        checkForeground()
+        // UiAutomation connection can finish before its initial active-root
+        // snapshot arrives. Only initial readiness may wait; both checks around
+        // the actual capture below still reject missing or wrong-package roots.
+        checkForeground(waitForRoot = true)
         // API 24+ frame metrics are delivered after this window renders a frame.
         // Unlike Compose captureToImage, this does not perform a GPU readback to
         // establish draw readiness. The overall suite retains its 12-minute cap.
@@ -61,7 +74,17 @@ internal object TvWindowCapture {
         try {
             instrumentation.runOnMainSync {
                 activity.window.addOnFrameMetricsAvailableListener(listener, Handler(thread.looper))
-                activity.window.decorView.postInvalidateOnAnimation()
+                // setContent installs ComposeView under android.R.id.content;
+                // its Android host owns the Compose draw commands. Invalidating
+                // only DecorView after idle may reuse that child's display list.
+                val content = checkNotNull(activity.findViewById<ViewGroup>(android.R.id.content))
+                check(content.childCount == 1) { "Expected one full-screen Compose content view" }
+                val composeView = content.getChildAt(0) as? ComposeView
+                    ?: error("Expected ComposeView in the TV test activity")
+                check(composeView.childCount == 1) { "Expected one Android Compose draw host" }
+                val drawHost = composeView.getChildAt(0)
+                check(drawHost.isAttachedToWindow && drawHost.isShown && drawHost.isHardwareAccelerated)
+                drawHost.postInvalidateOnAnimation()
             }
             check(drawn.await(TIMEOUT_SECONDS, TimeUnit.SECONDS)) { "No rendered frame before capture deadline" }
         } finally {

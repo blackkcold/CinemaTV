@@ -25,6 +25,7 @@ class DeviceQaContractTest(unittest.TestCase):
         self.assertNotIn('runs-on: ubuntu-latest', device)
         self.assertIn("emulator-build: '15004761'", device)
         self.assertIn('api-level: ${{ matrix.api }}', device)
+        self.assertIn('target: ${{ matrix.target }}', device)
         self.assertIn('disable-animations: false', device)
         self.assertIn('-gpu lavapipe -feature -Vulkan -no-snapshot -no-boot-anim -memory 2048', device)
         self.assertIn('matrix: ${{ fromJSON(needs.select-devices.outputs.matrix) }}', device)
@@ -79,6 +80,33 @@ class DeviceQaContractTest(unittest.TestCase):
         self.assertIn('TIMEOUT_SECONDS = 10L', source)
         self.assertNotIn('createScaledBitmap', source)
         self.assertIn('check(compressed)', test)
+
+    def test_fresh_frame_request_invalidates_compose_draw_host_after_arming(self):
+        source = (ROOT / 'app/src/androidTest/java/dev/cinematv/TvWindowCapture.kt').read_text()
+        markers = ['activity.window.addOnFrameMetricsAvailableListener(listener, Handler(thread.looper))',
+                   'activity.findViewById<ViewGroup>(android.R.id.content)',
+                   'content.getChildAt(0) as? ComposeView',
+                   'val drawHost = composeView.getChildAt(0)',
+                   'check(drawHost.isAttachedToWindow && drawHost.isShown && drawHost.isHardwareAccelerated)',
+                   'drawHost.postInvalidateOnAnimation()',
+                   'drawn.await(TIMEOUT_SECONDS, TimeUnit.SECONDS)']
+        positions = [source.index(marker) for marker in markers]
+        self.assertEqual(positions, sorted(positions))
+        self.assertNotIn('decorView.postInvalidateOnAnimation()', source)
+        self.assertIn('FrameMetrics.INTENDED_VSYNC_TIMESTAMP) >= requestedAt', source)
+
+    def test_initial_accessibility_root_wait_is_bounded_and_never_bypasses_identity(self):
+        source = (ROOT / 'app/src/androidTest/java/dev/cinematv/TvWindowCapture.kt').read_text()
+        self.assertIn('fun checkForeground(waitForRoot: Boolean = false)', source)
+        self.assertIn('SystemClock.uptimeMillis() + TimeUnit.SECONDS.toMillis(TIMEOUT_SECONDS)', source)
+        self.assertIn('if (!waitForRoot || SystemClock.uptimeMillis() >= deadline) break', source)
+        self.assertIn('SystemClock.sleep(100)', source)
+        self.assertIn('activeRoot != null && activeRoot.packageName?.toString() == activity.packageName', source)
+        self.assertIn('activeRoot?.recycle()', source)
+        self.assertIn('error("Expected active accessibility window', source)
+        self.assertEqual(source.count('checkForeground(waitForRoot = true)'), 1)
+        self.assertEqual(source.count('        checkForeground()'), 2)
+        self.assertLess(source.index('checkForeground(waitForRoot = true)'), source.index('val drawn = CountDownLatch(1)'))
 
     def test_search_submits_visible_ime_and_waits_for_hidden_restored_window(self):
         source = (ROOT / 'app/src/androidTest/java/dev/cinematv/TvUiRegressionTest.kt').read_text()

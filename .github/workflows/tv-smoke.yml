@@ -58,6 +58,12 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
+      - name: Restore pinned offline Noto fonts
+        uses: actions/cache@v4
+        with:
+          path: app/build/generated/notoAssets/fonts
+          # Font bytes are platform-independent; Ubuntu APK and device jobs share this key.
+          key: noto-fonts-v1-${{ hashFiles('scripts/fonts/noto-fonts.lock.json') }}
       - name: Install compile SDK and original media fixture
         run: |
           SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -1)
@@ -80,13 +86,17 @@ jobs:
           printf 'assemble\t%s\t%s\n' "$STATUS" "$((SECONDS - START))" > qa/stages.tsv
           free -m
           exit "$STATUS"
+      - name: Verify exact Noto font bytes before further gates
+        run: python3 scripts/fonts/verify-noto-fonts.py
       - name: Enable KVM
         run: sudo chmod 666 /dev/kvm
       - uses: reactivecircus/android-emulator-runner@v2
         timeout-minutes: 25
         with:
           api-level: ${{ matrix.api }}
-          target: google_apis
+          # TV hosts use AOSP: prior Google-image evidence is a different
+          # environment and cannot substitute for this matrix's acceptance.
+          target: ${{ matrix.target }}
           arch: x86_64
           profile: pixel_2
           # Android's archived stable build; newer 37.2.13 runners lost the

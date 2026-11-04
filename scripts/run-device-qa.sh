@@ -83,8 +83,12 @@ wait_for_device_window() {
     printf '%s\n' "$windows" > qa/setup-windows.txt
     # Never dismiss an ANR, crash, permission prompt or arbitrary system dialog.
     # Preserve the exact blocker and fail before starting instrumentation.
-    if [[ "$windows" == *"Application Not Responding:"* || "$windows" == *"Application Error:"* ]]; then
-      echo 'Device setup blocked by an ANR/crash window; see setup-windows.txt' >&2
+    # Full dumpsys includes LAST ANR and its historical window snapshot before
+    # the delayed system dialog is drawn. A fresh acceptance boot with an ANR
+    # is invalid even if a launcher has recovered focus in the meantime.
+    if [[ "$windows" == *"Application Not Responding:"* || "$windows" == *"Application Error:"* ||
+          "$windows" == *"Application at fault:"* ]]; then
+      echo 'Device setup blocked by a recorded ANR/crash; see setup-windows.txt' >&2
       return 1
     fi
     if device_window_ready "$boot" "$windows"; then

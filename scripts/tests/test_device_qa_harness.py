@@ -53,13 +53,13 @@ class DeviceWindowReadinessTest(unittest.TestCase):
 class DeviceMatrixTest(unittest.TestCase):
     def test_default_retains_all_acceptance_targets_and_classes(self):
         self.assertEqual(matrix.select("all"), {"include": [
-            {"name": "phone", "api": 30, "size": "1080x1920", "density": 420,
+            {"name": "phone", "target": "google_apis", "api": 30, "size": "1080x1920", "density": 420,
              "classes": "dev.cinematv.MobileNavigationSmokeTest,dev.cinematv.TvLaunchSmokeTest,dev.cinematv.MobilePlaybackSmokeTest,dev.cinematv.data.LocalMediaLibraryTest,dev.cinematv.data.RepositoryContractTest,dev.cinematv.MobileGlassButtonTest,dev.cinematv.CinemaBrandStartupTest"},
-            {"name": "tv1080", "api": 33, "size": "1920x1080", "density": 320,
+            {"name": "tv1080", "target": "default", "api": 33, "size": "1920x1080", "density": 320,
              "classes": "dev.cinematv.TvUiRegressionTest,dev.cinematv.GlassMaterialSmokeTest,dev.cinematv.ui.typography.NotoFontsDeviceTest"},
-            {"name": "tv4k", "api": 33, "size": "3840x2160", "density": 640,
+            {"name": "tv4k", "target": "default", "api": 33, "size": "3840x2160", "density": 640,
              "classes": "dev.cinematv.TvUiRegressionTest,dev.cinematv.GlassMaterialSmokeTest,dev.cinematv.ui.typography.NotoFontsDeviceTest"},
-            {"name": "compat26", "api": 26, "size": "1920x1080", "density": 320,
+            {"name": "compat26", "target": "google_apis", "api": 26, "size": "1920x1080", "density": 320,
              "classes": "dev.cinematv.ui.typography.NotoFontsDeviceTest,dev.cinematv.GlassMaterialSmokeTest#materialSurvivesFocusPressReducedMotionMissingArtAndFailure,dev.cinematv.CinemaBrandStartupTest"},
         ]})
 
@@ -329,6 +329,23 @@ class DeviceRunnerTest(unittest.TestCase):
                 self.assertFalse(invoked)
                 self.assertIn(window, self.files["qa/setup-windows.txt"])
                 self.assertFalse(any("force-stop" in args or "input" in args for args in self.calls["adb"]))
+
+    def test_pending_anr_rejects_stale_and_recovered_launcher_before_dialog(self):
+        # API33 dumpsys snapshot from the failed TV1080 boot: the ANR is
+        # recorded before the "Application Not Responding" window is created.
+        window = ("WINDOW MANAGER LAST ANR (dumpsys window lastanr)\n"
+                  "  ANR time: Nov 4, 2026 5:13:40 PM\n"
+                  "  Application at fault: ActivityRecord{12ad4ac u0 com.google.android.apps.nexuslauncher/.NexusLauncherActivity}\n"
+                  "  Reason: Application does not have a focused window\n" +
+                  API33_READY_WINDOW + "WINDOW MANAGER DISPLAY CONTENTS\n" + API33_READY_WINDOW)
+        self.assertNotIn("Application Not Responding:", window)
+        code, stages, _, invoked = self.run_harness(window=window)
+        self.assertNotEqual(code, 0)
+        self.assertFalse(invoked)
+        self.assertIn("device-setup\t1\t", stages)
+        self.assertIn("Application at fault:", self.files["qa/setup-windows.txt"])
+        self.assertFalse(any(args[:3] == ["shell", "wm", "size"] for args in self.calls["adb"]))
+        self.assertFalse(any("force-stop" in args or "input" in args for args in self.calls["adb"]))
 
     def test_gradle_retains_memory_and_worker_limits(self):
         self.run_harness()
