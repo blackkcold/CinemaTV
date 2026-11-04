@@ -1,0 +1,12 @@
+{
+  "approved_source_pack_sha256": "6c590345640aff1749be5147299ee378c733f1731cb8665d94b1f8dc6e4f6934",
+  "note": "Reviewed runtime rasters. tv_banner is the exact approved pack export; square/background/layers are documented integration derivatives. Renderer output is a review candidate, not an automatic replacement.",
+  "files": {
+    "app/src/main/res/drawable-nodpi/cinema_brand_fast.png": "b8ed1ab6abeb0d468a861837338c5565bdd41bc87bcffd8e80d294c2c217d3b3",
+    "app/src/main/res/drawable-nodpi/cinema_brand_medium.png": "549e2eead16a0dccbcc2216ccb8097017c8c87616b58848f7d126dd3d61c0433",
+    "app/src/main/res/drawable-nodpi/cinema_brand_slow.png": "0b23afd51f977d5fd541722b5230d8b62a1b143dd7cf6dc10ad7114b59180748",
+    "app/src/main/res/drawable-nodpi/ic_launcher_bg.png": "914e49160f75f01eaa7d32220ce0766b59acfdb0b53dbffedfc8b0e866d5e26c",
+    "app/src/main/res/drawable-nodpi/ic_launcher_legacy.png": "43e543685d89d7c7bfadbb6c003c4ae283bee04199aed129f4bc211191dc0c10",
+    "app/src/main/res/drawable-nodpi/tv_banner.png": "3d039e3da0aeb3a64ff2382ccf369adce2d8be7e0f808cb866675a6e1a5c6fa0"
+  }
+}
