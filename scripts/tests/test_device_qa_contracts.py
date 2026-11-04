@@ -73,8 +73,9 @@ class DeviceQaContractTest(unittest.TestCase):
         self.assertIn('root.size.width, root.size.height', test)
         for contract in ('activity.hasWindowFocus()', 'automation.rootInActiveWindow',
                          'activeRoot.packageName?.toString() == activity.packageName',
-                         'FrameMetrics.INTENDED_VSYNC_TIMESTAMP) >= requestedAt',
-                         'drawn.await(TIMEOUT_SECONDS, TimeUnit.SECONDS)',
+                         'FrameMetrics.VSYNC_TIMESTAMP',
+                         'fence > 0 && drawPasses.get() > 0 && actualVsync >= fence',
+                         'drawn.await(remaining, TimeUnit.MILLISECONDS)',
                          'automation.takeScreenshot()', 'future.get(TIMEOUT_SECONDS, TimeUnit.SECONDS)',
                          'bitmap.width == rootWidth && bitmap.height == rootHeight',
                          'if (!transferred) captured?.recycle()', 'executor.shutdownNow()'):
@@ -88,14 +89,44 @@ class DeviceQaContractTest(unittest.TestCase):
         markers = ['activity.window.addOnFrameMetricsAvailableListener(listener, Handler(thread.looper))',
                    'activity.findViewById<ViewGroup>(android.R.id.content)',
                    'content.getChildAt(0) as? ComposeView',
-                   'val drawHost = composeView.getChildAt(0)',
+                   'drawHost = composeView.getChildAt(0)',
                    'check(drawHost.isAttachedToWindow && drawHost.isShown && drawHost.isHardwareAccelerated)',
-                   'drawHost.postInvalidateOnAnimation()',
-                   'drawn.await(TIMEOUT_SECONDS, TimeUnit.SECONDS)']
+                   'observer = drawHost.viewTreeObserver.also { it.addOnDrawListener(drawListener) }',
+                   'Choreographer.getInstance().also { it.postFrameCallback(requestFrame) }',
+                   'drawn.await(firstWait, TimeUnit.MILLISECONDS)']
         positions = [source.index(marker) for marker in markers]
         self.assertEqual(positions, sorted(positions))
-        self.assertNotIn('decorView.postInvalidateOnAnimation()', source)
-        self.assertIn('FrameMetrics.INTENDED_VSYNC_TIMESTAMP) >= requestedAt', source)
+        request = source.split('val requestFrame = Choreographer.FrameCallback { frameTimeNanos ->', 1)[1].split('val drawListener', 1)[0]
+        self.assertLess(request.index('requestedFrame.compareAndSet(-1, frameTimeNanos)'), request.index('drawHost.invalidate()'))
+        self.assertNotIn('postInvalidateOnAnimation()', source)
+        self.assertNotIn('val requestedAt = System.nanoTime()', source)
+
+    def test_frame_completion_rejects_unarmed_stale_and_draw_only_evidence(self):
+        source = (ROOT / 'app/src/androidTest/java/dev/cinematv/TvWindowCapture.kt').read_text()
+        draw = source.split('val drawListener =', 1)[1].split('val listener =', 1)[0]
+        listener = source.split('val listener = Window.OnFrameMetricsAvailableListener', 1)[1].split('fun frameState()', 1)[0]
+        self.assertIn('if (requestedFrame.get() > 0) drawPasses.incrementAndGet()', draw)
+        self.assertNotIn('drawn.countDown()', draw)
+        self.assertIn('metrics.getMetric(FrameMetrics.VSYNC_TIMESTAMP)', listener)
+        self.assertIn('fence > 0 && drawPasses.get() > 0 && actualVsync >= fence', listener)
+        self.assertEqual(source.count('drawn.countDown()'), 1)
+        self.assertIn('droppedCallbacks.addAndGet(dropped)', listener)
+        for diagnostic in ('requestedFrame=', 'lastVsync=', 'lastIntendedVsync=', 'callbacks=', 'drawPasses=', 'requests='):
+            self.assertIn(diagnostic, source)
+
+    def test_frame_retry_preserves_first_fence_deadline_and_cleans_up(self):
+        source = (ROOT / 'app/src/androidTest/java/dev/cinematv/TvWindowCapture.kt').read_text()
+        self.assertEqual(source.count('val frameDeadline ='), 1)
+        self.assertIn('val remaining = (frameDeadline - SystemClock.uptimeMillis()).coerceAtLeast(0L)', source)
+        self.assertIn('drawn.await(remaining, TimeUnit.MILLISECONDS)', source)
+        self.assertIn('!drawn.await(firstWait, TimeUnit.MILLISECONDS) && SystemClock.uptimeMillis() < frameDeadline', source)
+        self.assertEqual(source.count('postFrameCallback(requestFrame)'), 2)
+        self.assertIn('requestedFrame.compareAndSet(-1, frameTimeNanos)', source)
+        self.assertNotIn('requestedFrame.set(', source)
+        for cleanup in ('removeFrameCallback(requestFrame)', 'removeOnDrawListener(drawListener)',
+                        'removeOnFrameMetricsAvailableListener(listener)', 'thread.quitSafely()', 'thread.join(2000)'):
+            self.assertIn(cleanup, source)
+        self.assertIn('TIMEOUT_SECONDS = 10L', source)
 
     def test_initial_accessibility_root_wait_is_bounded_and_never_bypasses_identity(self):
         source = (ROOT / 'app/src/androidTest/java/dev/cinematv/TvWindowCapture.kt').read_text()

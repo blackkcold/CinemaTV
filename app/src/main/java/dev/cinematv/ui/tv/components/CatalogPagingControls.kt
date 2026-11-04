@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.cinematv.CinemaViewModel
@@ -21,9 +22,9 @@ fun CatalogPagingControls(model: CinemaViewModel, series: Boolean) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             val target = rememberFocusTarget(model, "catalog-paging", "more:$series")
             // Keep the trigger mounted while loading so D-pad focus does not jump.
-            if (state.nextOffset != null || state.pages > 0) GlassAction(if (state.loading) "加载中…" else if (state.nextOffset != null) "加载更多" else "本次加载结束", Modifier.focusRequester(target).width(125.dp).height(36.dp),
+            if (state.nextOffset != null || state.pages > 0) GlassAction(if (state.loading) "加载中…" else if (state.nextOffset != null) "加载更多" else "本次加载结束", Modifier.testTag("catalog-more:$series").focusRequester(target).width(125.dp).height(36.dp),
                 onFocus = { model.focusCoordinator.remember(model.focusRoute, "catalog-paging", "more:$series") }) { model.loadMoreCatalog(series) }
-            if (!state.loading) GlassAction("刷新目录", Modifier.width(125.dp).height(36.dp)) { model.refreshCatalog() }
+            if (!state.loading) GlassAction("刷新目录", Modifier.testTag("catalog-refresh:$series").width(125.dp).height(36.dp)) { model.refreshCatalog() }
         }
     }
 }

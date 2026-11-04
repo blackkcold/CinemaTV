@@ -31,6 +31,7 @@ class TvLibraryCatalogControlsTest {
     @Test fun unconfiguredCatalogNeverRequestsUpstream() = metadataBoundary(rule, rule.activity)
     @Test fun browseAndSearchLoadMore() = catalogControls(rule, rule.activity, true)
     @Test fun partialThenExpiredPage() = catalogControls(rule, rule.activity, true, expired = true)
+    @Test fun discoveryPagingPreservesCoverflowAndRemoteReturn() = discoveryCatalogControls(rule, rule.activity)
     @Test fun cleanupCancelBackConfirmAndStatusRemoval() = libraryControls(rule, rule.activity, true)
 }
 
@@ -44,6 +45,7 @@ private fun activate(node: SemanticsNodeInteraction, tv: Boolean) {
 }
 
 /** Real screen controls, real VM and repository, only loopback synthetic BFF responses. */
+@OptIn(ExperimentalTestApi::class)
 private fun catalogControls(rule: ComposeContentTestRule, activity: ComponentActivity, tv: Boolean, expired: Boolean = false) {
     val model = ViewModelProvider(activity)[CinemaViewModel::class.java]
     UiFixtureServer(activity).use { server ->
@@ -57,11 +59,26 @@ private fun catalogControls(rule: ComposeContentTestRule, activity: ComponentAct
         }
         rule.waitUntil(15000) { model.movieBrowse.pages == 1 && model.seriesBrowse.pages == 1 && !model.movieBrowse.loading }
         rule.runOnIdle { assertEquals(2, model.browseMovies.size); assertTrue(model.movieBrowse.canLoadMore) }
+        if (tv) {
+            // The first row's title must fit before focus scrolls the grid. Paging
+            // above the grid previously pushed every portrait caption below screen.
+            val caption = rule.onNodeWithText("Paging fixture movie 0", useUnmergedTree = true)
+            caption.assertIsDisplayed()
+            val bounds = caption.getUnclippedBoundsInRoot()
+            val viewport = rule.onRoot().getUnclippedBoundsInRoot()
+            assertTrue("Initial portrait caption is clipped: $bounds outside $viewport", bounds.bottom <= viewport.bottom)
+            rule.onNodeWithText("全部").assertIsFocused()
+            rule.onRoot().performKeyInput { pressKey(Key.DirectionDown) }
+            rule.onNodeWithContentDescription("Paging fixture movie 0").assertIsFocused()
+            rule.onRoot().performKeyInput { pressKey(Key.DirectionDown) }
+            rule.onNodeWithTag("catalog-more:false").assertIsFocused().assertIsDisplayed()
+        }
         if (expired) {
             rule.onNodeWithText("来源快照尚未完整或为旧缓存", substring = true).assertExists()
             server.catalogExpired = true
         }
-        activate(rule.onNodeWithText("加载更多"), tv)
+        if (tv) rule.onNodeWithTag("catalog-more:false").performKeyInput { pressKey(Key.DirectionCenter) }
+        else activate(rule.onNodeWithText("加载更多"), false)
         if (expired) {
             rule.waitUntil(15000) { model.movieBrowse.restartRequired }
             rule.runOnIdle {
@@ -86,6 +103,63 @@ private fun catalogControls(rule: ComposeContentTestRule, activity: ComponentAct
     }
 }
 
+/** Paging is reached with the remote, without shrinking or clipping side posters. */
+@OptIn(ExperimentalTestApi::class)
+private fun discoveryCatalogControls(rule: ComposeContentTestRule, activity: ComponentActivity) {
+    val model = ViewModelProvider(activity)[CinemaViewModel::class.java]
+    UiFixtureServer(activity).use { server ->
+        server.pagedCatalog = true
+        rule.runOnIdle {
+            model.updateReducedMotion(true)
+            model.repo.configureServer(server.base)
+            model.repo.configureMetadata(server.base, "offline-fixture-token")
+            model.refreshCatalog()
+        }
+        rule.waitUntil(15000) { model.movieBrowse.pages == 1 && model.seriesBrowse.pages == 1 && !model.movieBrowse.loading }
+        rule.runOnIdle { model.navigate(Page.EXPLORE) }
+        rule.onNodeWithContentDescription("Paging fixture movie 0").assertIsFocused()
+        repeat(3) { rule.onRoot().performKeyInput { pressKey(Key.DirectionRight) } }
+        rule.onNodeWithContentDescription("Paging fixture series 1").assertIsFocused()
+        val rail = rule.onNodeWithTag("discovery-coverflow").getUnclippedBoundsInRoot()
+        for (title in listOf("Paging fixture series 0", "Paging fixture series 1")) {
+            val card = rule.onNodeWithContentDescription(title).assertIsDisplayed().getUnclippedBoundsInRoot()
+            assertTrue("Coverflow poster is vertically clipped: $card outside $rail", card.top >= rail.top && card.bottom <= rail.bottom)
+            assertTrue("Portrait was height-constrained before its translucent layer: $card", card.height.value >= card.width.value * 1.5f - 1.5f)
+        }
+        rule.onRoot().performKeyInput { pressKey(Key.DirectionDown) }
+        rule.onNodeWithTag("catalog-panel-open").assertIsFocused().performKeyInput { pressKey(Key.DirectionCenter) }
+        rule.onNodeWithTag("catalog-panel-close").assertIsFocused()
+        rule.onNode(isDialog()).performKeyInput { pressKey(Key.DirectionDown) }
+        rule.onNodeWithTag("catalog-more:false").assertIsFocused().performKeyInput { pressKey(Key.DirectionCenter) }
+        rule.waitUntil(15000) { model.movieBrowse.pages == 2 && !model.movieBrowse.loading }
+        rule.onNodeWithTag("catalog-more:false").assertIsFocused()
+        rule.onNode(isDialog()).performKeyInput { pressKey(Key.DirectionDown) }
+        rule.onNodeWithTag("catalog-more:true").assertIsFocused().performKeyInput { pressKey(Key.DirectionCenter) }
+        rule.waitUntil(15000) { model.seriesBrowse.pages == 2 && !model.seriesBrowse.loading }
+        rule.onNodeWithTag("catalog-more:true").assertIsFocused()
+        rule.onNode(isDialog()).performKeyInput { pressKey(Key.DirectionUp); pressKey(Key.DirectionUp) }
+        rule.onNodeWithTag("catalog-panel-close").assertIsFocused().performKeyInput { pressKey(Key.DirectionCenter) }
+        rule.onNode(isDialog()).assertDoesNotExist()
+        rule.onNodeWithTag("catalog-panel-open").assertIsFocused()
+        rule.onRoot().performKeyInput { pressKey(Key.DirectionUp) }
+        // New movies were inserted before the selected series. Return to its key,
+        // not the movie now occupying that series' previous numeric position.
+        rule.onNodeWithContentDescription("Paging fixture series 1").assertIsFocused()
+        rule.onRoot().performKeyInput { pressKey(Key.DirectionDown); pressKey(Key.DirectionCenter) }
+        rule.onNodeWithTag("catalog-panel-close").assertIsFocused()
+        Espresso.onView(androidx.test.espresso.matcher.ViewMatchers.isRoot())
+            .inRoot(androidx.test.espresso.matcher.RootMatchers.isDialog())
+            .perform(androidx.test.espresso.action.ViewActions.pressBack())
+        rule.waitForIdle()
+        rule.onNode(isDialog()).assertDoesNotExist()
+        rule.onNodeWithTag("catalog-panel-open").assertIsFocused()
+        rule.onRoot().performKeyInput { pressKey(Key.DirectionUp) }
+        rule.onNodeWithContentDescription("Paging fixture series 1").assertIsFocused()
+        rule.runOnIdle { model.repo.configureMetadata("", "") }
+    }
+}
+
+@OptIn(ExperimentalTestApi::class)
 private fun libraryControls(rule: ComposeContentTestRule, activity: ComponentActivity, tv: Boolean) {
     val model = ViewModelProvider(activity)[CinemaViewModel::class.java]
     UiFixtureServer(activity).use { server ->
@@ -165,6 +239,13 @@ private fun libraryControls(rule: ComposeContentTestRule, activity: ComponentAct
         // A new checkpoint must restore the controls without navigating away. This
         // catches stale lazy content in both directions, not just after confirmation.
         runBlocking { model.repo.library.saveProgress(item, 34000, 1, 90000) }
+        if (tv) {
+            // Clear restores All and scrolls the header out of lazy composition.
+            // Follow the remote path to reveal it; performScrollTo cannot locate an
+            // uncomposed button. Focus also proves the new history reached the UI.
+            rule.onNodeWithText("全部").assertIsFocused().performKeyInput { pressKey(Key.DirectionUp) }
+            rule.onNodeWithText(trigger).assertIsFocused()
+        }
         openConfirmation()
         activate(rule.onNodeWithText("取消"), tv)
         rule.onNodeWithText(title).assertDoesNotExist()

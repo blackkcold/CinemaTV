@@ -5,7 +5,10 @@ import android.graphics.Bitmap
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.SystemClock
+import android.view.Choreographer
 import android.view.FrameMetrics
+import android.view.View
+import android.view.ViewTreeObserver
 import android.view.Window
 import android.view.ViewGroup
 import androidx.compose.ui.platform.ComposeView
@@ -15,6 +18,8 @@ import androidx.test.platform.app.InstrumentationRegistry
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 
 /** Test-only compositor capture. No Compose forceRedraw/PixelCopy readback or scaled raster. */
 internal object TvWindowCapture {
@@ -62,18 +67,54 @@ internal object TvWindowCapture {
         // snapshot arrives. Only initial readiness may wait; both checks around
         // the actual capture below still reject missing or wrong-package roots.
         checkForeground(waitForRoot = true)
-        // API 24+ frame metrics are delivered after this window renders a frame.
-        // Unlike Compose captureToImage, this does not perform a GPU readback to
-        // establish draw readiness. The overall suite retains its 12-minute cap.
+        // Fence an actual UI frame, not wall time: a delayed/coalesced frame's
+        // intended vsync can predate System.nanoTime() even when it draws after
+        // the request. FrameCallback and VSYNC_TIMESTAMP share the actual frame
+        // time. A draw traversal alone never proves renderer completion.
         val thread = HandlerThread("CinemaTV-capture-frame").apply { start() }
         val drawn = CountDownLatch(1)
-        val requestedAt = System.nanoTime()
-        val listener = Window.OnFrameMetricsAvailableListener { _, metrics, _ ->
-            if (metrics.getMetric(FrameMetrics.INTENDED_VSYNC_TIMESTAMP) >= requestedAt) drawn.countDown()
+        val requestedFrame = AtomicLong(-1)
+        val lastVsync = AtomicLong(-1)
+        val lastIntendedVsync = AtomicLong(-1)
+        val callbacks = AtomicInteger()
+        val droppedCallbacks = AtomicInteger()
+        val drawPasses = AtomicInteger()
+        val drawRequests = AtomicInteger()
+        lateinit var drawHost: View
+        var choreographer: Choreographer? = null
+        var observer: ViewTreeObserver? = null
+        var registered = false
+        val requestFrame = Choreographer.FrameCallback { frameTimeNanos ->
+            // Preserve the first fence on retry, so a delayed valid completion
+            // remains eligible instead of moving the goalpost ahead of the GPU.
+            requestedFrame.compareAndSet(-1, frameTimeNanos)
+            drawRequests.incrementAndGet()
+            // Animation callbacks run before traversal. Invalidate directly here
+            // rather than posting another invalidation that can be coalesced.
+            drawHost.invalidate()
         }
+        val drawListener = ViewTreeObserver.OnDrawListener {
+            if (requestedFrame.get() > 0) drawPasses.incrementAndGet()
+        }
+        val listener = Window.OnFrameMetricsAvailableListener { _, metrics, dropped ->
+            callbacks.incrementAndGet()
+            droppedCallbacks.addAndGet(dropped)
+            val actualVsync = metrics.getMetric(FrameMetrics.VSYNC_TIMESTAMP)
+            lastVsync.set(actualVsync)
+            lastIntendedVsync.set(metrics.getMetric(FrameMetrics.INTENDED_VSYNC_TIMESTAMP))
+            val fence = requestedFrame.get()
+            // Ignore unarmed and stale queued callbacks, even if they arrive
+            // after registration. Require both traversal and renderer evidence.
+            if (fence > 0 && drawPasses.get() > 0 && actualVsync >= fence) drawn.countDown()
+        }
+        fun frameState() = "requestedFrame=${requestedFrame.get()}, lastVsync=${lastVsync.get()}, " +
+            "lastIntendedVsync=${lastIntendedVsync.get()}, callbacks=${callbacks.get()}, " +
+            "droppedCallbacks=${droppedCallbacks.get()}, drawPasses=${drawPasses.get()}, requests=${drawRequests.get()}"
+        val frameDeadline = SystemClock.uptimeMillis() + TimeUnit.SECONDS.toMillis(TIMEOUT_SECONDS)
         try {
             instrumentation.runOnMainSync {
                 activity.window.addOnFrameMetricsAvailableListener(listener, Handler(thread.looper))
+                registered = true
                 // setContent installs ComposeView under android.R.id.content;
                 // its Android host owns the Compose draw commands. Invalidating
                 // only DecorView after idle may reuse that child's display list.
@@ -82,14 +123,35 @@ internal object TvWindowCapture {
                 val composeView = content.getChildAt(0) as? ComposeView
                     ?: error("Expected ComposeView in the TV test activity")
                 check(composeView.childCount == 1) { "Expected one Android Compose draw host" }
-                val drawHost = composeView.getChildAt(0)
+                drawHost = composeView.getChildAt(0)
                 check(drawHost.isAttachedToWindow && drawHost.isShown && drawHost.isHardwareAccelerated)
-                drawHost.postInvalidateOnAnimation()
+                observer = drawHost.viewTreeObserver.also { it.addOnDrawListener(drawListener) }
+                choreographer = Choreographer.getInstance().also { it.postFrameCallback(requestFrame) }
             }
-            check(drawn.await(TIMEOUT_SECONDS, TimeUnit.SECONDS)) { "No rendered frame before capture deadline" }
+            // One bounded re-invalidation if the first request was consumed or
+            // its metrics were dropped. Both waits share the original 10 s budget.
+            val firstWait = minOf(TimeUnit.SECONDS.toMillis(TIMEOUT_SECONDS) / 2,
+                (frameDeadline - SystemClock.uptimeMillis()).coerceAtLeast(0L))
+            if (!drawn.await(firstWait, TimeUnit.MILLISECONDS) && SystemClock.uptimeMillis() < frameDeadline) {
+                android.util.Log.i("CinemaTVQa", "capture-frame-retry ${frameState()}")
+                checkNotNull(choreographer).postFrameCallback(requestFrame)
+            }
+            val remaining = (frameDeadline - SystemClock.uptimeMillis()).coerceAtLeast(0L)
+            check(drawn.await(remaining, TimeUnit.MILLISECONDS)) {
+                "No rendered frame before capture deadline: ${frameState()}"
+            }
+            android.util.Log.i("CinemaTVQa", "capture-frame-ready ${frameState()}")
         } finally {
-            instrumentation.runOnMainSync { activity.window.removeOnFrameMetricsAvailableListener(listener) }
-            thread.quitSafely()
+            try {
+                instrumentation.runOnMainSync {
+                    choreographer?.removeFrameCallback(requestFrame)
+                    observer?.takeIf { it.isAlive }?.removeOnDrawListener(drawListener)
+                    if (registered) activity.window.removeOnFrameMetricsAvailableListener(listener)
+                }
+            } finally {
+                thread.quitSafely()
+                thread.join(2000)
+            }
         }
         checkForeground()
         // takeScreenshot returns actual display pixels, including video surfaces.

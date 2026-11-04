@@ -52,18 +52,24 @@ fun CatalogScreen(model: CinemaViewModel, series: Boolean) {
             }
             item { GlassAction(if (rated) "评分优先 ✓" else "评分优先", Modifier.width(108.dp).height(36.dp), selected = rated) { rated = !rated } }
         }
-        Column(Modifier.padding(horizontal = layout.gutter)) { CatalogPagingControls(model, series) }
-        if (filtered.isEmpty()) {
-            Text(if (all.isEmpty()) "暂无推荐，连接服务器后刷新。" else "没有符合筛选条件的作品。", color = TvColors.Secondary, modifier = Modifier.padding(layout.gutter))
-        } else LazyVerticalGrid(state = grid,
+        LazyVerticalGrid(state = grid,
             columns = GridCells.Adaptive(if (series) layout.landscapeWidth else layout.posterWidth),
             modifier = Modifier.fillMaxSize().focusRestorer(),
             contentPadding = PaddingValues(start = layout.gutter, end = layout.gutter, top = 14.dp, bottom = 45.dp),
             horizontalArrangement = Arrangement.spacedBy(20.dp), verticalArrangement = Arrangement.spacedBy(28.dp)) {
+            if (filtered.isEmpty()) item(key = "catalog-empty", span = { GridItemSpan(maxLineSpan) }) {
+                Text(if (all.isEmpty()) "暂无推荐，连接服务器后刷新。" else "没有符合筛选条件的作品。",
+                    color = TvColors.Secondary, modifier = Modifier.padding(vertical = 16.dp))
+            }
             items(filtered, key = { it.presentationKey }) { item ->
                 val target = rememberFocusTarget(model, region, item.presentationKey)
                 FocusMediaCard(item, { model.onMediaFocus(item, region) }, { model.open(item) },
                     modifier = Modifier.focusRequester(target), portrait = !series)
+            }
+            // Paging belongs after the results. A fixed header would leave portrait
+            // captions below the viewport even before the first row receives focus.
+            item(key = "catalog-paging", span = { GridItemSpan(maxLineSpan) }) {
+                CatalogPagingControls(model, series)
             }
         }
     }
