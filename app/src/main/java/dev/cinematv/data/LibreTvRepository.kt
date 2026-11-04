@@ -12,6 +12,7 @@ import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Only this layer knows LibreTV's upstream API schema.
@@ -31,6 +32,57 @@ class LibreTvRepository(context: Context) {
         private set(value) { prefs.edit().putString("server", value).apply() }
 
     val isConnected get() = server.isNotBlank()
+    private data class MetadataArt(val backdrop: String, val poster: String, val overview: String)
+    private val metadataCache = ConcurrentHashMap<String, MetadataArt>()
+    var metadataServer: String
+        get() = prefs.getString("metadata_server", "") ?: ""
+        private set(value) { prefs.edit().putString("metadata_server", value).apply() }
+    @Volatile private var metadataAccessToken: String = ""
+
+    /**
+     * Optional operator-owned BFF. Access token remains in memory and must be
+     * re-entered after process death rather than being persisted in plain text.
+     */
+    fun configureMetadata(address: String, token: String) {
+        val cleaned = address.trim().trimEnd('/')
+        require(cleaned.isBlank() || cleaned.startsWith("https://") ||
+            cleaned.startsWith("http://")) { "BFF 地址必须为 HTTP(S)" }
+        metadataServer = cleaned
+        metadataAccessToken = token.trim()
+        metadataCache.clear()
+    }
+
+    suspend fun enrichMetadata(item: MediaItem): MediaItem = withContext(Dispatchers.IO) {
+        val urlBase = metadataServer
+        val token = metadataAccessToken
+        if (urlBase.isBlank() || token.isBlank() || item.backdrop.isNotBlank()) {
+            return@withContext item
+        }
+        val cacheKey = listOf(item.title, item.year, if (item.isTv) "tv" else "movie").joinToString("|")
+        val art = metadataCache[cacheKey] ?: run {
+            val query = "/v1/metadata?title=${encode(item.title)}&year=${encode(item.year)}&type=${if (item.isTv) "tv" else "movie"}"
+            val conn = (URL(urlBase + query).openConnection() as HttpURLConnection).apply {
+                connectTimeout = 4500
+                readTimeout = 7500
+                instanceFollowRedirects = false
+                setRequestProperty("Authorization", "Bearer $token")
+                setRequestProperty("Accept", "application/json")
+            }
+            try {
+                if (conn.responseCode != 200) return@withContext item
+                val root = conn.inputStream.bufferedReader().use { JSONObject(it.readText()) }
+                val data = root.optJSONObject("item") ?: return@withContext item
+                MetadataArt(data.optString("backdrop"), data.optString("poster"),
+                    data.optString("overview")).also { metadataCache[cacheKey] = it }
+            } finally { conn.disconnect() }
+        }
+        item.copy(
+            backdrop = art.backdrop,
+            poster = item.poster.ifBlank { art.poster },
+            description = item.description.ifBlank { art.overview }
+        )
+    }
+
     var defaultSources: List<TvSource> = emptyList()
         private set
     var defaultLiveSources: List<LiveSource> = emptyList()

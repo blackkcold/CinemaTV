@@ -41,6 +41,8 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
         private set
     var query by mutableStateOf("")
     var serverAddress by mutableStateOf(repo.server)
+    var metadataAddress by mutableStateOf(repo.metadataServer)
+    var metadataAccessToken by mutableStateOf("")
     var password by mutableStateOf("")
     var passwordRequired by mutableStateOf(false)
         private set
@@ -73,6 +75,7 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
         private set
     private var epgJob: Job? = null
     private var searchJob: Job? = null
+    private var backdropJob: Job? = null
     var failoverBusy by mutableStateOf(false)
         private set
     var failoverMessage by mutableStateOf("")
@@ -107,6 +110,16 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
             page = Page.SETTINGS
             refreshConnection()
         }.onFailure { message = it.message ?: "服务器地址无效" }
+    }
+
+    fun configureMetadata() {
+        runCatching { repo.configureMetadata(metadataAddress, metadataAccessToken) }
+            .onSuccess {
+                metadataAccessToken = ""
+                message = "元数据服务配置已保存（令牌仅保存在本次应用进程）"
+                if (authorized) loadHome()
+            }
+            .onFailure { message = it.message ?: "元数据地址配置失败" }
     }
 
     fun login() {
@@ -148,6 +161,15 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
             runCatching { repo.recommend(false) }.onSuccess {
                 featured = it
                 if (focused == null) focused = it.firstOrNull()
+                val first = it.firstOrNull()
+                if (first != null) {
+                    runCatching { repo.enrichMetadata(first) }.onSuccess { enhanced ->
+                        featured = featured.map { original ->
+                            if (original.id == first.id) enhanced else original
+                        }
+                        if (focused?.id == first.id) focused = enhanced
+                    }
+                }
             }.onFailure { message = "推荐加载失败：${it.message}" }
             runCatching { repo.recommend(true) }.onSuccess { tvShows = it }
         }
@@ -170,6 +192,15 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
     fun onMediaFocus(item: MediaItem, region: String = "general") {
         focused = item
         focusCoordinator.remember(page.name, region, item.id + ":" + (item.source?.key ?: ""))
+        backdropJob?.cancel()
+        if (item.backdrop.isBlank()) backdropJob = viewModelScope.launch {
+            delay(250)
+            runCatching { repo.enrichMetadata(item) }.onSuccess { enriched ->
+                if (focused?.id == item.id && focused?.source?.key == item.source?.key) {
+                    focused = enriched
+                }
+            }
+        }
     }
 
     fun open(item: MediaItem) {
@@ -179,7 +210,14 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
         busy = true
         viewModelScope.launch {
             runCatching { repo.detail(item) }
-                .onSuccess { selected = it }
+                .onSuccess { detailed ->
+                    selected = detailed
+                    viewModelScope.launch {
+                        runCatching { repo.enrichMetadata(detailed) }.onSuccess { enhanced ->
+                            if (selected?.id == detailed.id && page == Page.DETAIL) selected = enhanced
+                        }
+                    }
+                }
                 .onFailure { message = "详情读取失败：${it.message}" }
             busy = false
         }

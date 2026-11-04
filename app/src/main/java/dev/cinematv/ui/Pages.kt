@@ -420,6 +420,18 @@ fun SettingsPage(model: CinemaViewModel) {
         Text(if (model.authorized) "已连接服务器  ·  点播源 ${model.sources.size} 个 · 直播订阅 ${model.liveSources.size} 个"
             else "未认证或未连接", color = if (model.authorized) Accent else Muted, fontSize = 15.sp)
         Spacer(Modifier.height(18.dp))
+        Text("高清剧照元数据服务（可选 TV BFF）", fontSize = 21.sp, color = Ivory,
+            fontWeight = FontWeight.SemiBold)
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            TvInput(model.metadataAddress, { model.metadataAddress = it },
+                "https://your-bff.example", Modifier.weight(1f).height(59.dp))
+            TvInput(model.metadataAccessToken, { model.metadataAccessToken = it },
+                "BFF 访问令牌（仅保存在内存）", Modifier.weight(1f).height(59.dp), isPassword = true)
+            GlassAction("保存", Modifier.width(120.dp).height(59.dp)) { model.configureMetadata() }
+        }
+        Text("需要在自建 BFF 配置 TMDB_READ_ACCESS_TOKEN，BFF 令牌不会写入 APK 或本地明文文件。仅向元数据服务发送片名、年份和类型。",
+            color = Muted, fontSize = 14.sp)
+        Spacer(Modifier.height(18.dp))
         Text("添加点播源（Apple CMS JSON API）", fontSize = 21.sp, color = Ivory, fontWeight = FontWeight.SemiBold)
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             TvInput(model.sourceName, { model.sourceName = it }, "来源名称", Modifier.weight(.7f).height(59.dp))
