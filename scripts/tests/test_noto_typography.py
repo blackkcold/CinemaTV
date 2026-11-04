@@ -47,7 +47,17 @@ class NotoTypographyContractTest(unittest.TestCase):
                          'if (windowReady && lastPackage == activity.packageName) return'):
             self.assertIn(required, capture)
         self.assertNotIn('captureToImage', capture)
-        self.assertNotIn('PixelCopy', capture)
+        self.assertIn('check(Build.VERSION.SDK_INT == 26)', capture)
+        self.assertIn('PixelCopy.request(activity.window, Rect(windowBounds), bitmap', capture)
+        self.assertIn('WindowManager.LayoutParams.FLAG_SECURE == 0', capture)
+        self.assertIn('result.get() == PixelCopy.SUCCESS', capture)
+        self.assertIn('windowBounds.width().toLong() * windowBounds.height() <= 2_000_000L', capture)
+        self.assertIn('if (!published) bitmap.recycle()', capture)
+        self.assertNotIn('clearFlags', capture)
+        self.assertNotIn('addFlags', capture)
+        self.assertIn('val windowRegionCapture = Build.VERSION.SDK_INT == 26', regression)
+        self.assertIn('else NotoCompositorCapture.capture(activity, host.get(), location)', regression)
+        self.assertIn('if (windowRegionCapture) JSONObject.NULL else captureWidth', regression)
 
     def test_generated_assets_and_licenses_are_packaged(self):
         self.assertIn('apply(from = "noto-fonts.gradle")', (ROOT / 'app/build.gradle.kts').read_text())
