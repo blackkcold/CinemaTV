@@ -5,9 +5,9 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
-apply(from = "noto-fonts.gradle.kts")
+apply(from = "noto-fonts.gradle")
 
-// Keep AGP wiring here: applied Kotlin scripts do not inherit the plugin classpath.
+// Keep AGP wiring in the plugin-owning script; the downloader stays plugin-independent.
 tasks.named("preBuild") { dependsOn("prepareNotoFonts") }
 
 android {
@@ -43,6 +43,8 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
     buildFeatures { compose = true; buildConfig = true }
+    // Keep fonts mmap-eligible; avoid inflating a ~19 MB collection for asset buffer access.
+    androidResources { noCompress += listOf("ttc", "ttf") }
     sourceSets["main"].assets.srcDir(layout.buildDirectory.dir("generated/notoAssets"))
     sourceSets["androidTest"].assets.srcDir("$projectDir/schemas")
     packaging { resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" } }

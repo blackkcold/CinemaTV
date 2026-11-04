@@ -39,13 +39,35 @@ All font bytes are unmodified, not locally subsetted:
   verification simple; it is much smaller than separate regional OTF files.
 - Noto Sans Regular and Bold **2.008**, 569,208 and 575,740 bytes.
 - Total font payload: **20,629,732 bytes**; local DEFLATE estimate **16,087,259 bytes**.
-  This is not a measured APK delta; check the built artifact before release.
+  Font extensions are now explicitly `noCompress`, so the intended font ZIP entries
+  occupy the full **20,629,732 bytes**, plus ZIP/alignment overhead. That is about
+  **4,542,473 bytes more** than the DEFLATE estimate. This is not a measured total
+  APK delta; check the built artifact before release.
 - Latin 400 and 700 are real font files. CJK ships only 400; bold/medium and italic
   use Android/Compose synthetic styling. No claim of true CJK 500/600/700 masters.
   This deliberately avoids another approximately 20 MB collection on TV devices.
 
 Both original copyright/OFL 1.1 licenses ship in `assets/fonts/`. Fonts remain under
 OFL, separate from the application's MIT source license. Do not strip the licenses.
+
+## Packaging and low-RAM tradeoff
+
+AOSP AAPT2's current default non-compression extension list does not include TTF or
+TTC. We therefore explicitly set `androidResources.noCompress` for both rather than
+rely on AGP/default behavior. `AssetManager.openFd` requires an uncompressed asset;
+stored entries permit direct file-backed access without first inflating the entire
+font asset. This trades approximately 4.54 MB of APK size versus our DEFLATE estimate
+for avoiding that compression/decompression step. Font bytes remain unmodified.
+
+The device evidence opens the actual installed APK, requires each font ZIP entry to
+be STORED, records actual compressed/uncompressed entry sizes, and requires a valid
+`openFd` descriptor with matching length. It records the asset offset/alignment.
+These are packaging/mapping-eligibility checks, **not** measurements of RSS, PSS,
+startup time or Typeface internal allocations. We do not assume five regional
+Typeface builders share all native data merely because their TTC tables are shared.
+Native parsing, shaping and glyph caches may still allocate per face; low-RAM device
+profiling remains required. There was no local built APK to inspect when this source
+change was prepared, so successful packaging is gated on the real APK/device test.
 
 ## Coverage boundaries
 
@@ -61,7 +83,8 @@ to Android/Compose, not replaced with manual glyph positioning.
 
 ## Reproducible build and offline behavior
 
-`app/noto-fonts.gradle.kts` creates `prepareNotoFonts`; `preBuild` depends on it.
+`app/noto-fonts.gradle` is a standard Groovy applied script (avoiding the observed
+Kotlin applied-script UAST crash in Lint, without disabling any Lint checks). It creates `prepareNotoFonts`; `preBuild` depends on it.
 `app/build/generated/notoAssets` is an Android assets source. The exact immutable
 GitHub revisions, URLs, byte counts and SHA256 are recorded in
 `scripts/fonts/noto-fonts.lock.json`. No unpinned CDN URL, runtime download or font
@@ -87,6 +110,18 @@ offline for fonts after installation, independent of the build cache/network.
   and exact mixed-text/surrogate preservation. Run on API26 and current TV/phone.
 - Run `:app:testDebugUnitTest :app:assembleDebug`, inspect the APK for the three fonts
   and two OFL files, then run connected instrumentation tests.
+- `NotoFontsDeviceTest.regionalFontsRenderWithOfflineEvidence` rasterizes seven
+  labeled SC/TC/HK/JP/KR/Latin-regular/Latin-bold rows into a 1200×1640 native Canvas
+  bitmap, with 40px regular and 64px synthetic-bold/real-bold samples. Each row
+  checks `Paint.hasGlyph` for every non-space code point, verifies measured text
+  fits, and counts non-background pixels separately in both sample regions.
+  Outputs `ui-evidence/noto/noto-regional-native.png` plus matching JSON containing
+  the exact packaged asset SHA256, TTC index, locale, weight, sample and ink counts.
+  This nested directory keeps non-window samples separate from viewport goldens.
+  No assertion assumes regions must rasterize differently. The sample is software
+  Canvas evidence, not proof of Compose layout, hardware rendering or screen UI.
+  Run this test class in the API33/phone matrix and separately on API26 as a small
+  minimum-SDK smoke gate. Those executions are not asserted by this source change.
 - Still require physical-device screenshot comparisons for SC/TC/HK/JP examples,
   synthetic bold legibility, Latin/CJK baseline alignment, cold/warm startup,
   memory on low-RAM TV, accessibility font scaling, clipping/ellipsis and focus/Back.
@@ -98,6 +133,10 @@ offline for fonts after installation, independent of the build cache/network.
 - https://github.com/notofonts/noto-fonts/tree/ffebf8c1ee449e544955a7e813c54f9b73848eac/hinted/ttf/NotoSans
 - https://notofonts.github.io/noto-docs/website/use/
 - https://developer.android.com/reference/android/graphics/Typeface.Builder#setTtcIndex(int)
+- https://developer.android.com/reference/android/content/res/AssetManager#openFd(java.lang.String)
+- https://developer.android.com/reference/tools/gradle-api/8.13/com/android/build/api/dsl/AndroidResources
+- https://android.googlesource.com/platform/frameworks/base/+/refs/heads/main/tools/aapt2/cmd/Link.cpp
+- https://android.googlesource.com/platform/frameworks/base/+/refs/heads/main/libs/androidfw/Asset.cpp
 - https://github.com/androidx/androidx/blob/androidx-main/compose/ui/ui-text/src/androidMain/kotlin/androidx/compose/ui/text/font/AndroidFont.android.kt
 
 Typeface.Builder and collection index selection are supported from Android API26,

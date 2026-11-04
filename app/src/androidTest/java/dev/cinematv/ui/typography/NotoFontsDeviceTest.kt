@@ -7,6 +7,10 @@ import org.junit.Test
 
 /** Run on API26 and current TV/phone devices: proves native TTC loading, not merely file existence. */
 class NotoFontsDeviceTest {
+    @Test fun regionalFontsRenderWithOfflineEvidence() {
+        NotoRenderingEvidence.capture(InstrumentationRegistry.getInstrumentation().targetContext)
+    }
+
     @Test fun bundledFacesLoadOfflineAndAreCached() = runBlocking {
         val assets = InstrumentationRegistry.getInstrumentation().targetContext.assets
         val fonts = NotoFontCache.load(assets)

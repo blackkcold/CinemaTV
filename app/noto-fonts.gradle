@@ -1,0 +1,93 @@
+import groovy.json.JsonSlurper
+import java.net.HttpURLConnection
+import java.net.URI
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
+import java.security.MessageDigest
+
+// Build-time only. The APK contains all fonts; application runtime needs no font server.
+// Groovy avoids the Kotlin-script UAST crash in Lint; Lint itself stays fully enabled.
+def notoLock = rootProject.file('scripts/fonts/noto-fonts.lock.json')
+def notoAssets = layout.buildDirectory.dir('generated/notoAssets')
+
+tasks.register('prepareNotoFonts') {
+    inputs.file(notoLock)
+    outputs.dir(notoAssets)
+    doLast {
+        def lock = new JsonSlurper().parse(notoLock)
+        def directory = notoAssets.get().dir('fonts').asFile
+        if (!directory.isDirectory() && !directory.mkdirs()) {
+            throw new GradleException("Cannot create Noto asset directory: $directory")
+        }
+        def digest = { File file ->
+            def sha = MessageDigest.getInstance('SHA-256')
+            file.withInputStream { raw ->
+                def input = new BufferedInputStream(raw)
+                byte[] bytes = new byte[65536]
+                int count
+                while ((count = input.read(bytes)) != -1) {
+                    sha.update(bytes, 0, count)
+                }
+            }
+            sha.digest().collect { String.format('%02x', it & 0xff) }.join()
+        }
+        for (def font : lock.fonts) {
+            String name = font.name
+            if (!name.matches('[A-Za-z0-9-]+\\.(ttf|ttc)')) {
+                throw new GradleException("Invalid font filename: $name")
+            }
+            long expectedSize = font.size as long
+            String expectedHash = font.sha256
+            def target = new File(directory, name)
+            if (target.isFile() && target.length() == expectedSize && digest(target) == expectedHash) {
+                continue
+            }
+            if (gradle.startParameter.offline) {
+                throw new GradleException("Missing or invalid pinned Noto asset $name. Run prepareNotoFonts once online before --offline.")
+            }
+            def url = new URI(font.url as String).toURL()
+            if (url.protocol != 'https' || url.host != 'raw.githubusercontent.com') {
+                throw new GradleException("Unexpected Noto source: $url")
+            }
+            def temporary = new File(directory, "$name.part")
+            def connection = url.openConnection() as HttpURLConnection
+            connection.connectTimeout = 20_000
+            connection.readTimeout = 60_000
+            connection.instanceFollowRedirects = false
+            long deadline = System.nanoTime() + 120_000_000_000L
+            try {
+                if (connection.responseCode != 200) {
+                    throw new GradleException("Noto font download failed: HTTP ${connection.responseCode} ($name)")
+                }
+                connection.inputStream.withCloseable { raw ->
+                    def input = new BufferedInputStream(raw)
+                    temporary.withOutputStream { rawOutput ->
+                        def output = new BufferedOutputStream(rawOutput)
+                        byte[] bytes = new byte[65536]
+                        long total = 0L
+                        while (true) {
+                            if (System.nanoTime() >= deadline) {
+                                throw new GradleException("Noto font download deadline exceeded: $name")
+                            }
+                            int count = input.read(bytes)
+                            if (count == -1) break
+                            total += count
+                            if (total > expectedSize) {
+                                throw new GradleException("Oversized Noto asset: $name")
+                            }
+                            output.write(bytes, 0, count)
+                        }
+                        output.flush()
+                    }
+                }
+                if (temporary.length() != expectedSize || digest(temporary) != expectedHash) {
+                    throw new GradleException("Noto asset integrity failure: $name")
+                }
+                Files.move(temporary.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
+            } finally {
+                connection.disconnect()
+                temporary.delete()
+            }
+        }
+    }
+}
