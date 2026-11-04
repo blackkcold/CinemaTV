@@ -9,7 +9,6 @@ import android.view.Window
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.semantics.SemanticsActions
-import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.input.key.Key
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -57,7 +56,22 @@ class TvUiRegressionTest {
         val trace = rule.onAllNodes(isFocused()).fetchSemanticsNodes().joinToString { it.config.toString() }
         File(directory, "focus-trace.txt").appendText("key=$code route=${model.focusRoute}\n$trace\n")
     }
+    private fun awaitBundledFonts() {
+        rule.waitUntil(15000) { rule.activity.bundledFontsReady || rule.activity.fontLoadFailures.isNotEmpty() }
+        assertTrue("Bundled Noto failed: ${rule.activity.fontLoadFailures}", rule.activity.bundledFontsReady)
+        rule.waitForIdle()
+    }
+    private fun captureWindow(): Bitmap {
+        awaitBundledFonts()
+        rule.waitForIdle()
+        val root = rule.onRoot().fetchSemanticsNode()
+        check(root.positionInWindow.x == 0f && root.positionInWindow.y == 0f) {
+            "Expected a full-screen Compose root"
+        }
+        return TvWindowCapture.capture(rule.activity, root.size.width, root.size.height)
+    }
     private fun screenshot(name: String, waitForArt: Boolean = true) {
+        awaitBundledFonts()
         android.util.Log.i("CinemaTVQa", "capture=$name directory=${directory.absolutePath}")
         if (waitForArt) rule.runOnIdle { model.dismissMessage() }
         rule.waitForIdle()
@@ -68,10 +82,11 @@ class TvUiRegressionTest {
           }
         } finally {
           android.util.Log.i("CinemaTVQa", "capture-begin=$name")
-          val bitmap = rule.onRoot().captureToImage().asAndroidBitmap()
+          val bitmap = captureWindow()
           try {
             android.util.Log.i("CinemaTVQa", "readback-complete=$name width=${bitmap.width} height=${bitmap.height} bytes=${bitmap.allocationByteCount}")
             val compressed = File(directory, "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            check(compressed) { "PNG compression failed for $name" }
             android.util.Log.i("CinemaTVQa", "PNG-complete=$name compressed=$compressed")
           } finally {
             // A 4K capture owns a large native pixel buffer; release after export.
@@ -80,6 +95,7 @@ class TvUiRegressionTest {
         }
     }
     @Before fun connectFixture() {
+        awaitBundledFonts()
         rule.waitUntil(10000) { rule.activity.hasWindowFocus() }
         server = UiFixtureServer(InstrumentationRegistry.getInstrumentation().context)
         rule.runOnIdle {
@@ -197,7 +213,7 @@ class TvUiRegressionTest {
         // Resource display metrics can exclude the phone host's hidden navigation
         // inset. Record the actual full-screen Compose raster that was captured.
         android.util.Log.i("CinemaTVQa", "capture-begin=viewport")
-        val viewport = rule.onRoot().captureToImage().asAndroidBitmap()
+        val viewport = captureWindow()
         try {
             android.util.Log.i("CinemaTVQa", "readback-complete=viewport width=${viewport.width} height=${viewport.height} bytes=${viewport.allocationByteCount}")
             File(directory, "viewport.json").writeText(JSONObject()
@@ -231,6 +247,6 @@ class TvUiRegressionTest {
         assertTrue("Frame evidence must contain rendered frames", values.isNotEmpty())
         File(directory, "frames.json").writeText(JSONObject().put("frames", values.size)
             .put("p95Ms", values[((values.size - 1) * .95).toInt()]).put("p99Ms", values[((values.size - 1) * .99).toInt()])
-            .put("over16_7ms", values.count { it > 16.7 }).put("renderer", "Android emulator / SwiftShader; informational, not hardware certification").toString(2))
+            .put("over16_7ms", values.count { it > 16.7 }).put("renderer", "Android emulator / Lavapipe (CI configuration; runtime GPU not queried); informational, not hardware certification").toString(2))
     }
 }

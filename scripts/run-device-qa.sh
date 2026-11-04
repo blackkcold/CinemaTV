@@ -63,15 +63,55 @@ trap finish EXIT
 trap 'exit 143' TERM
 trap 'exit 130' INT
 
+device_window_ready() {
+  local boot=$1 windows=$2
+  # API 33 omits mDisplayFrozen when normal. Require observable screen/draw
+  # readiness instead; an explicit frozen display still fails this sample.
+  [ "$boot" = 1 ] &&
+    [[ "$windows" == *"mAwake=true"* &&
+       "$windows" == *"mScreenOnFully=true"* &&
+       "$windows" == *"mWindowManagerDrawComplete=true"* &&
+       "$windows" != *"mDisplayFrozen=true"* ]] &&
+    printf '%s\n' "$windows" | grep -E 'mCurrentFocus=Window\{[^}]+ (com.google.android.apps.nexuslauncher|com.android.launcher3)/' > /dev/null
+}
+
+wait_for_device_window() {
+  local deadline=$((SECONDS + 60)) boot windows stable=0
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    boot=$(qa_adb shell getprop sys.boot_completed | tr -d '\r') || return $?
+    windows=$(qa_adb shell dumpsys window) || return $?
+    printf '%s\n' "$windows" > qa/setup-windows.txt
+    # Never dismiss an ANR, crash, permission prompt or arbitrary system dialog.
+    # Preserve the exact blocker and fail before starting instrumentation.
+    if [[ "$windows" == *"Application Not Responding:"* || "$windows" == *"Application Error:"* ]]; then
+      echo 'Device setup blocked by an ANR/crash window; see setup-windows.txt' >&2
+      return 1
+    fi
+    if device_window_ready "$boot" "$windows"; then
+      stable=$((stable + 1))
+      if [ "$stable" -ge 2 ]; then return 0; fi
+    else
+      stable=0
+    fi
+    sleep 1
+  done
+  echo 'Timed out waiting for boot and a focused emulator launcher' >&2
+  return 1
+}
+
 configure_device() {
-  # Keep the && chain: run_stage captures failure, so errexit is not active here.
-  qa_adb shell wm size "$1" &&
+  # Wake through PowerManager, not an input event queued to a cold launcher.
+  # Wait both before and after configuration changes: boot_completed alone
+  # does not imply the launcher has a window capable of accepting input.
+  qa_adb shell svc power stayon true &&
+    qa_adb shell wm dismiss-keyguard &&
+    wait_for_device_window &&
+    qa_adb shell wm size "$1" &&
     qa_adb shell wm density "$2" &&
     # Hide the phone emulator's first-use tutorial over the TV test host.
     qa_adb shell settings put secure immersive_mode_confirmations confirmed &&
     qa_adb shell settings put system screen_off_timeout 2147483647 &&
-    qa_adb shell input keyevent KEYCODE_WAKEUP &&
-    qa_adb shell wm dismiss-keyguard
+    wait_for_device_window
 }
 
 # Every setup operation is bounded too, not only Gradle instrumentation.
@@ -103,11 +143,10 @@ run_stage instrumentation timeout --signal=TERM --kill-after=30s 12m \
   gradle --no-daemon --max-workers=2 '-Dorg.gradle.jvmargs=-Xmx1024m -Dfile.encoding=UTF-8' \
   -Pkotlin.compiler.execution.strategy=in-process :app:connectedDebugAndroidTest \
   "-Pandroid.testInstrumentationRunnerArguments.class=$3" || CINEMA_TEST_STATUS=$?
-CINEMA_EVIDENCE_DIR=$(find app/build/outputs/connected_android_test_additional_output -type d -name ui-evidence -print -quit 2>/dev/null || true)
 CINEMA_EXPORT_STATUS=0
-if [ -n "$CINEMA_EVIDENCE_DIR" ]; then
-  run_stage evidence-export timeout --kill-after=5s 30s cp -R "$CINEMA_EVIDENCE_DIR" qa/ || CINEMA_EXPORT_STATUS=$?
-fi
+run_stage evidence-export timeout --kill-after=5s 30s python3 scripts/merge-ui-evidence.py \
+  --source app/build/outputs/connected_android_test_additional_output \
+  --destination qa/ui-evidence || CINEMA_EXPORT_STATUS=$?
 if [ "$CINEMA_TEST_STATUS" -ne 0 ]; then exit "$CINEMA_TEST_STATUS"; fi
 if [ "$CINEMA_EXPORT_STATUS" -ne 0 ]; then exit "$CINEMA_EXPORT_STATUS"; fi
 

@@ -7,7 +7,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.tv.material3.Text
+import dev.cinematv.ui.typography.CinemaTvText as Text
 import dev.cinematv.ui.tv.design.TvColors
 import dev.cinematv.CinemaViewModel
 import dev.cinematv.ui.tv.components.*
