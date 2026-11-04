@@ -63,15 +63,43 @@ trap finish EXIT
 trap 'exit 143' TERM
 trap 'exit 130' INT
 
+wait_for_device_window() {
+  local deadline=$((SECONDS + 60)) boot windows stable=0
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    boot=$(qa_adb shell getprop sys.boot_completed | tr -d '\r') || return $?
+    windows=$(qa_adb shell dumpsys window) || return $?
+    printf '%s\n' "$windows" > qa/setup-windows.txt
+    # Never dismiss an ANR, crash, permission prompt or arbitrary system dialog.
+    # Preserve the exact blocker and fail before starting instrumentation.
+    if [[ "$windows" == *"Application Not Responding:"* || "$windows" == *"Application Error:"* ]]; then
+      echo 'Device setup blocked by an ANR/crash window; see setup-windows.txt' >&2
+      return 1
+    fi
+    if [ "$boot" = 1 ] && [[ "$windows" == *"mDisplayFrozen=false"* ]] && printf '%s\n' "$windows" | grep -E 'mCurrentFocus=Window\{[^}]+ (com.google.android.apps.nexuslauncher|com.android.launcher3)/' > /dev/null; then
+      stable=$((stable + 1))
+      if [ "$stable" -ge 2 ]; then return 0; fi
+    else
+      stable=0
+    fi
+    sleep 1
+  done
+  echo 'Timed out waiting for boot and a focused emulator launcher' >&2
+  return 1
+}
+
 configure_device() {
-  # Keep the && chain: run_stage captures failure, so errexit is not active here.
-  qa_adb shell wm size "$1" &&
+  # Wake through PowerManager, not an input event queued to a cold launcher.
+  # Wait both before and after configuration changes: boot_completed alone
+  # does not imply the launcher has a window capable of accepting input.
+  qa_adb shell svc power stayon true &&
+    qa_adb shell wm dismiss-keyguard &&
+    wait_for_device_window &&
+    qa_adb shell wm size "$1" &&
     qa_adb shell wm density "$2" &&
     # Hide the phone emulator's first-use tutorial over the TV test host.
     qa_adb shell settings put secure immersive_mode_confirmations confirmed &&
     qa_adb shell settings put system screen_off_timeout 2147483647 &&
-    qa_adb shell input keyevent KEYCODE_WAKEUP &&
-    qa_adb shell wm dismiss-keyguard
+    wait_for_device_window
 }
 
 # Every setup operation is bounded too, not only Gradle instrumentation.

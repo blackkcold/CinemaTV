@@ -64,6 +64,11 @@ if name == "timeout":
         args[args.index("12m")] = "0.1s"
     os.execv(os.environ["REAL_TIMEOUT"], ["timeout", *args])
 if name == "adb":
+    if args == ["shell", "getprop", "sys.boot_completed"]:
+        print("1")
+    if args == ["shell", "dumpsys", "window"]:
+        print(os.environ.get("MOCK_WINDOW", "mCurrentFocus=Window{123 u0 com.google.android.apps.nexuslauncher/.NexusLauncherActivity}\nmDisplayFrozen=false"))
+        sys.exit(0)
     if args == ["get-state"]:
         print("device")
         sys.exit(int(os.environ["MOCK_DIAGNOSTIC_STATUS"]))
@@ -111,7 +116,7 @@ if name == "ps":
 class DeviceRunnerTest(unittest.TestCase):
     def run_harness(self, *, gradle=0, evidence=0, goldens=0, setup=0, setup_command="size",
                     diagnostics=0, tv=False, four_k=False, exported=False, device_evidence=False,
-                    real_timeout=False):
+                    real_timeout=False, window=None):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             binaries = root / "bin"
@@ -137,6 +142,8 @@ class DeviceRunnerTest(unittest.TestCase):
                        MOCK_EXPORTED_EVIDENCE=str(int(exported)),
                        MOCK_DEVICE_EVIDENCE=str(int(device_evidence)),
                        MOCK_REAL_TIMEOUT=str(int(real_timeout)))
+            if window is not None:
+                env["MOCK_WINDOW"] = window
             classes = "dev.cinematv.TvUiRegressionTest" if tv else "dev.cinematv.MobileNavigationSmokeTest"
             size, density = ("3840x2160", "640") if four_k else ("1920x1080", "320")
             result = subprocess.run(["bash", str(scripts / "run-device-qa.sh"), size, density, classes],
@@ -216,6 +223,37 @@ class DeviceRunnerTest(unittest.TestCase):
                 self.assertFalse(invoked)
                 self.assertTrue(diagnostics)
                 self.assertFalse(any(args[:2] == ["shell", "settings"] for args in self.calls["adb"]))
+
+    def test_wake_avoids_input_dispatch_and_waits_around_resize(self):
+        code, _, _, invoked = self.run_harness()
+        self.assertEqual(code, 0)
+        self.assertTrue(invoked)
+        calls = self.calls["adb"]
+        wake = calls.index(["shell", "svc", "power", "stayon", "true"])
+        size = calls.index(["shell", "wm", "size", "1920x1080"])
+        checks = [i for i, args in enumerate(calls) if args == ["shell", "getprop", "sys.boot_completed"]]
+        self.assertEqual(len(checks), 4)
+        self.assertLess(wake, checks[0])
+        self.assertLess(checks[0], size)
+        self.assertLess(size, checks[2])
+        self.assertFalse(any(args[:2] == ["shell", "input"] for args in calls))
+
+    def test_large_window_dump_does_not_sigpipe_under_pipefail(self):
+        window = ("mCurrentFocus=Window{123 u0 com.android.launcher3/.Launcher}\n"
+                  "mDisplayFrozen=false\n" + "window detail\n" * 6000)
+        code, _, _, invoked = self.run_harness(window=window)
+        self.assertEqual(code, 0)
+        self.assertTrue(invoked)
+
+    def test_anr_is_preserved_and_fails_before_instrumentation(self):
+        for package in ("com.google.android.apps.nexuslauncher", "dev.cinematv"):
+            with self.subTest(package=package):
+                window = f"mCurrentFocus=Window{{123 u0 Application Not Responding: {package}}}"
+                code, _, _, invoked = self.run_harness(window=window)
+                self.assertNotEqual(code, 0)
+                self.assertFalse(invoked)
+                self.assertIn(window, self.files["qa/setup-windows.txt"])
+                self.assertFalse(any("force-stop" in args or "input" in args for args in self.calls["adb"]))
 
     def test_gradle_retains_memory_and_worker_limits(self):
         self.run_harness()
