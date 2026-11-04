@@ -2,9 +2,9 @@
 
 **CinemaTV** is an open-source, native Android TV / Google TV video browsing and playback client for a **self-hosted LibreTV** instance.
 
-**Release status: v0.1.0 Preview (debug-signed)**. Main branch has additional unshipped development commits; GitHub Actions builds are **not** hardware-certified. Stable release is blocked by [Release Gate #1](https://github.com/blackkcold/CinemaTV/issues/1).
+**Release status: v0.2.0 Preview (debug-signed, when its CI finishes)**. Main branch is not hardware-certified. Stable release is blocked by [Release Gate #1](https://github.com/blackkcold/CinemaTV/issues/1).
 
-[Download preview APK from Releases](https://github.com/blackkcold/CinemaTV/releases/tag/v0.1.0-preview) · [CI builds](https://github.com/blackkcold/CinemaTV/actions/workflows/android.yml) · [中文安装与设备测试指南](docs/INSTALL.md) · [Release readiness tracker](https://github.com/blackkcold/CinemaTV/issues/1)
+[Download preview APK from Releases](https://github.com/blackkcold/CinemaTV/releases/tag/v0.2.0-preview) · [CI builds](https://github.com/blackkcold/CinemaTV/actions/workflows/android.yml) · [中文安装与设备测试指南](docs/INSTALL.md) · [Release readiness tracker](https://github.com/blackkcold/CinemaTV/issues/1)
 
 ## Features available in preview
 
@@ -57,7 +57,7 @@ The current UI uses performant translucent/frosted surfaces rather than a fully 
 
 CinemaTV-authored code is under the [MIT License](LICENSE). It is an independent original Android client; no DpadTV, FongMi or LibreTV code is copied into this repository. LibreTV and third-party libraries have independent licenses. Public deployment should use HTTPS; never check credentials, tokens, private signing keys or user source subscriptions into GitHub.
 
-## Main-branch features not yet in v0.1.0 Preview
+## Features added since v0.1.0 Preview
 
 Main includes experimental opt-in Android 13+ AGSL specular glass, progressive
 LibreTV NDJSON search, remote focus restoration, source probes, error classification,

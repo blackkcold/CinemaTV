@@ -2,9 +2,9 @@
 
 ## APK 获取
 - GitHub Actions 每次 `main` 推送均构建 Android TV Debug APK。
-- `v0.1.0-preview` 的 GitHub Release 提供可直接下载的 Debug 签名测试 APK。
+- `v0.2.0-preview` 的 GitHub Release 提供可直接下载的 Debug 签名测试 APK。
 - 安装要求：Android TV / Google TV，Android 8.0 (API 26) 及以上；设备需要支持第三方 APK 安装。
-- 应用包名：`dev.cinematv`，版本：`0.1.0`，签名：Android Debug（不适合正式商店发行）。
+- 应用包名：`dev.cinematv`，版本：`0.2.0-preview`，签名：Android Debug（不适合正式商店发行）。
 
 ## 首次安装
 1. 通过 U 盘或 `adb install -r app-debug.apk` 将 APK 安装到 Android TV。
