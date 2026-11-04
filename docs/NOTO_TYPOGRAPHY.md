@@ -78,9 +78,10 @@ regular raster when synthesis is disabled, comparing crop dimensions and SHA256 
 raw ARGB pixels as well as ink. It writes the display PNG, three specimen crops and
 ink/pixel-hash JSON to `ui-evidence/noto/compose-weight`.
 
-Capture uses one bounded UiAutomation compositor screenshot for each region/wrapper
-pair (ten total), then crops all three semantics rectangles from that same display
-image. It does not use Compose force-redraw/captureToImage or PixelCopy. Before each
+On API30/33, capture uses one bounded UiAutomation compositor screenshot for each
+region/wrapper pair (ten total), then crops all three semantics rectangles from that
+same display image. This passing path is unchanged. No version uses Compose
+force-redraw/captureToImage. Before each
 capture, a draw-observed epoch is changed with a frame listener armed; the test waits
 for that epoch to draw, a fresh window frame, and Compose idle. Foreground activity
 and accessibility package are checked around the readback. Late/abandoned bitmaps
@@ -88,7 +89,33 @@ are recycled. This generic ComponentActivity is not assumed fullscreen: the Comp
 host's measured screen and window positions translate `boundsInWindow` into display
 coordinates. Out-of-display/clipped rectangles fail. Evidence records full display
 dimensions, window/screen offsets, exact crop bounds and the fresh draw epoch. No
-scaling or guessed (0,0) origin is permitted. No assertion compares different regional faces
+scaling or guessed (0,0) origin is permitted.
+
+API26 has a narrow test-only readback route. In main `5576a10` run `41887458013`,
+SurfaceFlinger logged `size mismatch (1920,1080) > (1080,1920)` after framebuffer
+permission was granted; UiAutomation returned null before any specimen raster
+assertion. The other 12 API26 tests passed. This is evidence of an emulator display
+size/orientation readback failure, not a font/weight failure or permission denial.
+
+For API26 only, the helper directly requests PixelCopy of the three specimen
+rectangles' union from our own focused, non-floating Activity window. It refuses
+FLAG_SECURE windows and never clears security flags. It retains the fresh-frame /
+Compose-idle barrier, package/focus checks, measured window coordinates and exact
+weight/ink/pixel-hash assertions. The bounded readback is at most two million pixels
+with no resize; native copy and callback wait run off-main under a ten-second
+caller deadline. A late result is recycled only after the native copy returns;
+errors or timeouts fail rather than skip the test. There is no retry with weaker
+assertions, no altered device orientation and no display-security workaround.
+
+API26 evidence is explicitly a `*-window-region.png`, not a full display screenshot.
+JSON records route, API, union-window rectangle, capture dimensions/origin and each
+crop's window/screen/capture coordinates; full-display dimensions are null for this
+route. Ten union captures still produce all thirty specimen crops. API26 success
+must be established by the next device gate, not inferred from this source change.
+The API26 method contract and synchronous-copy/callback behavior were checked in
+Android 8.0 source:
+https://android.googlesource.com/platform/frameworks/base/+/android-8.0.0_r1/graphics/java/android/view/PixelCopy.java
+ No assertion compares different regional faces
 or relies on a platform-specific golden. The native specimen remains useful for
 asset/glyph checks, but cannot replace this Compose regression gate. Device/CI
 execution of this correction is still required before accepting new goldens.

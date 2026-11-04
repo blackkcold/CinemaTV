@@ -1,6 +1,8 @@
 package dev.cinematv.ui.typography
 
 import android.app.Activity
+import android.graphics.Rect
+import android.os.Build
 import android.view.View
 import android.graphics.Bitmap
 import android.graphics.Typeface
@@ -103,12 +105,23 @@ internal object NotoComposeWeightEvidence {
             val tags = listOf("regular", "bold", "no-synthesis")
             val bounds = tags.associateWith { compose.onNodeWithTag(it).fetchSemanticsNode().boundsInWindow }
             val location = NotoCompositorCapture.location(checkNotNull(host.get()))
-            val display = NotoCompositorCapture.capture(activity, host.get(), location)
+            val windowUnion = Rect(
+                floor(bounds.values.minOf { it.left }).toInt(), floor(bounds.values.minOf { it.top }).toInt(),
+                ceil(bounds.values.maxOf { it.right }).toInt(), ceil(bounds.values.maxOf { it.bottom }).toInt(),
+            )
+            val windowRegionCapture = Build.VERSION.SDK_INT == 26
+            val display = if (windowRegionCapture)
+                NotoCompositorCapture.captureWindowRegionApi26(activity, host.get(), location, windowUnion)
+            else NotoCompositorCapture.capture(activity, host.get(), location)
+            val originScreenX = if (windowRegionCapture) windowUnion.left + location.windowOriginX else 0
+            val originScreenY = if (windowRegionCapture) windowUnion.top + location.windowOriginY else 0
             val rectangles = JSONObject()
-            val displayWidth = display.width
-            val displayHeight = display.height
+            val captureWidth = display.width
+            val captureHeight = display.height
+            val captureKind = if (windowRegionCapture) "api26-own-window-region-pixelcopy" else "display-compositor"
             try {
-                File(folder, "$label-display.png").outputStream().use {
+                val captureFile = if (windowRegionCapture) "$label-window-region.png" else "$label-display.png"
+                File(folder, captureFile).outputStream().use {
                     check(display.compress(Bitmap.CompressFormat.PNG, 100, it))
                 }
                 for (tag in tags) {
@@ -117,9 +130,15 @@ internal object NotoComposeWeightEvidence {
                     val top = floor(windowBounds.top + location.windowOriginY).toInt()
                     val right = ceil(windowBounds.right + location.windowOriginX).toInt()
                     val bottom = ceil(windowBounds.bottom + location.windowOriginY).toInt()
-                    check(left >= 0 && top >= 0 && right <= display.width && bottom <= display.height &&
-                        right > left && bottom > top) { "Specimen $tag is clipped/outside the display: $windowBounds" }
-                    val bitmap = Bitmap.createBitmap(display, left, top, right - left, bottom - top)
+                    val captureLeft = left - originScreenX
+                    val captureTop = top - originScreenY
+                    val captureRight = right - originScreenX
+                    val captureBottom = bottom - originScreenY
+                    check(captureLeft >= 0 && captureTop >= 0 && captureRight <= display.width &&
+                        captureBottom <= display.height && captureRight > captureLeft && captureBottom > captureTop) {
+                        "Specimen $tag is clipped/outside capture: $windowBounds"
+                    }
+                    val bitmap = Bitmap.createBitmap(display, captureLeft, captureTop, right - left, bottom - top)
                     try {
                         ink[tag] = luminanceInk(bitmap)
                         hashes[tag] = pixelHash(bitmap)
@@ -131,7 +150,9 @@ internal object NotoComposeWeightEvidence {
                             .put("windowLeft", windowBounds.left).put("windowTop", windowBounds.top)
                             .put("windowRight", windowBounds.right).put("windowBottom", windowBounds.bottom)
                             .put("screenLeft", left).put("screenTop", top)
-                            .put("screenRight", right).put("screenBottom", bottom))
+                            .put("screenRight", right).put("screenBottom", bottom)
+                            .put("captureLeft", captureLeft).put("captureTop", captureTop)
+                            .put("captureRight", captureRight).put("captureBottom", captureBottom))
                     } finally { if (bitmap !== display) bitmap.recycle() }
                 }
             } finally { display.recycle() }
@@ -145,7 +166,13 @@ internal object NotoComposeWeightEvidence {
             assertEquals("$label regular/no-synthesis pixels differ", hashes.getValue("regular"), hashes.getValue("no-synthesis"))
             evidence.put(JSONObject().put("surface", if (useTv) "tv" else "phone")
                 .put("region", selected.name).put("ttcIndex", selected.ttcIndex)
-                .put("displayWidth", displayWidth).put("displayHeight", displayHeight)
+                .put("captureKind", captureKind).put("api", Build.VERSION.SDK_INT)
+                .put("captureWidth", captureWidth).put("captureHeight", captureHeight)
+                .put("displayWidth", if (windowRegionCapture) JSONObject.NULL else captureWidth)
+                .put("displayHeight", if (windowRegionCapture) JSONObject.NULL else captureHeight)
+                .put("captureOriginScreenX", originScreenX).put("captureOriginScreenY", originScreenY)
+                .put("captureWindowUnion", JSONObject().put("left", windowUnion.left).put("top", windowUnion.top)
+                    .put("right", windowUnion.right).put("bottom", windowUnion.bottom))
                 .put("hostScreenX", location.screenX).put("hostScreenY", location.screenY)
                 .put("hostWindowX", location.windowX).put("hostWindowY", location.windowY)
                 .put("windowOriginX", location.windowOriginX).put("windowOriginY", location.windowOriginY)
@@ -155,7 +182,9 @@ internal object NotoComposeWeightEvidence {
         }
         File(folder, "compose-weight.json").writeText(JSONObject()
             .put("sample", "漢骨直令").put("fontSizeSp", 36)
-            .put("capture", "UiAutomation display compositor; one capture per region/surface; measured window-to-screen offsets; no scaling")
+            .put("capture", if (Build.VERSION.SDK_INT == 26)
+                "API26 own non-secure Activity window specimen union via bounded PixelCopy; not a display screenshot; no scaling"
+                else "UiAutomation display compositor; measured window-to-screen offsets; no scaling")
             .put("captureCount", NotoRegion.entries.size * 2)
             .put("scope", "Actual CinemaText/CinemaTvText Compose output; within-face weight comparison only")
             .put("samples", evidence).toString(2))

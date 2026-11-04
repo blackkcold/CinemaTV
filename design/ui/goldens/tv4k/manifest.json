@@ -66,7 +66,19 @@
           515,
           235
         ]
-      ]
+      ],
+      "sourceCommit": "5576a108ee44f15d86adc2f215567cfeb79a31fb",
+      "workflowRun": 41887458013,
+      "artifactId": 13353325309,
+      "rawCaptureSize": [
+        3840,
+        2160
+      ],
+      "rawCaptureSha256": "51d44392904580a3b43c7a25b82351a8fb71c95547709d3627490883e4d4cffa",
+      "baselineSha256": "9c4ce90776a49f733dd5d44d3da85630d59e6937ec0b9994cfeae1ef54e58083",
+      "reviewedDate": "2026-11-04",
+      "reviewReason": "Approved V4 controls, V3 Back icon and corrected Noto typography. Focus and scroll-panel geometry reviewed; no new clipping or overlap."
     }
-  ]
+  ],
+  "provenanceNotes": "Per-screen sourceCommit/workflowRun override the original manifest defaults. See ../REVIEW.md; masks and thresholds are unchanged."
 }

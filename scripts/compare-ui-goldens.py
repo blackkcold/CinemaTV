@@ -4,12 +4,12 @@ import argparse
 import json
 from pathlib import Path
 
-from PIL import Image, ImageChops, ImageDraw, ImageStat
-
 SIZE = (960, 540)
 
 
 def normalized(path, masks):
+    from PIL import Image, ImageDraw
+
     with Image.open(path) as image:
         result = image.convert("RGB").resize(SIZE, Image.Resampling.LANCZOS)
     for rectangle in masks:
@@ -17,7 +17,16 @@ def normalized(path, masks):
     return result
 
 
+def baseline_provenance(manifest, screen):
+    return {
+        "baselineSourceCommit": screen.get("sourceCommit", manifest["sourceCommit"]),
+        "baselineWorkflowRun": screen.get("workflowRun", manifest.get("workflowRun")),
+    }
+
+
 def main():
+    from PIL import Image, ImageChops, ImageStat
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--baseline", type=Path, required=True)
     parser.add_argument("--candidate", type=Path, required=True)
@@ -34,8 +43,9 @@ def main():
     for screen in screens:
         baseline = args.baseline / screen["file"]
         candidate = args.candidate / baseline.name
+        provenance = baseline_provenance(manifest, screen)
         if not baseline.is_file() or not candidate.is_file():
-            report.append({"screen": baseline.name, "passed": False, "reason": "Missing baseline or screenshot"})
+            report.append({"screen": baseline.name, **provenance, "passed": False, "reason": "Missing baseline or screenshot"})
             continue
         masks = screen.get("masks", [])
         before, after = normalized(baseline, masks), normalized(candidate, masks)
@@ -43,7 +53,7 @@ def main():
         mean = sum(ImageStat.Stat(difference).mean) / (3 * 255)
         changed = sum(1 for pixel in difference.getdata() if max(pixel) > 32) / (SIZE[0] * SIZE[1])
         passed = mean <= args.mean_limit and changed <= args.changed_limit
-        report.append({"screen": baseline.name, "meanError": round(mean, 6), "changedRatio": round(changed, 6), "passed": passed})
+        report.append({"screen": baseline.name, **provenance, "meanError": round(mean, 6), "changedRatio": round(changed, 6), "passed": passed})
         if not passed:
             difference.save(args.output / (baseline.stem + "-difference.png"))
             Image.blend(before, after, .5).save(args.output / (baseline.stem + "-overlay.png"))
