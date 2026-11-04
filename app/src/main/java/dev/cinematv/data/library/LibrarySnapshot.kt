@@ -17,7 +17,8 @@ data class LibraryRecord(
 data class LibrarySnapshot(
     val ready: Boolean = false,
     val records: List<LibraryRecord> = emptyList(),
-    val episodeProgress: Map<String, EpisodeProgress> = emptyMap()
+    val episodeProgress: Map<String, EpisodeProgress> = emptyMap(),
+    val associations: LocalWorkAssociations = LocalWorkAssociations()
 ) {
     private val byEntry by lazy { records.associateBy { MediaDomainMapper.entryId(it.item) } }
 

@@ -71,6 +71,9 @@ fun DetailScreen(model: CinemaViewModel) {
                 if (item.positionMs > 0) Text("上次观看至 第 ${item.lastEpisode + 1} 集 · ${item.positionMs / 60000} 分钟", color = TvColors.Secondary, fontSize = 12.sp)
             }
         }
+        item(key = "manual-work-association") {
+            Box(Modifier.padding(horizontal = layout.gutter, vertical = 8.dp)) { ManualWorkAssociationPanel(model, tv = true) }
+        }
         if (model.workNavigation?.visible == true) item(key = "work-navigation") {
             Box(Modifier.padding(horizontal = layout.gutter, vertical = 16.dp)) {
                 WorkNavigationPanel(model, tv = true)

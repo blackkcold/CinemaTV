@@ -463,6 +463,38 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    val workAssociations get() = repo.library.snapshot.associations
+    val associationCandidates get() = repo.library.snapshot.records.mapNotNull { it.item.usableMetadata() }
+
+    fun associateWork(source: MediaItem, target: MediaItem, season: Int?, revision: String,
+        reviewedMembers: List<MediaItem>) {
+        if (page != Page.DETAIL || selected?.let(MediaDomainMapper::entryId) != MediaDomainMapper.entryId(source)) return
+        viewModelScope.launch {
+            try {
+                repo.library.associateWork(source, target, season, revision, reviewedMembers)
+                message = "已手动关联；原始片源与观看进度保持不变"
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { message = "关联未保存，资料或关联已变化，请重新查看后确认" }
+        }
+    }
+
+    fun unlinkWork(sourceId: String, revision: String) {
+        if (page != Page.DETAIL || selected?.let(MediaDomainMapper::entryId) != sourceId) return
+        viewModelScope.launch {
+            try { repo.library.unlinkWork(sourceId, revision); message = "已解除手动关联，可撤销" }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { message = "关联已变化，请重新查看后再操作" }
+        }
+    }
+
+    fun undoWorkAssociation(revision: String) {
+        viewModelScope.launch {
+            try { repo.library.undoWorkAssociation(revision); message = "已撤销上次关联修改" }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { message = "无法撤销：关联已变化或没有可撤销的修改" }
+        }
+    }
+
     val workNavigation get() = selected?.let { WorkNavigationProjection.build(repo.library.snapshot, it) }
 
     /** Validate IDs against the latest snapshot; stale/removed choices are harmless. */
@@ -946,9 +978,9 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    fun libraryByStatus(status: LibraryStatus): List<MediaItem> = WorkNavigationProjection.deduplicate(repo.libraryByStatus(status))
+    fun libraryByStatus(status: LibraryStatus): List<MediaItem> = WorkNavigationProjection.deduplicate(repo.libraryByStatus(status), associations = workAssociations)
 
-    fun favorites() = WorkNavigationProjection.deduplicate(repo.favorites())
+    fun favorites() = WorkNavigationProjection.deduplicate(repo.favorites(), associations = workAssociations)
     fun history() = repo.history()
 
     fun back() {

@@ -3,6 +3,7 @@ package dev.cinematv.data.library
 import android.content.Context
 import dev.cinematv.data.LibraryStatus
 import dev.cinematv.data.MediaDomainMapper
+import dev.cinematv.data.usableMetadata
 import dev.cinematv.data.MediaItem
 import dev.cinematv.domain.EpisodeProgress
 import kotlinx.coroutines.CoroutineDispatcher
@@ -122,6 +123,50 @@ class LocalMediaLibrary(
         }
     }
 
+    /** Transaction-level compare-and-swap also guards against another library instance/device import. */
+    suspend fun associateWork(source: MediaItem, target: MediaItem, season: Int?, revision: String,
+        reviewedMembers: List<MediaItem> = listOf(target)) = mutateAssociation {
+        val overlay = currentAssociationsLocked(revision)
+        fun current(expected: MediaItem): MediaItem {
+            val item = dao.source(MediaDomainMapper.entryId(expected))?.itemJson?.let(MediaItemCodec::decode)
+                ?.usableMetadata(now()) ?: error("Source is no longer available")
+            check(associationEvidence(item) == associationEvidence(expected)) { "Evidence changed; review again" }
+            return item
+        }
+        val reviewedIds = reviewedMembers.map(MediaDomainMapper::entryId)
+        check(reviewedIds.size == reviewedIds.toSet().size && reviewedIds.toSet() ==
+            overlay.targetEntryIds(MediaDomainMapper.entryId(source), MediaDomainMapper.entryId(target))) {
+            "Group membership changed or was not completely reviewed"
+        }
+        // Group revision alone cannot detect a catalog refresh on another previewed member.
+        reviewedMembers.forEach { current(it) }
+        val next = overlay.associate(current(source), current(target), season, now())
+        dao.upsertMetadata(LibraryMetadataEntity(LocalWorkAssociationCodec.KEY, LocalWorkAssociationCodec.encode(next)))
+    }
+
+    suspend fun unlinkWork(sourceId: String, revision: String) = mutateAssociation {
+        val next = currentAssociationsLocked(revision).unlink(sourceId)
+        dao.upsertMetadata(LibraryMetadataEntity(LocalWorkAssociationCodec.KEY, LocalWorkAssociationCodec.encode(next)))
+    }
+
+    suspend fun undoWorkAssociation(revision: String) = mutateAssociation {
+        val next = currentAssociationsLocked(revision).undo()
+        dao.upsertMetadata(LibraryMetadataEntity(LocalWorkAssociationCodec.KEY, LocalWorkAssociationCodec.encode(next)))
+    }
+
+    private suspend fun mutateAssociation(block: () -> Unit) = withContext(io) {
+        mutex.withLock {
+            initializeLocked()
+            // Even a rejected stale writer must reload the winning revision before another review.
+            try { db.runInTransaction(block) } finally { refreshLocked() }
+        }
+    }
+
+    private fun currentAssociationsLocked(revision: String): LocalWorkAssociations =
+        LocalWorkAssociationCodec.decode(dao.metadata(LocalWorkAssociationCodec.KEY)).also {
+            check(it.writable && it.revision == revision) { "Association changed or uses an unsupported version" }
+        }
+
     suspend fun clearHistory() = mutate {
         dao.deleteProgress()
         dao.deleteCheckpointEvidence()
@@ -218,7 +263,8 @@ class LocalMediaLibrary(
                     durationMs = last?.durationMs ?: 0, lastEpisode = last?.episodeIndex ?: -1),
                     state, entry.favorite, entry.updatedAt, entry.historyAt)
             }
-            LibrarySnapshot(ready = true, records = records, episodeProgress = progress)
+            LibrarySnapshot(ready = true, records = records, episodeProgress = progress,
+                associations = LocalWorkAssociationCodec.decode(dao.metadata(LocalWorkAssociationCodec.KEY)))
         })
     }
 

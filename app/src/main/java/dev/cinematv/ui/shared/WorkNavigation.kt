@@ -32,22 +32,31 @@ object WorkNavigationProjection {
         val current = records.firstOrNull { MediaDomainMapper.entryId(it.item) == selectedId }?.item ?: safeSelected
         val entries = if (records.any { MediaDomainMapper.entryId(it.item) == selectedId }) records
             else records + LibraryRecord(current, null, false, 0, null)
-        val byId = entries.associateBy { MediaDomainMapper.entryId(it.item) }
-        val work = LibrarySnapshot(records = entries).works.firstOrNull { it.work.id == MediaDomainMapper.workId(current) } ?: return null
-        val seasons = work.seasons.map { season ->
-            WorkSeasonOption(season.season.id, if (season.season.number == null && current.isTv) "季数未知" else season.season.title,
-                season.sources.sortedWith(compareBy({ it.source.sourceName }, { it.source.id })).mapNotNull { source -> byId[source.source.id]?.let { record ->
-                    val item = snapshot.applyProgress(record.item)
-                    val flags = listOfNotNull(record.status?.title, "已收藏".takeIf { record.favorite }).distinct()
-                    WorkSourceOption(source.source.id,
-                        listOf(item.source?.name?.ifBlank { "片源" } ?: "元数据目录", "ID ${item.id}", flags.joinToString(" · "))
-                            .filter(String::isNotBlank).joinToString(" · "), item)
-                } })
-        }
-        return WorkNavigation(work.work.id, seasons, MediaDomainMapper.seasonId(current), selectedId)
+        val overlay = snapshot.associations
+        val workId = overlay.workId(current)
+        fun seasonId(item: MediaItem) = if (MediaDomainMapper.entryId(item) in overlay.entries)
+            "$workId:season:${overlay.seasonLabel(item) ?: "unknown"}" else MediaDomainMapper.seasonId(item)
+        val seasons = entries.filter { overlay.workId(it.item) == workId }
+            .groupBy { overlay.seasonLabel(it.item) }.toList()
+            .sortedWith(compareBy<Pair<Int?, List<LibraryRecord>>> { it.first == null }.thenBy { it.first })
+            .map { (number, records) ->
+                val manual = records.any { MediaDomainMapper.entryId(it.item) in overlay.entries }
+                WorkSeasonOption(seasonId(records.first().item),
+                    (number?.let { if (it == 0) "特别篇 · 第0季" else "第${it}季" } ?: "季数未知") +
+                        if (manual) " · 手动关联" else "",
+                    records.sortedWith(compareBy({ it.item.source?.name }, { MediaDomainMapper.entryId(it.item) })).map { record ->
+                        val item = snapshot.applyProgress(record.item)
+                        val flags = listOfNotNull(record.status?.title, "已收藏".takeIf { record.favorite }).distinct()
+                        WorkSourceOption(MediaDomainMapper.entryId(item),
+                            listOf(item.source?.name?.ifBlank { "片源" } ?: "元数据目录", "ID ${item.id}", flags.joinToString(" · "))
+                                .filter(String::isNotBlank).joinToString(" · "), item)
+                    })
+            }
+        return WorkNavigation(workId, seasons, seasonId(current), selectedId)
     }
 
     /** Filter shelves first, then retain the first exact source as representative; never union flags. */
-    fun deduplicate(items: List<MediaItem>, now: Long = System.currentTimeMillis()): List<MediaItem> =
-        items.mapNotNull { it.usableMetadata(now) }.distinctBy(MediaDomainMapper::workId)
+    fun deduplicate(items: List<MediaItem>, now: Long = System.currentTimeMillis(),
+        associations: dev.cinematv.data.library.LocalWorkAssociations = dev.cinematv.data.library.LocalWorkAssociations()): List<MediaItem> =
+        items.mapNotNull { it.usableMetadata(now) }.distinctBy(associations::workId)
 }
