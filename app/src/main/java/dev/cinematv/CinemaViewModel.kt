@@ -109,6 +109,8 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
     private var backdropJob: Job? = null
     private var detailJob: Job? = null
     private var detailGeneration = 0L
+    var resolutionStatus by mutableStateOf("")
+        private set
     var selectedRecommendationReason by mutableStateOf("")
         private set
     private var channelsJob: Job? = null
@@ -117,6 +119,73 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
     private var catalogSeries by mutableStateOf<List<MediaItem>>(emptyList())
     val browseMovies get() = catalogMovies.ifEmpty { featured }.mapNotNull { it.usableMetadata() }
     val browseSeries get() = catalogSeries.ifEmpty { tvShows }.mapNotNull { it.usableMetadata() }
+    var movieBrowse by mutableStateOf(CatalogBrowseState())
+        private set
+    var seriesBrowse by mutableStateOf(CatalogBrowseState())
+        private set
+    var movieSearchBrowse by mutableStateOf(CatalogBrowseState())
+        private set
+    var seriesSearchBrowse by mutableStateOf(CatalogBrowseState())
+        private set
+    private val browseJobs = mutableMapOf<Boolean, Job>()
+    private var searchMoreJob: Job? = null
+    private var browseGeneration = 0L
+    fun browseState(series: Boolean) = if (series) seriesBrowse else movieBrowse
+    val hasSearchCatalog get() = movieSearchBrowse.pages > 0 || seriesSearchBrowse.pages > 0
+    val searchCatalogLoading get() = movieSearchBrowse.loading || seriesSearchBrowse.loading
+    val canLoadSearchCatalog get() = !searchFilters.doubanTopOnly && completedSearchQuery.isNotBlank() &&
+        listOf(false, true).any { (searchFilters.isTv == null || searchFilters.isTv == it) && searchBrowseState(it).canLoadMore }
+    private fun searchBrowseState(series: Boolean) = if (series) seriesSearchBrowse else movieSearchBrowse
+
+    fun refreshCatalog() = loadHome()
+
+    fun loadMoreCatalog(series: Boolean) {
+        if (!repo.hasMetadataCatalog || !browseState(series).canLoadMore) return
+        val generation = browseGeneration
+        browseJobs[series] = viewModelScope.launch {
+            fetchBrowsePage(series, false) { generation == browseGeneration }
+        }
+    }
+
+    fun loadMoreSearchCatalog() {
+        if (!canLoadSearchCatalog || searchCatalogLoading) return
+        val generation = searchGeneration
+        searchMoreJob = viewModelScope.launch {
+            for (tv in listOf(false, true)) {
+                if (searchFilters.doubanTopOnly || generation != searchGeneration) break
+                if (searchFilters.isTv == null || searchFilters.isTv == tv)
+                    fetchBrowsePage(tv, true) { generation == searchGeneration }
+            }
+        }
+    }
+
+    private suspend fun fetchBrowsePage(series: Boolean, search: Boolean, current: () -> Boolean) {
+        fun state() = if (search) searchBrowseState(series) else browseState(series)
+        val initial = state()
+        if (!initial.canLoadMore || !current()) return
+        val offset = initial.nextOffset ?: return
+        fun publish(value: CatalogBrowseState) {
+            if (!current()) return
+            if (search) {
+                if (series) seriesSearchBrowse = value else movieSearchBrowse = value
+                queryCatalog = movieSearchBrowse.items + seriesSearchBrowse.items
+                rebuildSearch()
+            } else {
+                if (series) { seriesBrowse = value; catalogSeries = value.items }
+                else { movieBrowse = value; catalogMovies = value.items }
+                rebuildRecommendations()
+            }
+        }
+        publish(initial.copy(loading = true, notice = ""))
+        try {
+            val response = repo.catalog(if (search) completedSearchQuery else "", series, offset)
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+            if (current()) publish(CatalogBrowsePaging.append(initial, response, offset))
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { publish(initial.copy(loading = false, notice = "目录加载失败，已保留结果；可重试。")) }
+        finally { if (current() && state().loading) publish(state().copy(loading = false)) }
+    }
+
     private var remoteSearch: List<MediaItem> = emptyList()
     private var queryCatalog: List<MediaItem> = emptyList()
     var searchFilters by mutableStateOf(SearchFilters())
@@ -207,10 +276,10 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
             runCatching { repo.status() }
                 .onSuccess { status ->
                     passwordRequired = status.passwordRequired
-                    authorized = !status.passwordRequired || status.verified
+                    authorized = status.verified
                     sources = status.sources
                     liveSources = status.liveSources
-                    message = if (authorized) "" else "此服务器要求密码，请在设置中登录。"
+                    message = if (authorized) "" else if (status.passwordRequired) "此服务器要求密码，请在设置中登录。" else "服务器未配置访问密码（PASSWORD），请联系管理员完成配置。"
                     if (authorized) loadHome()
                 }.onFailure { authorized = false; connectionError(it) }
             busy = false
@@ -229,9 +298,22 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
     fun configureMetadata() {
         runCatching { repo.configureMetadata(metadataAddress, metadataAccessToken) }
             .onSuccess {
+                searchJob?.cancel()
+                searchMoreJob?.cancel()
+                chartJob?.cancel()
+                searchGeneration++
+                chartGeneration++
+                chartLoading = false
+                busy = false
+                queryCatalog = emptyList()
+                movieSearchBrowse = CatalogBrowseState(nextOffset = null)
+                seriesSearchBrowse = CatalogBrowseState(nextOffset = null)
+                movieChart = CatalogChartSnapshot()
+                seriesChart = CatalogChartSnapshot()
+                rebuildSearch()
                 metadataAccessToken = ""
-                message = "元数据服务配置已保存（令牌仅保存在本次应用进程）"
-                if (authorized) loadHome()
+                message = "元数据服务配置已保存（令牌仅保存在本次应用进程）；请重新搜索以更新结果"
+                loadHome()
             }
             .onFailure { message = it.message ?: "元数据地址配置失败" }
     }
@@ -304,34 +386,41 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
 
     private fun loadHome() {
         homeJob?.cancel()
+        browseJobs.values.forEach { it.cancel() }
+        val generation = ++browseGeneration
+        movieBrowse = CatalogBrowseState()
+        seriesBrowse = CatalogBrowseState()
+        catalogMovies = emptyList()
+        catalogSeries = emptyList()
         homeJob = viewModelScope.launch {
-            suspend fun load(tv: Boolean): List<MediaItem>? {
-                val catalog = try { repo.catalog(isTv = tv) } catch (cancelled: CancellationException) { throw cancelled }
-                    catch (_: Exception) { MetadataCatalog() }
-                if (catalog.available && catalog.items.isNotEmpty()) {
-                    return catalog.items
+            for (tv in listOf(false, true)) {
+                if (repo.hasMetadataCatalog) fetchBrowsePage(tv, false) { generation == browseGeneration }
+                if (!repo.hasMetadataCatalog || browseState(tv).catalog == null) {
+                    try {
+                        val fallback = repo.recommend(tv)
+                        ensureActive()
+                        if (generation != browseGeneration) return@launch
+                        if (tv) catalogSeries = fallback else catalogMovies = fallback
+                        val state = browseState(tv).copy(nextOffset = if (repo.hasMetadataCatalog) 0 else null,
+                            notice = "推荐预览 · 授权目录暂不可用，未获取完整目录")
+                        if (tv) seriesBrowse = state else movieBrowse = state
+                    } catch (cancelled: CancellationException) { throw cancelled }
+                    catch (_: Exception) { /* Local records remain available. */ }
                 }
-                return try { repo.recommend(tv) } catch (cancelled: CancellationException) { throw cancelled }
-                    catch (_: Exception) { null }
+                rebuildRecommendations()
             }
-            val movies = load(false)
-            ensureActive()
-            if (movies != null) catalogMovies = movies
-            rebuildRecommendations()
             if (focused == null) focused = featured.firstOrNull()
-            val series = load(true)
-            ensureActive()
-            if (series != null) catalogSeries = series
-            rebuildRecommendations()
-            if (movies == null && series == null) message = "推荐目录暂不可用，已保留本地片库与搜索。"
             featured.firstOrNull()?.let { first ->
                 try {
                     val enhanced = repo.enrichMetadata(first)
                     ensureActive()
+                    if (generation != browseGeneration) return@launch
                     catalogMovies = catalogMovies.map { if (it.presentationKey == first.presentationKey) enhanced else it }
+                    movieBrowse = movieBrowse.copy(items = movieBrowse.items.map { if (it.presentationKey == first.presentationKey) enhanced else it })
                     rebuildRecommendations()
                     if (focused?.presentationKey == first.presentationKey) focused = enhanced
-                } catch (cancelled: CancellationException) { throw cancelled } catch (_: Exception) { /* Keep local/source artwork. */ }
+                } catch (cancelled: CancellationException) { throw cancelled }
+                catch (_: Exception) { /* Keep source artwork. */ }
             }
         }
     }
@@ -380,11 +469,18 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
         detailSessionKey = item.presentationKey
         page = Page.DETAIL
         selected = item
+        resolutionStatus = ""
         alternatives = emptyList()
         busy = true
         detailJob = viewModelScope.launch {
             try {
-                val detailed = repo.detail(item)
+                val detailed = repo.detail(item) { progress ->
+                    if (page == Page.DETAIL && detailGeneration == generation) resolutionStatus = when (progress.phase) {
+                        ResolutionPhase.SEARCHING -> "正在匹配片源 · 关键词 ${progress.queryIndex}/${progress.queryCount}"
+                        ResolutionPhase.TRYING_SOURCE -> "正在验证片源 · ${progress.attempt}/${progress.maxAttempts} · ${progress.sourceName}"
+                        ResolutionPhase.RESOLVED -> "片源已就绪"
+                    }
+                }
                 if (page != Page.DETAIL || detailGeneration != generation) return@launch
                 selected = detailed
                 if (repo.persistenceWarning.isNotBlank()) message = repo.persistenceWarning
@@ -441,7 +537,7 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
         rebuildSearch()
         if (filters.doubanTopOnly && !wasTop) loadLicensedChart()
         else if (!filters.doubanTopOnly) {
-            chartGeneration++; chartJob?.cancel(); chartLoading = false; catalogStatus = ""
+            chartGeneration++; chartJob?.cancel(); chartLoading = false; rebuildSearch()
         }
     }
 
@@ -521,17 +617,20 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
             // old saved rank must not reappear in a newly fetched chart snapshot.
             library = repo.localItems().let { if (chartOnly) it.map { item -> item.copy(doubanTopRank = null) } else it },
             catalog = if (chartOnly) movieChart.items + seriesChart.items else catalogMovies + catalogSeries + queryCatalog,
-            remote = remoteSearch, filters = searchFilters)
+            remote = remoteSearch, filters = searchFilters, limit = 1000)
         results = searchHits.map { it.item }
         catalogAttribution = (if (chartOnly) results else featured + tvShows + results).map { it.catalogAttribution }
             .filter(String::isNotBlank).distinct().joinToString("\n")
-        catalogStatus = if (!chartOnly) "" else buildList {
+        catalogStatus = if (!chartOnly) listOf(false, true).filter { searchFilters.isTv == null || searchFilters.isTv == it }
+            .map { tv -> searchBrowseState(tv).description().takeIf(String::isNotBlank)?.let { "${if (tv) "剧集" else "电影"}：$it" } }
+            .filterNotNull().joinToString("\n") else buildList {
             if (repo.hasMetadataCatalog) {
                 add("电影：${CatalogStatus.message(movieChart)}")
                 if (seriesChart.items.isNotEmpty()) add("剧集：${CatalogStatus.message(seriesChart)}")
             }
             if (chartNotice.isNotBlank()) add(chartNotice)
         }.joinToString("\n")
+        if (results.size >= 1000) catalogStatus += "\n搜索展示上限为 1000 条，请缩小关键词或筛选范围。"
     }
 
     fun search() {
@@ -539,6 +638,7 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
         if (wd.isBlank()) return
         navigate(Page.SEARCH)
         searchJob?.cancel()
+        searchMoreJob?.cancel()
         chartJob?.cancel()
         chartGeneration++
         chartLoading = false
@@ -549,6 +649,8 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
         completedSearchQuery = wd
         remoteSearch = emptyList()
         queryCatalog = emptyList()
+        movieSearchBrowse = CatalogBrowseState(nextOffset = if (repo.hasMetadataCatalog) 0 else null)
+        seriesSearchBrowse = CatalogBrowseState(nextOffset = if (repo.hasMetadataCatalog) 0 else null)
         message = ""
         repo.rememberSearch(wd)
         searchHistory = repo.searchHistory()
@@ -561,12 +663,7 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
                     launch {
                         if (repo.hasMetadataCatalog) {
                             for (tv in listOf(false, true)) {
-                                try {
-                                    val catalog = repo.catalog(wd, tv)
-                                    ensureActive()
-                                    queryCatalog = queryCatalog + catalog.items
-                                    rebuildSearch()
-                                } catch (cancelled: CancellationException) { throw cancelled } catch (_: Exception) { /* Independent provider. */ }
+                                fetchBrowsePage(tv, true) { generation == searchGeneration }
                             }
                         }
                     }
@@ -574,20 +671,19 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
                         if (!repo.isConnected || sources.none { it.enabled }) return@launch
                         searchStage = "本地 → 元数据目录 → LibreTV 片源"
                         try {
-                            repo.searchProgressively(wd).collect { partial ->
+                            repo.searchSnapshots(wd).collect { partial ->
                                 ensureActive()
-                                remoteSearch = partial
+                                if (generation != searchGeneration) return@collect
+                                remoteSearch = partial.items
+                                val failed = partial.outcomes.count { !it.ok }
+                                searchStage = if (failed > 0) "${if (partial.complete) "搜索完成" else "逐源搜索中"} · $failed 个片源失败或超时，已保留成功结果"
+                                    else if (partial.complete) "片源搜索完成" else "正在逐源搜索"
                                 rebuildSearch()
                             }
                         } catch (cancelled: CancellationException) { throw cancelled }
                         catch (_: Exception) {
-                            try {
-                                val fallback = repo.search(wd)
-                                ensureActive()
-                                remoteSearch = fallback
-                                rebuildSearch()
-                            } catch (cancelled: CancellationException) { throw cancelled }
-                            catch (_: Exception) { searchStage = "片源暂不可用 · 已保留本地和目录结果" }
+                            if (generation == searchGeneration)
+                                searchStage = "片源响应未完整结束 · 已保留收到的结果，可重新搜索重试"
                         }
                     }
                 }
@@ -822,6 +918,32 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
             runCatching { repo.setLibraryStatus(item, status) }
                 .onSuccess { message = "已加入：${status.title}" }
                 .onFailure { message = "片库保存失败：${it.message}" }
+        }
+    }
+
+    val quarantinedProgressCount: Int get() = repo.library.snapshot.quarantinedProgress.size
+    fun hasLibraryStatus(item: MediaItem): Boolean = repo.library.snapshot.records.any {
+        MediaDomainMapper.entryId(it.item) == MediaDomainMapper.entryId(item) && it.status != null
+    }
+
+    fun removeLibraryStatus() {
+        val item = selected ?: return
+        viewModelScope.launch {
+            try { repo.setLibraryStatus(item, null); message = "已移除片库状态；收藏和观看进度已保留" }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { message = "片库状态未能移除，请重试" }
+        }
+    }
+
+    /** Called only after the UI confirms deletion of local history and resume positions. */
+    fun clearWatchHistory() {
+        viewModelScope.launch {
+            try {
+                repo.library.clearHistory()
+                selected = selected?.copy(positionMs = 0L, lastEpisode = 0, durationMs = 0L)
+                message = "观看记录和续播进度已清空；收藏和片库状态已保留"
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { message = "观看记录未能清空，请重试" }
         }
     }
 

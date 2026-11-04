@@ -256,6 +256,16 @@ private fun MobileCatalog(model: CinemaViewModel, tvOnly: Boolean?) {
             TextButton(onClick = { model.navigate(Page.SERIES) }) { Text("剧集") }
             TextButton(onClick = { model.navigate(Page.EXPLORE) }) { Text("发现") }
         }
+        listOf(false, true).filter { tvOnly == null || it == tvOnly }.forEach { series ->
+            val paging = model.browseState(series)
+            if (paging.description().isNotBlank()) Column(Modifier.padding(horizontal = 16.dp)) {
+                Text("${if (series) "剧集" else "电影"}：${paging.description()}", color = Muted, fontSize = 11.sp)
+                Row {
+                    if (paging.nextOffset != null) TextButton(enabled = !paging.loading, onClick = { model.loadMoreCatalog(series) }) { Text(if (paging.loading) "加载中…" else "加载更多") }
+                    TextButton(enabled = !paging.loading, onClick = { model.refreshCatalog() }) { Text("刷新目录") }
+                }
+            }
+        }
         if (contents.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text("暂无推荐内容，请检查服务器连接", color = Muted)
@@ -322,6 +332,7 @@ private fun MobileSearch(model: CinemaViewModel) {
                 }
             }
         }
+        if (model.searchStage.isNotBlank()) Text(model.searchStage, color = Muted, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 20.dp))
         if (model.busy || model.chartLoading) LinearProgressIndicator(Modifier.fillMaxWidth())
         Text(
             if (model.busy || model.chartLoading) "正在逐源搜索 · 已找到 " + model.results.size + " 部"
@@ -329,6 +340,10 @@ private fun MobileSearch(model: CinemaViewModel) {
             Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
             color = Muted, fontSize = 13.sp
         )
+        if (!model.searchFilters.doubanTopOnly && (model.canLoadSearchCatalog || model.searchCatalogLoading)) TextButton(
+            enabled = !model.searchCatalogLoading, onClick = { model.loadMoreSearchCatalog() }, modifier = Modifier.padding(horizontal = 16.dp)) {
+            Text(if (model.searchCatalogLoading) "加载目录中…" else "加载更多目录")
+        }
         if (model.results.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(if (model.busy || model.chartLoading) "正在获取结果..." else "请输入关键词搜索",
@@ -367,6 +382,7 @@ private fun MobileDetail(model: CinemaViewModel) {
             Text(item.metadataLine(), color = Muted)
             Text(item.description.ifBlank { if (model.busy) "正在加载详情..." else "暂无简介" },
                 color = Ivory.copy(alpha = .86f), fontSize = 14.sp, lineHeight = 22.sp)
+            if (model.resolutionStatus.isNotBlank()) Text(model.resolutionStatus, color = Muted, fontSize = 12.sp)
             if (item.catalogAttribution.isNotBlank()) Text(item.catalogAttribution, color = Muted, fontSize = 11.sp)
             if (model.selectedRecommendationReason.startsWith("因为") || model.selectedRecommendationReason.startsWith("来自"))
                 Text(model.selectedRecommendationReason, color = Accent, fontSize = 12.sp)
@@ -394,6 +410,9 @@ private fun MobileDetail(model: CinemaViewModel) {
                     }
                 }
             }
+            if (model.hasLibraryStatus(item)) TextButton(onClick = { model.removeLibraryStatus() }) {
+                Text("移除片库状态（保留收藏和进度）")
+            }
             Text("选集 · " + item.episodes.size, fontSize = 19.sp,
                 fontWeight = FontWeight.SemiBold)
             if (item.episodes.isEmpty()) Text("当前没有可播放的剧集", color = Muted)
@@ -415,9 +434,22 @@ private fun MobileDetail(model: CinemaViewModel) {
 @Composable
 private fun MobileLibrary(model: CinemaViewModel) {
     val version = model.libraryVersion
+    var confirmClear by remember { mutableStateOf(false) }
+    if (confirmClear) AlertDialog(onDismissRequest = { confirmClear = false },
+        title = { Text("清空全部观看记录？") },
+        text = { Text("将永久删除此设备全部观看记录和每集续播进度，无法撤销。收藏和片库状态会保留。") },
+        dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("取消") } },
+        confirmButton = { TextButton(onClick = { confirmClear = false; model.clearWatchHistory() }) { Text("确认清空") } })
     LazyColumn(verticalArrangement = Arrangement.spacedBy(19.dp),
         contentPadding = PaddingValues(bottom = 35.dp)) {
         item { MobileHeading("我的片库", "最近观看与收藏") }
+        if (model.quarantinedProgressCount > 0) item {
+            Text("${model.quarantinedProgressCount} 条续播进度无法确认对应剧集，已保留但不会自动续播。", color = Muted,
+                fontSize = 12.sp, modifier = Modifier.padding(horizontal = 20.dp))
+        }
+        if (model.history().isNotEmpty()) item {
+            TextButton(onClick = { confirmClear = true }, modifier = Modifier.padding(horizontal = 16.dp)) { Text("清空全部观看记录") }
+        }
         item { MobileRail("继续观看", model.history(), model) }
         LibraryStatus.entries.forEach { status ->
             item { MobileRail(status.title, model.libraryByStatus(status), model) }

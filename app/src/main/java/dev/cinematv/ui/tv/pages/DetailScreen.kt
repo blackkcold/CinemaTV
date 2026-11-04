@@ -52,6 +52,7 @@ fun DetailScreen(model: CinemaViewModel) {
                 Text(item.metadataLine().ifBlank { if (item.isTv) "剧集" else "电影" }, color = TvColors.Accent, fontSize = 14.sp)
                 Text(item.description.ifBlank { if (model.busy) "正在读取作品详情…" else "暂无作品简介" }, color = TvColors.Text.copy(alpha = .78f),
                     fontSize = 15.sp, lineHeight = 23.sp, maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth(.73f))
+                if (model.resolutionStatus.isNotBlank()) Text(model.resolutionStatus, color = TvColors.Secondary, fontSize = 12.sp)
                 if (item.catalogAttribution.isNotBlank()) Text(item.catalogAttribution, color = TvColors.Secondary, fontSize = 11.sp)
                 if (model.selectedRecommendationReason.startsWith("因为") || model.selectedRecommendationReason.startsWith("来自"))
                     Text(model.selectedRecommendationReason, color = TvColors.Accent, fontSize = 12.sp)
@@ -105,19 +106,27 @@ fun DetailScreen(model: CinemaViewModel) {
         }
     }
     if (picker) {
-        val first = remember { FocusRequester() }
-        Dialog(onDismissRequest = { picker = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        val cancel = remember { FocusRequester() }
+        Dialog(onDismissRequest = { picker = false }, properties = DialogProperties(
+            dismissOnBackPress = true, usePlatformDefaultWidth = false
+        )) {
             CinemaGlassSurface(Modifier.width(350.dp), radius = 26.dp) {
                 Column(Modifier.padding(26.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("加入片库", color = TvColors.Text, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
-                    LibraryStatus.entries.forEachIndexed { index, status ->
-                        GlassAction(status.title, Modifier.fillMaxWidth().height(43.dp).then(if (index == 0) Modifier.focusRequester(first) else Modifier),
+                    LibraryStatus.entries.forEach { status ->
+                        GlassAction(status.title, Modifier.fillMaxWidth().height(43.dp),
                             selected = model.repo.libraryStatus(item) == status) { model.setLibraryStatus(status); picker = false }
                     }
-                    GlassAction("取消", Modifier.fillMaxWidth().height(40.dp)) { picker = false }
+                    if (model.hasLibraryStatus(item)) {
+                        GlassAction("移除片库状态", Modifier.fillMaxWidth().height(43.dp)) {
+                            model.removeLibraryStatus()
+                            picker = false
+                        }
+                    }
+                    GlassAction("取消", Modifier.focusRequester(cancel).fillMaxWidth().height(40.dp)) { picker = false }
                 }
             }
-            LaunchedEffect(Unit) { withFrameNanos { }; first.requestFocus() }
+            LaunchedEffect(Unit) { withFrameNanos { }; cancel.requestFocus() }
         }
     }
 }

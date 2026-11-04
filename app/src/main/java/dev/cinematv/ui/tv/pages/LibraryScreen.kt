@@ -8,6 +8,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.cinematv.ui.typography.CinemaTvText as Text
@@ -18,6 +23,7 @@ import dev.cinematv.ui.GlassAction
 import dev.cinematv.ui.tv.components.ContentRail
 import dev.cinematv.ui.tv.design.*
 import dev.cinematv.ui.tv.focus.*
+import kotlinx.coroutines.launch
 
 @Composable
 fun LibraryScreen(model: CinemaViewModel) {
@@ -28,19 +34,61 @@ fun LibraryScreen(model: CinemaViewModel) {
     val history = remember(tick) { model.history() }
     val shelves = remember(tick) { LibraryStatus.entries.associateWith { if (it == LibraryStatus.FAVORITE) model.favorites() else model.libraryByStatus(it) } }
     var filter by rememberSaveable { mutableStateOf("all") }
+    var showClearHistoryConfirmation by remember { mutableStateOf(false) }
+    // Cancel returns to the trigger; clearing removes it, so restore the All filter instead.
+    var restoreClearHistoryTrigger by remember { mutableStateOf<Boolean?>(null) }
+    val clearHistory = rememberFocusTarget(model, "actions", "clear-history")
     val state = rememberTvListState(model, "page")
+    val filterState = rememberTvListState(model, "filters")
+    val scope = rememberCoroutineScope()
     RestorePageFocus(model)
+    LaunchedEffect(restoreClearHistoryTrigger, history.isNotEmpty()) {
+        val restoreTrigger = restoreClearHistoryTrigger ?: return@LaunchedEffect
+        val target = if (restoreTrigger && history.isNotEmpty()) clearHistory else entry
+        state.scrollToItem(if (target == clearHistory) 0 else 1)
+        if (target == entry) filterState.scrollToItem(0)
+        withFrameNanos { }; withFrameNanos { }
+        if (!runCatching { target.requestFocus() }.getOrDefault(false)) {
+            runCatching { entry.requestFocus() }
+        }
+        restoreClearHistoryTrigger = null
+    }
     LazyColumn(state = state, modifier = Modifier.fillMaxSize().padding(top = layout.contentTop), contentPadding = PaddingValues(bottom = 42.dp)) {
         item(key = "heading") {
             Column(Modifier.padding(horizontal = layout.gutter)) {
                 Text("你的观影时光。", color = TvColors.Text, fontSize = 34.sp)
                 Spacer(Modifier.height(6.dp))
                 Text("把喜欢的故事留下，把未完的故事继续。", color = TvColors.Secondary, fontSize = 14.sp)
+                if (model.quarantinedProgressCount > 0) {
+                    Spacer(Modifier.height(10.dp))
+                    Text("${model.quarantinedProgressCount} 条续播进度无法确认对应剧集，已保留但不会自动续播。",
+                        color = TvColors.Secondary, fontSize = 12.sp)
+                }
+                if (history.isNotEmpty()) {
+                    Spacer(Modifier.height(16.dp))
+                    GlassAction("清空全部观看历史", Modifier.focusRequester(clearHistory).focusProperties { up = nav }.width(184.dp).height(40.dp),
+                        onFocus = { model.focusCoordinator.remember(model.focusRoute, "actions", "clear-history") }) {
+                        showClearHistoryConfirmation = true
+                    }
+                }
             }
         }
         item(key = "filters") {
-            LazyRow(contentPadding = PaddingValues(horizontal = layout.gutter, vertical = 20.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                item { GlassAction("全部", Modifier.focusRequester(entry).focusProperties { up = nav }.width(80.dp).height(36.dp), selected = filter == "all") { filter = "all" } }
+            LazyRow(state = filterState, contentPadding = PaddingValues(horizontal = layout.gutter, vertical = 20.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                item {
+                    GlassAction("全部", Modifier.focusRequester(entry).focusProperties { up = nav }
+                        .onPreviewKeyEvent { event ->
+                            if (history.isNotEmpty() && event.type == KeyEventType.KeyDown && event.key == Key.DirectionUp) {
+                                // The heading may have left lazy composition; attach it before moving focus.
+                                scope.launch {
+                                    state.scrollToItem(0)
+                                    withFrameNanos { }; withFrameNanos { }
+                                    runCatching { clearHistory.requestFocus() }
+                                }
+                                true
+                            } else false
+                        }.width(80.dp).height(36.dp), selected = filter == "all") { filter = "all" }
+                }
                 item { GlassAction("继续观看", Modifier.width(105.dp).height(36.dp), selected = filter == "history") { filter = "history" } }
                 LibraryStatus.entries.forEach { status ->
                     item(key = status.name) { GlassAction(status.title, Modifier.width(80.dp).height(36.dp), selected = filter == status.name) { filter = status.name } }
@@ -66,5 +114,21 @@ fun LibraryScreen(model: CinemaViewModel) {
                 GlassAction("去发现", Modifier.width(135.dp).height(43.dp)) { model.navigate(Page.EXPLORE) }
             }
         }
+    }
+    if (showClearHistoryConfirmation) {
+        LibraryCleanupConfirmationDialog(
+            title = "清空全部观看历史？",
+            description = "这将永久删除本机的全部观看历史及各集续播进度，无法撤销。收藏和片库状态会保留。",
+            confirmLabel = "永久清空",
+            onDismiss = {
+                showClearHistoryConfirmation = false
+                restoreClearHistoryTrigger = true
+            },
+            onConfirm = {
+                showClearHistoryConfirmation = false
+                restoreClearHistoryTrigger = false
+                model.clearWatchHistory()
+            }
+        )
     }
 }

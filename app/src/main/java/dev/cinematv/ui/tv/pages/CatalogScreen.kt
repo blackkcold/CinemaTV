@@ -52,6 +52,7 @@ fun CatalogScreen(model: CinemaViewModel, series: Boolean) {
             }
             item { GlassAction(if (rated) "评分优先 ✓" else "评分优先", Modifier.width(108.dp).height(36.dp), selected = rated) { rated = !rated } }
         }
+        Column(Modifier.padding(horizontal = layout.gutter)) { CatalogPagingControls(model, series) }
         if (filtered.isEmpty()) {
             Text(if (all.isEmpty()) "暂无推荐，连接服务器后刷新。" else "没有符合筛选条件的作品。", color = TvColors.Secondary, modifier = Modifier.padding(layout.gutter))
         } else LazyVerticalGrid(state = grid,

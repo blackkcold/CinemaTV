@@ -20,6 +20,7 @@ import dev.cinematv.ui.typography.CinemaTvText as Text
 import dev.cinematv.CinemaViewModel
 import dev.cinematv.ui.GlassAction
 import dev.cinematv.ui.shared.*
+import dev.cinematv.ui.tv.components.CatalogPagingControls
 import dev.cinematv.ui.tv.components.FocusMediaCard
 import dev.cinematv.ui.tv.design.*
 import dev.cinematv.ui.tv.focus.*
@@ -52,6 +53,10 @@ fun ExploreScreen(model: CinemaViewModel) {
     Column(Modifier.fillMaxSize().padding(top = layout.contentTop), horizontalAlignment = Alignment.CenterHorizontally) {
         Text("下一段旅程，随心发现。", color = TvColors.Text, fontSize = 28.sp, fontWeight = FontWeight.SemiBold)
         Text("左右探索 · 按确认键走进故事", color = TvColors.Secondary, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
+        Row(Modifier.fillMaxWidth().padding(horizontal = layout.gutter), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+            Column(Modifier.weight(1f)) { CatalogPagingControls(model, false) }
+            Column(Modifier.weight(1f)) { CatalogPagingControls(model, true) }
+        }
         if (items.isEmpty()) {
             GlassAction("连接服务器", Modifier.focusRequester(entry).padding(top = 30.dp).width(160.dp).height(45.dp)) { model.navigate(dev.cinematv.Page.SETTINGS) }
         } else LazyRow(state = list, modifier = Modifier.fillMaxWidth().weight(1f).focusRestorer(),
