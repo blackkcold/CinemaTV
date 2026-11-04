@@ -83,6 +83,7 @@ private fun applyChoice(player: Player, type: Int, choice: TrackChoice?) {
 fun TvPlayerPage(model: CinemaViewModel) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val uri = model.playbackUrl
+    val episodeAtCreation = remember(uri) { model.playingEpisode }
     val player = remember(uri) {
         PlaybackFactory.create(context, cacheVod = model.playerReturnPage == Page.DETAIL).apply {
             setMediaItem(MediaItem.fromUri(uri))
@@ -117,7 +118,9 @@ fun TvPlayerPage(model: CinemaViewModel) {
         }
         player.addListener(listener)
         onDispose {
-            model.savePlaybackPosition(player.currentPosition.coerceAtLeast(0L))
+            if (model.playbackUrl == uri) {
+                model.savePlaybackPosition(player.currentPosition.coerceAtLeast(0L), episodeAtCreation)
+            }
             player.removeListener(listener)
             player.release()
         }
@@ -127,7 +130,7 @@ fun TvPlayerPage(model: CinemaViewModel) {
         while (isActive) {
             position = player.currentPosition.coerceAtLeast(0L)
             duration = player.duration.coerceAtLeast(0L)
-            if (++ticks % 5 == 0) model.savePlaybackPosition(position)
+            if (++ticks % 5 == 0) model.savePlaybackPosition(position, episodeAtCreation)
             delay(1000)
         }
     }

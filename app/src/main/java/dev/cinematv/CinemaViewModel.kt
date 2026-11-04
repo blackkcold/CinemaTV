@@ -390,9 +390,12 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    fun savePlaybackPosition(position: Long) {
+    fun savePlaybackPosition(position: Long, episodeIndex: Int = playingEpisode) {
         if (playerReturnPage == Page.DETAIL) selected?.let {
-            repo.saveProgress(it, position, playingEpisode)
+            repo.saveProgress(it, position, episodeIndex)
+            if (episodeIndex == playingEpisode) {
+                selected = it.copy(positionMs = position, lastEpisode = episodeIndex)
+            }
             libraryVersion++
         }
     }
