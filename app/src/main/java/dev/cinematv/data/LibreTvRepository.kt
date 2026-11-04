@@ -32,6 +32,11 @@ class LibreTvRepository(context: Context) {
         private set(value) { prefs.edit().putString("server", value).apply() }
 
     val opticalGlassEnabled get() = prefs.getBoolean("optical_glass", false)
+    val reducedMotion get() = prefs.getBoolean("reduced_motion", false)
+    val glassQuality get() = prefs.getString("glass_quality", if (opticalGlassEnabled) "ENHANCED" else "AUTO") ?: "AUTO"
+
+    fun setReducedMotion(enabled: Boolean) { prefs.edit().putBoolean("reduced_motion", enabled).apply() }
+    fun setGlassQuality(quality: String) { prefs.edit().putString("glass_quality", quality).apply() }
 
     fun setOpticalGlass(enabled: Boolean) {
         prefs.edit().putBoolean("optical_glass", enabled).apply()

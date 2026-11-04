@@ -11,12 +11,24 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
+import dev.cinematv.ui.tv.design.GlassQuality
 
 enum class Page { HOME, EXPLORE, MOVIES, SERIES, SEARCH, LIVE, LIBRARY, SETTINGS, DETAIL, PLAYER }
 
 class CinemaViewModel(application: Application) : AndroidViewModel(application) {
     val repo = LibreTvRepository(application)
     val focusCoordinator = FocusCoordinator()
+    var reducedMotion by mutableStateOf(repo.reducedMotion)
+        private set
+    var glassQuality by mutableStateOf(runCatching { GlassQuality.valueOf(repo.glassQuality) }.getOrDefault(GlassQuality.AUTO))
+        private set
+
+    fun setReducedMotion(enabled: Boolean) { repo.setReducedMotion(enabled); reducedMotion = enabled }
+    fun setGlassQuality(quality: GlassQuality) {
+        repo.setGlassQuality(quality.name)
+        glassQuality = quality
+        setOpticalGlass(quality == GlassQuality.ENHANCED)
+    }
     var opticalGlassEnabled by mutableStateOf(repo.opticalGlassEnabled)
         private set
 

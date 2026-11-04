@@ -5,17 +5,31 @@ package dev.cinematv
  * No view references are retained. Every key must identify a stable logical item.
  */
 class FocusCoordinator {
-    private data class Bookmark(val route: String, val region: String, val itemKey: String)
-    private var last: Bookmark? = null
+    data class Bookmark(val region: String, val itemKey: String)
+    data class ScrollPosition(val index: Int = 0, val offset: Int = 0)
+    private val routes = mutableMapOf<String, Bookmark>()
+    private val regions = mutableMapOf<Pair<String, String>, String>()
+    private val scrollPositions = mutableMapOf<Pair<String, String>, ScrollPosition>()
 
     fun remember(route: String, region: String, itemKey: String) {
         if (route.isNotBlank() && region.isNotBlank() && itemKey.isNotBlank()) {
-            last = Bookmark(route, region, itemKey)
+            routes[route] = Bookmark(region, itemKey)
+            regions[route to region] = itemKey
         }
     }
 
-    fun restore(route: String, region: String): String? =
-        last?.takeIf { it.route == route && it.region == region }?.itemKey
+    fun restore(route: String, region: String): String? = regions[route to region]
 
-    fun clear() { last = null }
+    fun last(route: String): Bookmark? = routes[route]
+
+    fun saveScroll(route: String, region: String, index: Int, offset: Int) {
+        if (route.isNotBlank() && region.isNotBlank()) {
+            scrollPositions[route to region] = ScrollPosition(index.coerceAtLeast(0), offset.coerceAtLeast(0))
+        }
+    }
+
+    fun scroll(route: String, region: String): ScrollPosition =
+        scrollPositions[route to region] ?: ScrollPosition()
+
+    fun clear() { routes.clear(); regions.clear(); scrollPositions.clear() }
 }
