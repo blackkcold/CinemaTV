@@ -1,17 +1,21 @@
-# CinemaTV brand — SVG masters
+# CinemaTV A1 polished identity
 
-**Art direction:** predominantly black, subtle horizontal motion-blurred cool-grey streaks, centered white rounded media-player glyph. The horizontal streaks are motion-blur **illustrations**, not continuously animated launcher graphics; Android launchers use static drawable resources.
+The approved original A1 pack is the source of truth. Do not substitute the later rainbow treatment or UI typography for its custom outlined wordmark. The separate V3 UI icon set is unchanged.
 
-## Source of truth
-- `cinematv-player-mark.svg` — transparent high-contrast symbol.
-- `cinematv-app-icon.svg` — 1024 × 1024 source with centered symbol.
-- `cinematv-background.svg` — 1024 × 1024 adaptive launcher background only.
-- `cinematv-tv-banner.svg` — 1280 × 720 source, exports to 320 × 180 TV banner.
+Provenance: `CinemaTV-A1-Polished-Pack.zip`, SHA-256 `6c590345640aff1749be5147299ee378c733f1731cb8665d94b1f8dc6e4f6934`. Approved 2026-11-04.
 
-**Center alignment guarantee:** the TV mark is transformed around **x = 640** and the wordmark uses `x="640" text-anchor="middle"`. Both elements are centered in the 1280px viewport, not just visually balanced.
+- `cinematv-app-icon.svg`: original 1024 × 1024 square.
+- `cinematv-player-mark.svg`: original transparent player symbol.
+- `cinematv-lockup.svg`: original custom symbol and wordmark outlines, no font dependency.
+- `cinematv-tv-banner.svg`: original centered 1920 × 1080 banner. The committed 320 × 180 PNG is the approved pack's export.
+- `cinematv-background.svg`: square with only its centered logo removed, preserving the subtle cool/warm horizontal lens streaks.
 
-Run `bash scripts/render-branding.sh` after installing `librsvg2-bin` (Debian/Ubuntu). PNGs under `app/src/main/res/drawable-nodpi` are committed by the branding GitHub workflow whenever the SVG sources change; the Android APK does not parse SVG files at runtime.
+Android uses a static 320 × 180 TV launcher banner and a two-layer adaptive phone/TV icon. The foreground preserves the square's path and center (`translate(512 512) scale(2.65) translate(-132.5 -128)`), uniformly reducing the square's original 2.9 scale to 2.65 so the entire stroke is safely inside the 66/108 adaptive safe circle. The background is rasterized because Android VectorDrawable does not support SVG Gaussian blur. A 512px legacy export is retained for consumers needing a static square. Both launcher entry points remain enabled; minSdk is 26, so adaptive mipmap resources apply to every supported device.
 
-Adaptive icons use `@mipmap/ic_launcher` with a separate `@drawable/ic_launcher_foreground` vector to preserve legibility inside manufacturer masks. TV banner uses `@drawable/tv_banner` (320 × 180 PNG).
+The in-app `CinemaBrandLockup` uses native VectorDrawable paths with transparent outer margins trimmed. It has an accessible app-name label, no focus target, no tint, and no dependency on the selected app font. Static headers remain available. `CinemaBrandStartup` retains the original horizontal motion language inside the existing TV/phone header brand area: fixed logo, three rightward preblurred layers, original CSS ease-in-out and 12s/9s/6s rates, stopping after the first six-second sweep. Reduced-motion, system animator-off, low-RAM, or explicit low-cost mode uses a static presentation. It never captures focus, intercepts input, or gates access. Three small 640 × 360 transparent layers total roughly 56 KiB; no runtime blur, video decoder, infinite animation, MP4, or HTML payload is bundled. `CinemaBrandSession` is hoisted in MainActivity above navigation, so leaving/re-entering a page cannot restart it. `rememberSaveable` prevents replay on configuration recreation after completion. No overlay covers settings or content, and all existing control widths/heights/focus handlers are unchanged. No animation is installed into launchers.
 
-Do not embed the original reference photographs, third-party sports marks, copyrighted lettering or other unlicensed content.
+To rebuild the three motion layers, run `python scripts/branding/render-motion-layers.py` (Inkscape or librsvg). The extractor retains only the original named trail group and its definitions.
+
+To re-render static raster resources, use `bash scripts/render-branding.sh` with librsvg installed. SVG filter renderer differences may slightly affect streak softness; review rendered pixels before replacing the approved banner export. Do not flatten the wordmark to platform text.
+
+Checks: `python -m unittest discover -s scripts/tests -p 'test_brand_resources.py'`. After Android build, check masked icons on round/squircle launchers, TV banner centering at 320 × 180, TalkBack label, TV header/phone header fit, and unchanged navigation focus and Back behavior. Source tests do not replace device QA.
