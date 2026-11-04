@@ -12,6 +12,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import dev.cinematv.ui.tv.design.GlassQuality
+import dev.cinematv.ui.shared.presentationKey
 
 enum class Page { HOME, EXPLORE, MOVIES, SERIES, SEARCH, LIVE, LIBRARY, SETTINGS, DETAIL, PLAYER }
 
@@ -23,8 +24,8 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
     var glassQuality by mutableStateOf(runCatching { GlassQuality.valueOf(repo.glassQuality) }.getOrDefault(GlassQuality.AUTO))
         private set
 
-    fun setReducedMotion(enabled: Boolean) { repo.setReducedMotion(enabled); reducedMotion = enabled }
-    fun setGlassQuality(quality: GlassQuality) {
+    fun updateReducedMotion(enabled: Boolean) { repo.setReducedMotion(enabled); reducedMotion = enabled }
+    fun updateGlassQuality(quality: GlassQuality) {
         repo.setGlassQuality(quality.name)
         glassQuality = quality
         setOpticalGlass(quality == GlassQuality.ENHANCED)
@@ -238,14 +239,20 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun onMediaFocus(item: MediaItem, region: String = "general") {
-        focused = item
-        focusCoordinator.remember(page.name, region, item.id + ":" + (item.source?.key ?: ""))
+        val route = page
+        focusCoordinator.remember(route.name, region, item.presentationKey)
         backdropJob?.cancel()
-        if (item.backdrop.isBlank()) backdropJob = viewModelScope.launch {
-            delay(250)
-            runCatching { repo.enrichMetadata(item) }.onSuccess { enriched ->
-                if (focused?.id == item.id && focused?.source?.key == item.source?.key) {
-                    focused = enriched
+        backdropJob = viewModelScope.launch {
+            delay(if (reducedMotion) 0 else 210)
+            if (page != route) return@launch
+            focused = item
+            if (item.backdrop.isBlank()) {
+                runCatching { repo.enrichMetadata(item) }.onSuccess { enriched ->
+                    if (page == route && focused?.presentationKey == item.presentationKey) {
+                        focused = enriched
+                        featured = featured.map { if (it.presentationKey == enriched.presentationKey) enriched else it }
+                        tvShows = tvShows.map { if (it.presentationKey == enriched.presentationKey) enriched else it }
+                    }
                 }
             }
         }

@@ -12,7 +12,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Text
+import androidx.tv.material3.Text
+import dev.cinematv.ui.tv.design.LocalTvEffects
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -34,11 +36,11 @@ import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import dev.cinematv.data.MediaItem
 
-val Ink = Color(0xFF0C0D11)
-val Glass = Color(0xCC28282C)
-val Ivory = Color(0xFFF7F5F1)
-val Muted = Color(0xFFAFB0BA)
-val Accent = Color(0xFFD9C6B6)
+val Ink = Color(0xFF090A0D)
+val Glass = Color(0xB5202229)
+val Ivory = Color(0xFFF5F5F7)
+val Muted = Color(0xFFA8A9B0)
+val Accent = Color(0xFFD5DDE9)
 val DeepRose = Color(0xFF3A1E28)
 
 @Composable
@@ -51,13 +53,14 @@ fun GlassAction(
     onClick: () -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
-    val scale by animateFloatAsState(if (focused) 1.07f else 1f, label = "action-scale")
+    val effects = LocalTvEffects.current
+    val scale by animateFloatAsState(if (focused) effects.focusScale else 1f, tween(effects.focusMillis), label = "action-scale")
     val bg by animateColorAsState(
         when {
-            focused || selected -> Ivory
-            prominent -> Color(0xFFD5C5BB)
+            focused || prominent -> Ivory
+            selected -> Color(0xD54A505B)
             else -> Glass
-        }, label = "action-bg"
+        }, animationSpec = tween(effects.focusMillis), label = "action-bg"
     )
     Box(
         modifier = modifier
@@ -67,12 +70,12 @@ fun GlassAction(
                 if (focused || selected || prominent) Brush.verticalGradient(
                     listOf(bg, bg.copy(alpha = .92f))
                 ) else Brush.verticalGradient(
-                    listOf(Color(0xD54D4C55), Color(0xB520222A), Color(0xD51B1C22))
+                    listOf(Color(0xB032353D), Color(0xBA1D2027), Color(0xCE191B21))
                 )
             )
             .border(
                 1.dp,
-                if (focused) Color.White else Color.White.copy(alpha = .26f),
+                if (focused) Color.White else Color.White.copy(alpha = .12f),
                 RoundedCornerShape(26.dp)
             )
             .onFocusChanged { focused = it.isFocused; if (it.isFocused) onFocus() }
@@ -81,8 +84,8 @@ fun GlassAction(
     ) {
         GlassSheen(active = focused || selected, modifier = Modifier.matchParentSize())
         Text(
-            label, fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
-            color = if (focused || selected || prominent) Color(0xFF19181A) else Ivory,
+            label, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+            color = if (focused || prominent) Ink else Ivory,
             maxLines = 1
         )
     }

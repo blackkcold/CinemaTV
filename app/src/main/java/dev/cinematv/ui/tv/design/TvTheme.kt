@@ -3,6 +3,8 @@ package dev.cinematv.ui.tv.design
 import android.app.ActivityManager
 import android.os.Build
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.Modifier
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
@@ -25,7 +27,7 @@ fun CinemaTvTheme(reducedMotion: Boolean, quality: GlassQuality, content: @Compo
         onBackground = TvColors.Text, onSurface = TvColors.Text,
         primary = TvColors.Text, onPrimary = TvColors.Background
     )) {
-        BoxWithConstraints {
+        BoxWithConstraints(Modifier.fillMaxSize()) {
             CompositionLocalProvider(
                 LocalTvLayout provides TvLayout(maxWidth, maxHeight),
                 LocalTvEffects provides effects,
