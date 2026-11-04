@@ -17,6 +17,13 @@ enum class Page { HOME, EXPLORE, MOVIES, SERIES, SEARCH, LIVE, LIBRARY, SETTINGS
 class CinemaViewModel(application: Application) : AndroidViewModel(application) {
     val repo = LibreTvRepository(application)
     val focusCoordinator = FocusCoordinator()
+    var opticalGlassEnabled by mutableStateOf(repo.opticalGlassEnabled)
+        private set
+
+    fun setOpticalGlass(enabled: Boolean) {
+        repo.setOpticalGlass(enabled)
+        opticalGlassEnabled = enabled
+    }
     var page by mutableStateOf(if (repo.isConnected) Page.HOME else Page.SETTINGS)
         private set
     var section by mutableStateOf(Page.HOME)

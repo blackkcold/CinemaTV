@@ -31,6 +31,12 @@ class LibreTvRepository(context: Context) {
         get() = prefs.getString("server", "") ?: ""
         private set(value) { prefs.edit().putString("server", value).apply() }
 
+    val opticalGlassEnabled get() = prefs.getBoolean("optical_glass", false)
+
+    fun setOpticalGlass(enabled: Boolean) {
+        prefs.edit().putBoolean("optical_glass", enabled).apply()
+    }
+
     val isConnected get() = server.isNotBlank()
     private data class MetadataArt(val backdrop: String, val poster: String, val overview: String)
     private val metadataCache = ConcurrentHashMap<String, MetadataArt>()

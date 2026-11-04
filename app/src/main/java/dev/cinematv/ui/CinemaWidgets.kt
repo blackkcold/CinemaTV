@@ -79,6 +79,7 @@ fun GlassAction(
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
+        GlassSheen(active = focused || selected, modifier = Modifier.matchParentSize())
         Text(
             label, fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
             color = if (focused || selected || prominent) Color(0xFF19181A) else Ivory,

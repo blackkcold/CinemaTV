@@ -534,6 +534,12 @@ fun SettingsPage(model: CinemaViewModel) {
         Text(if (model.authorized) "已连接服务器  ·  点播源 ${model.sources.size} 个 · 直播订阅 ${model.liveSources.size} 个"
             else "未认证或未连接", color = if (model.authorized) Accent else Muted, fontSize = 15.sp)
         Spacer(Modifier.height(18.dp))
+        GlassAction(
+            if (model.opticalGlassEnabled) "高级光学高光：开启" else "高级光学高光：关闭",
+            Modifier.width(235.dp).height(45.dp)
+        ) { model.setOpticalGlass(!model.opticalGlassEnabled) }
+        Text("光学高光仅在设备性能允许时开启，低版本 Android 自动使用渐变降级。", color = Muted, fontSize = 14.sp)
+        Spacer(Modifier.height(10.dp))
         Text("高清剧照元数据服务（可选 TV BFF）", fontSize = 21.sp, color = Ivory,
             fontWeight = FontWeight.SemiBold)
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {

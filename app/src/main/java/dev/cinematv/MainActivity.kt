@@ -27,6 +27,7 @@ class MainActivity : ComponentActivity() {
             android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
         )
         setContent {
+            CompositionLocalProvider(LocalOpticalGlass provides model.opticalGlassEnabled) {
             BackHandler(enabled = model.page != Page.HOME) { model.back() }
             Box(Modifier.fillMaxSize().background(Ink)) {
                 when (model.page) {
@@ -57,6 +58,7 @@ class MainActivity : ComponentActivity() {
                         model.dismissMessage()
                     }
                 }
+            }
             }
         }
     }
