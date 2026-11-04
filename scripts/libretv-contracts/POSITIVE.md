@@ -60,9 +60,9 @@ calls `/api/douban` or connects the normal Android UI, which otherwise implicitl
 loads that endpoint. Source status lists must be empty. No arbitrary content
 sources, production service or personal credentials are involved.
 
-## Manual GitHub runner verification
+## Narrow GitHub runner verification
 
-`.github/workflows/official-libretv-positive.yml` is manual-only, restricted to
+`.github/workflows/official-libretv-positive.yml` allows manual dispatch and narrowly filtered pushes only to
 `test/official-libretv-positive`, with read-only repository access, non-overlapping
 concurrency and a 12-minute job deadline. It downloads only the fixed official
 LibreTV/Node archives and published SHA manifests over HTTPS; both manifest entries
@@ -70,14 +70,18 @@ and archive bytes must match local SHA pins before extraction/execution. No Andr
 build/emulator, proxy/resolver changes or secret input is used. The harness remains
 unchanged and the public fixture URL stays pinned to commit `74d104aa...`.
 
-After review and committing the workflow, the parent may dispatch once (after
-checking no equivalent run is active):
+After review and checking no equivalent run is active, the parent can trigger
+one run by pushing a reviewed change to the dedicated test branch. Only changes
+to this workflow or its positive runner, artifact verifier, or their two host test
+files trigger it. Main, PRs, schedules and unrelated changes never trigger it.
+Manual dispatch remains available when supported:
 
     gh workflow run official-libretv-positive.yml --ref test/official-libretv-positive --repo blackkcold/CinemaTV
 
-Workflow dispatch availability may require the workflow definition on the default
-branch under GitHub's rules. If dispatch is unavailable, do not add automatic
-triggers or silently change the test branch; report that gate for review.
+The narrow push trigger is the reviewed alternative when manual dispatch is
+unavailable. It does not require credentials beyond the existing authorized
+repository workflow. No credentials are acquired or stored by this harness.
+The job also checks its branch and event independently of trigger filtering.
 
 Outcome JSON is uploaded even after failure, under a run/attempt-specific artifact
 name. Early download/verification failures leave a `not_run` outcome; harness

@@ -1,5 +1,13 @@
 name: Official LibreTV controlled static protocol
 on:
+  push:
+    branches: [test/official-libretv-positive]
+    paths:
+      - .github/workflows/official-libretv-positive.yml
+      - scripts/libretv-contracts/positive.py
+      - scripts/libretv-contracts/prepare_official.py
+      - scripts/libretv-contracts/test_positive.py
+      - scripts/libretv-contracts/test_workflow.py
   workflow_dispatch:
 permissions:
   contents: read
@@ -8,7 +16,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   positive-protocol:
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/test/official-libretv-positive'
+    if: github.ref == 'refs/heads/test/official-libretv-positive' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-24.04
     timeout-minutes: 12
     steps:

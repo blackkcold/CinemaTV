@@ -9,10 +9,20 @@ import prepare_official as helper
 WORKFLOW = Path(__file__).resolve().parents[2] / '.github/workflows/official-libretv-positive.yml'
 
 class WorkflowTests(unittest.TestCase):
-    def test_manual_only_bounded_read_only(self):
+    def test_narrow_push_and_manual_bounded_read_only(self):
         text = WORKFLOW.read_text()
         self.assertIn('  workflow_dispatch:', text)
-        for trigger in ['  push:', '  pull_request:', '  schedule:', '  workflow_run:']:
+        self.assertIn('    branches: [test/official-libretv-positive]', text)
+        self.assertIn("github.event_name == 'push' || github.event_name == 'workflow_dispatch'", text)
+        paths = text.split('    paths:\n', 1)[1].split('  workflow_dispatch:', 1)[0]
+        self.assertEqual([line.strip().removeprefix('- ') for line in paths.splitlines() if line.strip()], [
+            '.github/workflows/official-libretv-positive.yml',
+            'scripts/libretv-contracts/positive.py',
+            'scripts/libretv-contracts/prepare_official.py',
+            'scripts/libretv-contracts/test_positive.py',
+            'scripts/libretv-contracts/test_workflow.py'])
+        self.assertNotIn('branches: [main]', text)
+        for trigger in ['  pull_request:', '  schedule:', '  workflow_run:', '  pull_request_target:']:
             self.assertNotIn(trigger, text)
         self.assertIn("github.ref == 'refs/heads/test/official-libretv-positive'", text)
         self.assertIn('contents: read', text)
