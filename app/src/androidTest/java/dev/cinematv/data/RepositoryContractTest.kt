@@ -66,10 +66,10 @@ class RepositoryContractTest {
         LocalMediaLibrary({ db }, importer)
 
     private fun repository(store: LocalMediaLibrary = library()) =
-        LibreTvRepository(repositoryContext, store).apply { configureServer(server.base) }
+        LibreTvRepository(repositoryContext, store).apply { configureServer(this@RepositoryContractTest.server.base) }
 
     private fun sourceItem() = MediaItem("source-42", "Synthetic series", isTv = true,
-        source = TvSource("fixture", "Synthetic source", "${server.base}/provider"))
+        source = TvSource("fixture", "Synthetic source", "${this@RepositoryContractTest.server.base}/provider"))
 
     private fun detailResponse(names: List<String>, episodes: List<String>) = JSONObject()
         .put("videoInfo", JSONObject().put("desc", "Synthetic detail only")
@@ -83,7 +83,7 @@ class RepositoryContractTest {
             emptyImport()
         }
         val repo = repository(store)
-        val episodes = listOf("${server.base}/synthetic-video.mp4?episode=0")
+        val episodes = listOf("${this@RepositoryContractTest.server.base}/synthetic-video.mp4?episode=0")
         server.respond(detailResponse(listOf("First episode"), episodes))
 
         val detail = repo.detail(sourceItem())
@@ -113,7 +113,7 @@ class RepositoryContractTest {
             this[51] = ""
             this[63] = "Final positional label"
         }
-        val episodes = List(names.size) { "${server.base}/synthetic-video.mp4?episode=$it" }
+        val episodes = List(names.size) { "${this@RepositoryContractTest.server.base}/synthetic-video.mp4?episode=$it" }
         val store = library()
         val repo = repository(store)
         server.respond(detailResponse(names, episodes))
@@ -134,7 +134,7 @@ class RepositoryContractTest {
         val attribution = "Synthetic fixture attribution, not a real metadata licence"
         server.respond(catalogResponse(provider = provider, attribution = attribution,
             license = license(Instant.ofEpochMilli(expiry).toString())))
-        val repo = repository().apply { configureMetadata(server.base, "synthetic-test-token") }
+        val repo = repository().apply { configureMetadata(this@RepositoryContractTest.server.base, "synthetic-test-token") }
 
         val catalog = repo.catalog("合成 query", isTv = true)
         val item = catalog.items.single()
@@ -172,7 +172,7 @@ class RepositoryContractTest {
     }
 
     @Test fun expiredAndMalformedAttachedLicensesAreRejectedInsteadOfBecomingUnrestricted() = runBlocking {
-        val repo = repository().apply { configureMetadata(server.base, "synthetic-test-token") }
+        val repo = repository().apply { configureMetadata(this@RepositoryContractTest.server.base, "synthetic-test-token") }
         val invalidLicenses = listOf(
             license(Instant.ofEpochMilli(System.currentTimeMillis() - 60_000).toString()),
             license("not-an-ISO-expiry"),
@@ -188,7 +188,7 @@ class RepositoryContractTest {
 
     @Test fun tmdbWithoutAttachedLicenseKeepsItsOwnRatingAndNeverBecomesDoubanTop() = runBlocking {
         server.respond(catalogResponse(provider = "TMDB", ratingSource = "TMDB", license = null))
-        val repo = repository().apply { configureMetadata(server.base, "synthetic-test-token") }
+        val repo = repository().apply { configureMetadata(this@RepositoryContractTest.server.base, "synthetic-test-token") }
 
         val item = repo.catalog().items.single()
 
@@ -205,7 +205,7 @@ class RepositoryContractTest {
 
     @Test fun unlicensedDoubanScoreAndChartAreNotExposed() = runBlocking {
         server.respond(catalogResponse(license = null))
-        val repo = repository().apply { configureMetadata(server.base, "synthetic-test-token") }
+        val repo = repository().apply { configureMetadata(this@RepositoryContractTest.server.base, "synthetic-test-token") }
 
         val item = repo.catalog().items.single()
 

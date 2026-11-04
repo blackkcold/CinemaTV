@@ -62,9 +62,7 @@ memory. No source or playback URLs are sent to TMDB.
 
 A player is created per playback URI, paused when the activity stops and released
 on disposal. Resume follows episode identity. Measured duration is persisted with
-position; unknown duration never yields a made-up percentage. Main library,
-history and preferences remain backward-compatible SharedPreferences records
-with optional added fields. Media3 VOD cache is capped at 256 MiB; live bypasses it.
+position; unknown duration never yields a made-up percentage. Main library and per-episode history use Room with a transactional SharedPreferences import and immutable in-memory snapshots. Original legacy records remain intact; destructive fallback is disabled. Settings stay in SharedPreferences, and backup/device-transfer exports are excluded. Media3 VOD cache is 64 MiB on the basic tier and up to 256 MiB otherwise; live bypasses it. See `LOCAL_LIBRARY.md` for identity, expiry, privacy and migration details.
 
 ## QA and release
 
@@ -77,3 +75,15 @@ publishing depends on build and UI jobs for the exact commit.
 Physical TV, low-end SoC, HDR/codec breadth, long soak, reference fidelity and
 production signing are separately tracked in `RELEASE_CHECKLIST.md`; emulator
 frame timings are evidence, not hardware certification.
+
+## Local discovery and provider provenance
+
+Search merges local library/catalog snapshots with independent BFF and LibreTV stages.
+Source snapshots reconcile before work grouping; alias/actor matches and provider-specific
+filters never relax missing type, year, score or licensed chart requirements. The home
+ranker uses only local explicit signals and measured progress. Browse catalogs retain
+provider order. Capacity tiers also bound playback buffers and adjacent-art prefetch.
+
+The optional BFF catalog is disabled by default. Operator-declared licensed data needs
+attribution and future expiry; that declaration is not proof of rights. TMDB remains
+labeled TMDB and LibreTV scores remain labeled LibreTV. No dataset or scraping is shipped.

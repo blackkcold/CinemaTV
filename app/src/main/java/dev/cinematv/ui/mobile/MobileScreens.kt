@@ -47,6 +47,8 @@ import dev.cinematv.data.LibraryStatus
 import dev.cinematv.data.MediaItem
 import dev.cinematv.data.SearchFilters
 import dev.cinematv.ui.shared.metadataLine
+import dev.cinematv.ui.shared.TmdbLogo
+import androidx.compose.ui.platform.LocalUriHandler
 import dev.cinematv.ui.CinemaBackdrop
 import dev.cinematv.ui.Ink
 import dev.cinematv.ui.Ivory
@@ -304,16 +306,16 @@ private fun MobileSearch(model: CinemaViewModel) {
                 }
             }
         }
-        if (model.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+        if (model.busy || model.chartLoading) LinearProgressIndicator(Modifier.fillMaxWidth())
         Text(
-            if (model.busy) "正在逐源搜索 · 已找到 " + model.results.size + " 部"
+            if (model.busy || model.chartLoading) "正在逐源搜索 · 已找到 " + model.results.size + " 部"
             else "搜索结果 · " + model.results.size,
             Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
             color = Muted, fontSize = 13.sp
         )
         if (model.results.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(if (model.busy) "正在获取结果..." else "请输入关键词搜索",
+                Text(if (model.busy || model.chartLoading) "正在获取结果..." else "请输入关键词搜索",
                     color = Muted)
             }
         } else LazyVerticalGrid(
@@ -467,6 +469,7 @@ private fun MobileField(
 
 @Composable
 private fun MobileSettings(model: CinemaViewModel) {
+    val uriHandler = LocalUriHandler.current
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())
         .padding(horizontal = 20.dp, vertical = 18.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -513,6 +516,8 @@ private fun MobileSettings(model: CinemaViewModel) {
             Text("减少动态效果", Modifier.weight(1f))
             Switch(checked = model.reducedMotion, onCheckedChange = model::updateReducedMotion)
         }
+        if (model.metadataAddress.isNotBlank()) TmdbLogo()
+        TextButton(onClick = { uriHandler.openUri("https://www.themoviedb.org") }) { Text("TMDB 官网") }
         Text("TMDB 元数据与图像（配置后）。This product uses the TMDB API but is not endorsed or certified by TMDB.", color = Muted, fontSize = 12.sp)
         Text("仅连接自行部署且有合法访问权限的服务器和片源。",
             color = Muted, fontSize = 12.sp)

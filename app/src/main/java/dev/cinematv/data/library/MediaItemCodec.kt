@@ -56,7 +56,7 @@ object MediaItemCodec {
             ratingLicenseExpiresAt = j.optLong("ratingLicenseExpiresAt").coerceAtLeast(0),
             mediaTypeKnown = j.optBoolean("mediaTypeKnown", true),
             catalogProvider = j.optString("catalogProvider"), catalogAttribution = j.optString("catalogAttribution"),
-            catalogLicenseExpiresAt = j.optLong("catalogLicenseExpiresAt").coerceAtLeast(0)
+            catalogLicenseExpiresAt = j.optLong("catalogLicenseExpiresAt")
         )
     }
 

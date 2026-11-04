@@ -3,7 +3,7 @@
 A native Android TV / Google TV and Android phone client for a self-hosted LibreTV instance.
 Kotlin, Jetpack Compose for TV and Media3; separate TV and touch layouts.
 
-**v0.4.0 Preview: native immersive UI rebuild.** Releases are debug-signed
+**v0.5.0 Preview: local library and personalized discovery.** Releases are debug-signed
 previews. Physical TV certification and production signing remain tracked in
 [Release Gate #1](https://github.com/blackkcold/CinemaTV/issues/1).
 
@@ -20,13 +20,14 @@ previews. Physical TV certification and production signing remain tracked in
 | Focus | Route/rail/title identity, scroll restoration, controlled horizontal traversal, dialog and player return targets |
 | Artwork | Conservative title/year matching, bounded cache/prefetch, validated landscape dimensions, original fallback |
 | Glass / motion | Basic, still-image backdrop and opt-in enhanced highlight modes; low-memory/API fallback and reduced motion |
-| Search / library | Progressive NDJSON results, search history, continue watching and five library states |
+| Search / library | Room-backed works/seasons/episodes/sources; local, catalog and NDJSON stages; title/alias/actor search and provenance-aware filters |
+| Recommendations | Local explicit favorites/status/progress signals, explainable ranking, negative feedback and cold-start catalog order |
 | Playback | Media3, episode resume and measured duration, floating TV controls, track/speed panels, background pause |
 | Live | M3U subscriptions, channel groups, XMLTV current/next and scrollable future guide |
 | Phone | Five tabs, separate touch screens and fitted portrait/landscape playback with rotation continuity |
-| Service | Direct LibreTV auth/session/source adapter; optional independently hosted metadata BFF |
+| Service | Direct LibreTV adapter; optional licensed-catalog/TMDB BFF with explicit attribution/expiry and graceful fallback |
 
-The APK contains no public content feeds, credentials or copyrighted posters.
+The APK contains no public content feeds, credentials, catalog dataset or copyrighted posters. It includes an approved [TMDB brand asset](docs/THIRD_PARTY_ASSETS.md) under TMDB attribution rules.
 UI QA uses fictional titles, original vector artwork and a synthetic H.264/AAC
 clip confined to the instrumentation APK.
 
@@ -94,3 +95,5 @@ metadata services retain their own licenses and attribution conditions.
 This product may use the TMDB API through an independently configured BFF but
 is not endorsed or certified by TMDB. No API key is bundled. Public service
 connections should use HTTPS.
+
+See [local library and privacy](docs/LOCAL_LIBRARY.md) and [v0.5.0 preview notes](docs/releases/v0.5.0-preview.md) for migration, expiry, validation and release boundaries.

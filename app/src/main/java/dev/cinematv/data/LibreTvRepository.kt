@@ -5,7 +5,10 @@ import dev.cinematv.data.library.LocalMediaLibrary
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.flowOn
 import org.json.JSONArray
 import org.json.JSONObject
@@ -66,9 +69,10 @@ class LibreTvRepository(context: Context, val library: LocalMediaLibrary = Local
     }.distinct().take(50)
 
     /** Only the configured BFF receives the explicit query. Viewing history stays on device. */
-    suspend fun catalog(query: String = "", isTv: Boolean = false): MetadataCatalog = withContext(Dispatchers.IO) {
+    suspend fun catalog(query: String = "", isTv: Boolean = false, offset: Int = 0, topOnly: Boolean = false): MetadataCatalog = withContext(Dispatchers.IO) {
         if (!hasMetadataCatalog) return@withContext MetadataCatalog()
-        val conn = (URL(metadataServer + "/v1/catalog?type=${if (isTv) "tv" else "movie"}&limit=50&query=${encode(query.take(100))}")
+        val conn = (URL(metadataServer + "/v1/catalog?type=${if (isTv) "tv" else "movie"}&limit=50&query=${encode(query.take(100))}" +
+            (if (offset > 0) "&offset=$offset" else "") + (if (topOnly) "&chart=douban-top250" else ""))
             .openConnection() as HttpURLConnection).apply {
             connectTimeout = 4500
             readTimeout = 9000
@@ -122,7 +126,8 @@ class LibreTvRepository(context: Context, val library: LocalMediaLibrary = Local
                 )
             }
             MetadataCatalog(items, root.optString("provider").takeUnless { it == "null" }.orEmpty(),
-                root.optString("attribution").takeUnless { it == "null" }.orEmpty(), root.optString("status") == "available")
+                root.optString("attribution").takeUnless { it == "null" }.orEmpty(), root.optString("status") == "available",
+                if (root.isNull("nextOffset")) null else root.optInt("nextOffset", -1).takeIf { it > offset && it <= 4950 })
         } finally { conn.disconnect() }
     }
 
@@ -353,7 +358,8 @@ class LibreTvRepository(context: Context, val library: LocalMediaLibrary = Local
             val name = j.optString("name")
             val source = active.firstOrNull { it.key == j.optString("sourceKey") }
                 ?: TvSource(j.optString("sourceKey"), j.optString("sourceName"), j.optString("sourceUrl"))
-            if (name.isBlank() || source.url.isBlank()) null else MediaItem(
+            if (name.isBlank() || j.optString("vodId").isBlank() ||
+                (!source.url.startsWith("https://") && !source.url.startsWith("http://"))) null else MediaItem(
                 id = j.optString("vodId"),
                 title = name,
                 poster = j.optString("pic"),
@@ -386,7 +392,7 @@ class LibreTvRepository(context: Context, val library: LocalMediaLibrary = Local
      * 'done' event with authoritative order. Every intermediate emission is
      * usable, cancellation closes the network stream immediately.
      */
-    fun searchProgressively(keyword: String): Flow<List<MediaItem>> = flow {
+    fun searchProgressively(keyword: String): Flow<List<MediaItem>> = callbackFlow {
         val active = sources().filter { it.enabled }
         require(active.isNotEmpty()) { "请先在设置中添加点播源" }
         val conn = (URL(server + "/api/search?stream=1").openConnection() as HttpURLConnection).apply {
@@ -399,7 +405,8 @@ class LibreTvRepository(context: Context, val library: LocalMediaLibrary = Local
             sessionCookie?.let { setRequestProperty("Cookie", it) }
             doOutput = true
         }
-        try {
+        val network = launch(Dispatchers.IO) {
+          try {
             conn.outputStream.use {
                 it.write(searchPayload(keyword, active).toString().toByteArray(Charsets.UTF_8))
             }
@@ -410,6 +417,7 @@ class LibreTvRepository(context: Context, val library: LocalMediaLibrary = Local
             var completed = false
             conn.inputStream.bufferedReader(Charsets.UTF_8).use { reader ->
                 while (true) {
+                    ensureActive()
                     val line = reader.readLine() ?: break
                     if (line.isBlank()) continue
                     val event = JSONObject(line)
@@ -419,25 +427,29 @@ class LibreTvRepository(context: Context, val library: LocalMediaLibrary = Local
                             accumulated = (accumulated + batch).distinctBy {
                                 (it.source?.key ?: "") + "/" + it.id
                             }
-                            emit(accumulated)
+                            send(accumulated)
                         }
                         "done" -> {
                             completed = true
-                            emit(batch)
+                            send(batch)
                         }
                         else -> {
                             if (event.has("list")) {
                                 completed = true
-                                emit(batch)
+                                send(batch)
                             }
                         }
                     }
                 }
             }
-            if (!completed) emit(accumulated)
-        } finally {
-            conn.disconnect()
+            if (!completed) send(accumulated)
+            close()
+          } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+          } catch (error: Exception) { close(error) }
+          finally { conn.disconnect() }
         }
+        awaitClose { conn.disconnect(); network.cancel() }
     }.flowOn(Dispatchers.IO)
 
     suspend fun detail(requested: MediaItem): MediaItem = withContext(Dispatchers.IO) {
@@ -455,8 +467,8 @@ class LibreTvRepository(context: Context, val library: LocalMediaLibrary = Local
         val info = j.optJSONObject("videoInfo") ?: JSONObject()
         val episodes = j.optJSONArray("episodes") ?: JSONArray()
         val detailed = entry.copy(
-            isTv = item.isTv || entry.isTv,
-            mediaTypeKnown = item.mediaTypeKnown || entry.mediaTypeKnown,
+            isTv = if (info.has("isTv")) info.optBoolean("isTv") else if (info.optString("type") in listOf("tv", "movie")) info.optString("type") == "tv" else item.isTv || entry.isTv,
+            mediaTypeKnown = info.has("isTv") || info.optString("type") in listOf("tv", "movie") || item.mediaTypeKnown || entry.mediaTypeKnown,
             backdrop = entry.backdrop.ifBlank { item.backdrop },
             description = info.optString("desc"),
             poster = info.optString("cover").ifBlank { entry.poster },

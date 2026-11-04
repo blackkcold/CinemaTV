@@ -4,6 +4,7 @@ import { constants } from 'node:fs';
 export const CATALOG_MAX_BYTES = 1024 * 1024;
 export const CATALOG_MAX_ITEMS = 5000;
 const MAX_RESULTS = 50;
+const MAX_OFFSET = CATALOG_MAX_ITEMS - MAX_RESULTS;
 const TMDB_ATTRIBUTION = 'This product uses the TMDB API but is not endorsed or certified by TMDB.';
 
 function invalid(message = 'Invalid catalog') { throw new Error(message); }
@@ -73,24 +74,40 @@ export function validateLicensedCatalog(document, now = Date.now()) {
   return { provider, attribution, license, items };
 }
 
-export function selectCatalogItems(items, { query = '', type = 'movie', limit = 24 } = {}) {
+export function selectCatalogPage(items, { query = '', type = 'movie', limit = 24, offset = 0, chart = '' } = {}) {
   const wanted = normalized(query);
-  return items.filter(item => item.type === type && (!wanted ||
-    [item.title, ...item.aliases, ...item.actors].some(value => normalized(value).includes(wanted))))
-    .slice(0, Math.min(MAX_RESULTS, Math.max(1, limit)));
+  const douban = source => ['douban', '豆瓣'].includes(normalized(source || ''));
+  const filtered = items.filter(item => item.type === type && (!wanted ||
+    [item.title, ...item.aliases, ...item.actors].some(value => normalized(value).includes(wanted))) &&
+    (chart !== 'douban-top250' || (douban(item.topSource) && douban(item.ratingSource) &&
+      Number.isSafeInteger(item.topRank) && item.topRank >= 1 && item.topRank <= 250 &&
+      item.rating !== null && item.ratingScale === 10)));
+  if (chart === 'douban-top250') filtered.sort((a, b) => a.topRank - b.topRank || a.id.localeCompare(b.id));
+  const page = filtered.slice(offset, offset + Math.min(MAX_RESULTS, Math.max(1, limit)));
+  const next = offset + page.length;
+  return { items: page, total: filtered.length,
+    nextOffset: page.length && next < filtered.length && next <= MAX_OFFSET ? next : null };
+}
+
+export function selectCatalogItems(items, request = {}) {
+  return selectCatalogPage(items, request).items;
 }
 
 export function parseCatalogRequest(params) {
-  const allowed = new Set(['query', 'type', 'limit']);
+  const allowed = new Set(['query', 'type', 'limit', 'offset', 'chart']);
   for (const key of params.keys()) {
     if (!allowed.has(key) || params.getAll(key).length !== 1) invalid('Invalid catalog parameter');
   }
   const query = text(params.get('query') ?? '', 100);
   const type = params.get('type') ?? 'movie';
   const rawLimit = params.get('limit') ?? '24';
+  const rawOffset = params.get('offset') ?? '0';
+  const chart = params.get('chart') ?? '';
   if (!['movie', 'tv'].includes(type) || !/^\d{1,2}$/.test(rawLimit) ||
-      Number(rawLimit) < 1 || Number(rawLimit) > MAX_RESULTS) invalid('Invalid catalog parameter');
-  return { query, type, limit: Number(rawLimit) };
+      Number(rawLimit) < 1 || Number(rawLimit) > MAX_RESULTS ||
+      !/^\d{1,4}$/.test(rawOffset) || Number(rawOffset) > MAX_OFFSET ||
+      (params.has('chart') && chart !== 'douban-top250')) invalid('Invalid catalog parameter');
+  return { query, type, limit: Number(rawLimit), offset: Number(rawOffset), chart };
 }
 
 /** Enforces a decoded-byte limit even when upstream omits or lies about Content-Length. */
@@ -182,22 +199,33 @@ export function createCatalogService(env = process.env, fetchImpl = fetch) {
   }
   return async function catalog(request) {
     const attempts = [];
+    const chartOnly = request.chart === 'douban-top250';
+    const offset = request.offset ?? 0;
+    const unavailable = () => ({ status: 'unavailable', provider: null, items: [], attribution: null,
+      license: null, attempts, fallback: chartOnly ? null : 'libretv' });
     let emptyResult = null;
     if (enabled) {
       try {
         if (Boolean(catalogFile) === Boolean(catalogUrl)) invalid();
         const document = catalogFile ? await readCatalogFile(catalogFile) : await getJson(url(catalogUrl, true));
         const result = validateLicensedCatalog(document);
-        const items = selectCatalogItems(result.items, request);
+        const page = selectCatalogPage(result.items, request);
+        const { items } = page;
         const status = items.length ? 'available' : 'empty';
         attempts.push({ provider: result.provider, status });
-        const response = { ...result, items, status, attempts, fallback: items.length ? null : 'libretv' };
-        if (items.length) return response;
+        const response = { ...result, ...page, status, attempts, fallback: items.length || chartOnly ? null : 'libretv' };
+        // Never replay TMDB page one for a later licensed page or a chart-only request.
+        if (items.length || offset > 0 || chartOnly) return response;
         emptyResult = response;
       } catch {
         attempts.push({ provider: 'licensed', status: 'unavailable' });
       }
     } else attempts.push({ provider: 'licensed', status: 'disabled' });
+    if (chartOnly) return unavailable();
+    if (offset > 0 && tmdbEnabled) {
+      attempts.push({ provider: 'TMDB', status: 'unavailable' });
+      return { ...unavailable(), reason: 'tmdb_offset_unsupported' };
+    }
     if (tmdbEnabled) {
       try {
         const checkedBase = new URL(url(tmdbBase, true));
@@ -219,7 +247,6 @@ export function createCatalogService(env = process.env, fetchImpl = fetch) {
         emptyResult = response;
       } catch { attempts.push({ provider: 'TMDB', status: 'unavailable' }); }
     } else attempts.push({ provider: 'TMDB', status: 'disabled' });
-    return emptyResult || { status: 'unavailable', provider: null, items: [], attribution: null,
-      license: null, attempts, fallback: 'libretv' };
+    return emptyResult || unavailable();
   };
 }

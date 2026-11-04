@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CATALOG_MAX_BYTES, createCatalogService, normalizeTmdbCatalogItem, parseCatalogRequest,
-  readBoundedJson, selectCatalogItems, validateLicensedCatalog } from './catalog.mjs';
+  readBoundedJson, selectCatalogItems, selectCatalogPage, validateLicensedCatalog } from './catalog.mjs';
 
 import { fixture } from './catalog-fixture.mjs';
 
@@ -47,8 +47,8 @@ test('licensed metadata fails closed without complete, unexpired provenance', ()
 });
 
 test('request input bounds reject URLs, profiles, repeated params, control characters and invalid types', () => {
-  assert.deepEqual(parseCatalogRequest(new URLSearchParams()), { query: '', type: 'movie', limit: 24 });
-  assert.deepEqual(parseCatalogRequest(new URLSearchParams('query=Film&type=tv&limit=50')), { query: 'Film', type: 'tv', limit: 50 });
+  assert.deepEqual(parseCatalogRequest(new URLSearchParams()), { query: '', type: 'movie', limit: 24, offset: 0, chart: '' });
+  assert.deepEqual(parseCatalogRequest(new URLSearchParams('query=Film&type=tv&limit=50')), { query: 'Film', type: 'tv', limit: 50, offset: 0, chart: '' });
   for (const input of ['url=https://evil.test', 'history=private', 'type=person', 'limit=51', 'limit=0',
     'limit=-1', 'limit=1.1', 'type=tv&type=movie', 'query=%00', 'query=' + 'x'.repeat(101)]) {
     assert.throws(() => parseCatalogRequest(new URLSearchParams(input)), input);
@@ -140,4 +140,72 @@ test('TMDB empty results remain empty and duplicate provider IDs are collapsed',
   const deduplicated = createCatalogService(config,
     async () => new Response(JSON.stringify({ results: [duplicate, duplicate] })));
   assert.equal((await deduplicated({ query: '', type: 'movie', limit: 24 })).items.length, 1);
+});
+
+test('pagination validates bounded offsets and the only supported chart name', () => {
+  assert.equal(parseCatalogRequest(new URLSearchParams('offset=4950')).offset, 4950);
+  assert.equal(parseCatalogRequest(new URLSearchParams('chart=douban-top250')).chart, 'douban-top250');
+  for (const query of ['offset=-1', 'offset=4951', 'offset=5000', 'offset=1.5', 'offset=',
+    'offset=1&offset=2', 'chart=', 'chart=tmdb-top', 'chart=douban-top250&chart=douban-top250']) {
+    assert.throws(() => parseCatalogRequest(new URLSearchParams(query)), query);
+  }
+});
+
+test('aliases, actors and type filter the full catalog before pagination', () => {
+  const document = fixture();
+  document.items = Array.from({ length: 120 }, (_, index) => ({ providerId: String(index),
+    title: 'Synthetic Film ' + index, type: index % 3 === 0 ? 'tv' : 'movie',
+    aliases: index % 2 === 0 ? ['Matching Alias'] : [], actors: index % 2 ? ['Matching Actor'] : [] }));
+  const { items } = validateLicensedCatalog(document);
+  const allMovies = items.filter(item => item.type === 'movie');
+  const page = selectCatalogPage(items, { query: 'matching', type: 'movie', offset: 50, limit: 24 });
+  assert.equal(page.total, 80);
+  assert.deepEqual(page.items.map(item => item.providerId), allMovies.slice(50, 74).map(item => item.providerId));
+  assert.equal(page.nextOffset, 74);
+  const last = selectCatalogPage(items, { query: 'matching', type: 'movie', offset: 74, limit: 24 });
+  assert.equal(last.items.length, 6);
+  assert.equal(last.nextOffset, null);
+  const pastEnd = selectCatalogPage(items, { query: 'matching', type: 'movie', offset: 100, limit: 24 });
+  assert.equal(pastEnd.total, 80);
+  assert.deepEqual(pastEnd.items, []);
+  assert.equal(pastEnd.nextOffset, null);
+});
+
+test('Douban chart uses explicit normalized provenance, rank1..250 and rated scale10 before paging', () => {
+  const document = fixture();
+  const base = { title: 'Synthetic Film', type: 'movie', rating: 8, ratingScale: 10,
+    ratingSource: 'Douban', topSource: 'Douban', topRank: 1 };
+  document.items = [
+    { ...base, providerId: 'rank3', topRank: 3, ratingSource: 'ＤＯＵＢＡＮ', topSource: ' douban ' },
+    { ...base, providerId: 'not-douban-rank', topSource: 'Other chart' },
+    { ...base, providerId: 'rank1', topSource: '豆瓣', ratingSource: '豆瓣' },
+    { ...base, providerId: 'not-douban-score', ratingSource: 'TMDB' },
+    { ...base, providerId: 'rank251', topRank: 251 },
+    { ...base, providerId: 'other-scale', ratingScale: 100 },
+    { ...base, providerId: 'unrated', rating: null },
+    { ...base, providerId: 'rank2', topRank: 2 }
+  ];
+  const { items } = validateLicensedCatalog(document);
+  const request = { type: 'movie', chart: 'douban-top250', offset: 1, limit: 1 };
+  const page = selectCatalogPage(items, request);
+  assert.equal(page.total, 3);
+  assert.equal(page.items[0].providerId, 'rank2');
+  assert.equal(page.nextOffset, 2);
+});
+
+test('future catalog expiry is valid only until its exact expiry instant', () => {
+  const document = fixture();
+  const expiry = Date.parse(document.license.expiresAt);
+  assert.equal(validateLicensedCatalog(document, expiry - 1).items.length, 3);
+  assert.throws(() => validateLicensedCatalog(document, expiry));
+  assert.throws(() => validateLicensedCatalog(document, expiry + 1));
+});
+
+test('pagination bounds never return a next offset outside the accepted range', () => {
+  const base = validateLicensedCatalog(fixture()).items[0];
+  const items = Array.from({ length: 5000 }, (_, index) => ({ ...base, id: String(index) }));
+  const final = selectCatalogPage(items, { type: 'movie', limit: 50, offset: 4950 });
+  assert.equal(final.items.length, 50);
+  assert.equal(final.total, 5000);
+  assert.equal(final.nextOffset, null);
 });

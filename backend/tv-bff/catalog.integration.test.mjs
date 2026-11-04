@@ -173,3 +173,62 @@ test('operator-supplied local file works, is reread for expiry, and rejects over
   await writeFile(file, ' '.repeat(CATALOG_MAX_BYTES + 1));
   assert.equal((await (await api.request('/v1/catalog')).json()).status, 'unavailable');
 });
+
+test('licensed chart pages cover 250 ranked synthetic items and stop after expiry without TMDB fallback', async t => {
+  let document = fixture();
+  const chartItem = rank => ({ providerId: 'rank-' + rank, title: 'Synthetic Film ' + rank,
+    type: 'movie', aliases: ['Common alias'], actors: ['Common actor'],
+    rating: 8, ratingScale: 10, ratingSource: 'Douban', topSource: '豆瓣', topRank: rank });
+  document.items = Array.from({ length: 250 }, (_, index) => chartItem(250 - index));
+  document.items.unshift({ ...chartItem(1), providerId: 'wrong-provenance', ratingSource: 'Other' });
+  let licensedRequests = 0;
+  let tmdbRequests = 0;
+  const licensed = await serve(t, (_req, res) => { licensedRequests++; json(res, document); });
+  const tmdb = await serve(t, (_req, res) => { tmdbRequests++; json(res, { results: [{ id: 1, title: 'Must not appear' }] }); });
+  const api = await app(t, { LICENSED_CATALOG_ENABLED: 'true', LICENSED_CATALOG_URL: licensed,
+    TMDB_READ_ACCESS_TOKEN: 'synthetic-token', TMDB_API_URL: tmdb });
+  const collected = [];
+  for (let offset = 0; offset < 250; offset += 50) {
+    const result = await (await api.request('/v1/catalog?chart=douban-top250&type=movie&query=Common&limit=50&offset=' + offset)).json();
+    assert.equal(result.status, 'available');
+    assert.equal(result.total, 250);
+    assert.equal(result.nextOffset, offset === 200 ? null : offset + 50);
+    assert.equal(result.fallback, null);
+    collected.push(...result.items.map(item => item.topRank));
+  }
+  assert.deepEqual(collected, Array.from({ length: 250 }, (_, index) => index + 1));
+  assert.equal(licensedRequests, 5);
+  assert.equal(tmdbRequests, 0);
+  const empty = await (await api.request('/v1/catalog?chart=douban-top250&query=NoMatch&offset=50')).json();
+  assert.equal(empty.status, 'empty');
+  assert.equal(empty.total, 0);
+  assert.equal(empty.nextOffset, null);
+  assert.equal(empty.fallback, null);
+  document.license.expiresAt = '2020-01-01T00:00:00Z';
+  const expired = await (await api.request('/v1/catalog?chart=douban-top250&offset=50')).json();
+  assert.equal(expired.status, 'unavailable');
+  assert.deepEqual(expired.items, []);
+  assert.equal(expired.fallback, null);
+  assert.equal(tmdbRequests, 0);
+});
+
+test('TMDB pagination is explicitly unsupported, chart mode never falls back, and old requests stay first-page', async t => {
+  let requests = 0;
+  const tmdb = await serve(t, (_req, res) => { requests++; json(res, { results: [{ id: 1, title: 'Synthetic Film' }] }); });
+  const api = await app(t, { TMDB_READ_ACCESS_TOKEN: 'synthetic-token', TMDB_API_URL: tmdb });
+  const old = await (await api.request('/v1/catalog')).json();
+  assert.equal(old.provider, 'TMDB');
+  assert.equal('total' in old, false);
+  assert.equal('nextOffset' in old, false);
+  assert.equal(requests, 1);
+  const offset = await (await api.request('/v1/catalog?offset=50')).json();
+  assert.equal(offset.status, 'unavailable');
+  assert.equal(offset.reason, 'tmdb_offset_unsupported');
+  assert.equal(requests, 1);
+  const chart = await (await api.request('/v1/catalog?chart=douban-top250')).json();
+  assert.equal(chart.status, 'unavailable');
+  assert.equal(chart.fallback, null);
+  assert.equal(requests, 1);
+  assert.equal((await api.request('/v1/catalog?offset=4951')).status, 400);
+  assert.equal((await api.request('/v1/catalog?chart=untrusted')).status, 400);
+});

@@ -13,6 +13,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
 import dev.cinematv.BuildConfig
+import androidx.compose.ui.platform.LocalUriHandler
+import dev.cinematv.ui.shared.TmdbLogo
 import dev.cinematv.CinemaViewModel
 import dev.cinematv.Page
 import dev.cinematv.ui.GlassAction
@@ -23,6 +25,7 @@ import dev.cinematv.ui.tv.focus.*
 
 @Composable
 fun SettingsScreen(model: CinemaViewModel) {
+    val uriHandler = LocalUriHandler.current
     val layout = LocalTvLayout.current
     val entry = LocalContentFocus.current
     var section by rememberSaveable { mutableIntStateOf(0) }
@@ -105,6 +108,8 @@ fun SettingsScreen(model: CinemaViewModel) {
                             else -> {
                                 item { SettingTitle("CinemaTV", "版本 ${BuildConfig.VERSION_NAME}") }
                                 item { Text("为大屏与故事而生。", color = TvColors.Text, fontSize = 22.sp) }
+                                if (model.metadataAddress.isNotBlank()) item { TmdbLogo() }
+                                item { GlassAction("TMDB 官网", Modifier.width(140.dp).height(36.dp)) { uriHandler.openUri("https://www.themoviedb.org") } }
                                 item { Text("元数据与图像：TMDB（配置高清剧照服务后）。\nThis product uses the TMDB API but is not endorsed or certified by TMDB.\nhttps://www.themoviedb.org", color = TvColors.Secondary, fontSize = 13.sp, lineHeight = 22.sp) }
                                 item { Text("开源组件：Kotlin、AndroidX Compose、Media3、Coil。CinemaTV 源代码采用 MIT 许可。\n仅添加你有权访问的服务器和内容源。", color = TvColors.Secondary, fontSize = 13.sp, lineHeight = 22.sp) }
                             }

@@ -49,8 +49,8 @@ Top means a supplied valid Top 250 rank, never an inferred popular ordering.
 TMDB and LibreTV scores retain separate labels. Expired licensed metadata is
 removed from discovery/search and stripped from source-backed records while
 retaining user-owned library/progress data. Attribution accompanies current
-catalog results and details. Operators using TMDB must satisfy its logo/notice
-requirements before deployment; no production licensing audit is implied.
+catalog results and details. The About/Credits screens include the approved TMDB logo, notice and official link.
+Operators must still verify their API usage rights; no production licensing audit is implied.
 
 ## Validation boundaries
 

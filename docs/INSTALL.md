@@ -2,13 +2,13 @@
 
 ## 下载与兼容性
 
-- [v0.4.0-preview 下载页](https://github.com/blackkcold/CinemaTV/releases/tag/v0.4.0-preview)：APK、界面截图、自动化验收证据及 SHA-256。
-- 同一 APK 支持 Android TV / Google TV 和 Android 手机；最低 Android 8.0（API 26）。包名 `dev.cinematv`，版本 `0.4.0-preview`，versionCode `5`。
+- [v0.5.0-preview 下载页](https://github.com/blackkcold/CinemaTV/releases/tag/v0.5.0-preview)：APK、界面截图、自动化验收证据及 SHA-256。
+- 同一 APK 支持 Android TV / Google TV 和 Android 手机；最低 Android 8.0（API 26）。包名 `dev.cinematv`，版本 `0.5.0-preview`，versionCode `6`。
 - 本版使用 Android Debug 签名。不同 CI 构建的调试密钥可能不同；如出现 `INSTALL_FAILED_UPDATE_INCOMPATIBLE`，需先备份配置再卸载重装。卸载会清空本地历史和设置。
 
 ## 首次使用
 
-1. 通过 U 盘、设备文件管理器，或 `adb install -r CinemaTV-v0.4.0-preview.apk` 安装。
+1. 通过 U 盘、设备文件管理器，或 `adb install -r CinemaTV-v0.5.0-preview.apk` 安装。
 2. 打开设置 →「连接与账户」，输入自建 LibreTV 地址；如服务需要密码，完成登录。
 3. 使用服务器已配置的片源，或在「片源与订阅」添加有权访问的 Apple CMS JSON API。
 4. 直播添加 M3U 订阅；XMLTV 节目单地址可选。只有可访问的订阅和媒体流才可播放。
@@ -38,7 +38,7 @@ APK 不提供默认公共片源、账号或媒体内容。公网连接请使用 
 
 ## 自动化验收与真机边界
 
-发布工作流要求同一提交通过编译、Lint、13项 JVM 测试、7项 BFF 测试，以及手机和两个 TV 视口的仪器测试。TV 场景覆盖14个界面状态，并对6个已审阅界面执行截图差异检查。每种 TV 视口保留焦点轨迹和软件模拟器帧耗时；这些数据不代表电视 GPU 性能。
+发布工作流要求同一提交通过编译、Lint、JVM / BFF 测试，以及手机和两个 TV 视口的仪器测试。TV 场景覆盖14个界面状态，并对6个已审阅界面执行截图差异检查。手机测试还验证真实 Room 导入、重开、逐集进度与元数据协议。每种 TV 视口保留焦点轨迹和软件模拟器帧耗时；这些数据不代表电视 GPU 性能。
 
 | 自动化环境 | 配置 |
 |---|---|
@@ -62,3 +62,13 @@ npm --prefix backend/tv-bff test
 `[ui-qa]` 提交触发完整设备矩阵，`[preview-release]` 在同一提交全部通过后发布预览包。发布附件包含截图对比结果、JUnit 报告、焦点轨迹和帧数据。
 
 原创播放器 SVG 和居中的宽版 TV Banner 位于 `design/branding/`。如需重新导出 Android PNG，安装 `rsvg-convert` 后运行 `bash scripts/render-branding.sh`。
+
+## v0.5 本地片库与目录
+
+首次启动会将旧收藏、观看历史和片库状态事务性迁入 Room；保留原始记录，不使用破坏性迁移。每一集独立保存位置与实测时长，收藏与观看状态可以同时存在。若迁移失败，应用会提示，仍可加载服务器播放列表。详见 [数据与隐私说明](LOCAL_LIBRARY.md)。
+
+搜索先显示本地结果，再补充可选元数据目录和 LibreTV 片源。支持已有别名、演员、类型、年份和来源评分；未知数据不会冒充满足筛选。首页推荐仅使用本机收藏、片库状态及观看进度，不上传偏好。
+
+豆瓣 TOP250 / 评分筛选只接受可选授权目录中的明确来源、有效许可到期时间与实际排名。默认未配置，不包含数据或爬虫；未配置时不会将 TMDB 或 LibreTV 评分标为豆瓣。配置契约见 [BFF 文档](../backend/tv-bff/README.md)。
+
+本地数据库、设置和播放链接排除于 Android 云备份及设备迁移；当前没有跨设备同步或导出恢复功能。卸载仍会删除本地数据。

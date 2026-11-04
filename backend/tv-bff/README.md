@@ -36,9 +36,11 @@ Respect TMDB attribution and applicable API/image usage terms.
 
 ## Optional authorized catalog and provider fallback
 
-`GET /v1/catalog?query=...&type=movie|tv&limit=24` is authenticated like the other
+`GET /v1/catalog?query=...&type=movie|tv&limit=24&offset=0` is authenticated like the other
 `/v1` routes. `query` is optional (maximum 100 characters), `type` defaults to
-`movie`, and `limit` is an integer from 1 to 50 (default 24). Unknown or repeated
+`movie`, `limit` is an integer from 1 to 50 (default 24), and `offset` is an integer
+from 0 to 4950 (default 0). Optional `chart=douban-top250` restricts results to the
+licensed Douban chart described below. Unknown or repeated
 parameters are rejected with HTTP 400. Missing/invalid bearer authentication is
 HTTP 401. The response is always HTTP 200 for provider failures so the client can
 keep using LibreTV:
@@ -72,6 +74,8 @@ keep using LibreTV:
     "expiresAt": "2099-01-01T00:00:00Z"
   },
   "attempts": [{"provider": "Example authorized provider", "status": "available"}],
+  "total": 1,
+  "nextOffset": null,
   "fallback": null
 }
 ```
@@ -79,7 +83,7 @@ keep using LibreTV:
 The example above is **synthetic**, not licensed real-world metadata. Fields:
 
 - `status`: `available` means nonempty results; `empty` means at least one provider
-  answered successfully but neither returned matches; `unavailable` means every
+  answered successfully but none returned matches; `unavailable` means every
   configured provider failed or was disabled.
 - `provider`, `attribution`, `license`: identify the selected provider, or are all
   null when unavailable. TMDB always uses `provider: "TMDB"`, its attribution
@@ -87,7 +91,9 @@ The example above is **synthetic**, not licensed real-world metadata. Fields:
 - `attempts`: ordered providers tried, with `available`, `empty`, `unavailable`, or
   `disabled` status. An unreadable/malformed licensed source is named `licensed`
   rather than disclosing its URL, file path, token or upstream error.
-- `fallback`: `"libretv"` for empty/unavailable results, otherwise null. The client
+- `fallback`: `"libretv"` for ordinary empty/unavailable results, otherwise null.
+  Chart-only requests always return null because LibreTV is not a licensed chart
+  substitute. The client
   should retain its ordinary LibreTV browse/search flow. This endpoint does not
   silently scrape Douban, call LibreTV's `/api/douban`, merge scores across sources,
   or supply playback URLs. Existing `/v1/home`, search, metadata and other routes
@@ -98,12 +104,45 @@ The example above is **synthetic**, not licensed real-world metadata. Fields:
   when the upstream reports a valid score and a positive vote count.
 - `topRank`, `topSource`: both null when no sourced chart position is supplied.
   TMDB popular ordering is **not** a Douban Top chart and never sets these fields.
-  Clients may offer a Douban Top filter only for licensed results with
-  `topSource: "Douban"` and a positive rank, without relabeling other scores.
+  The Douban Top filter below requires explicit licensed Douban chart and rating
+  provenance; no other source score may be relabeled.
 - `aliases`, `actors`: arrays, empty if unavailable. TMDB search/popular contributes
   only the original title/name as an alias; no cast is guessed or fetched.
 - IDs are provider/type scoped and do not imply an exact match to a playable
   LibreTV title. Resolve playback through the existing source search/detail flow.
+
+### Licensed pagination and Douban Top250
+
+Only a selected licensed response includes `total` (integer count after all
+query/type/chart filtering) and `nextOffset` (next accepted offset, or null).
+Filtering by title, alias and actor happens before slicing, so later matches are
+not lost. Offsets past the filtered result set return a licensed `empty` response
+with its original total, no items, and a null nextOffset. Fetch the next page with
+the same query/type/chart/limit. Use `limit=50` to cover all 5000 possible records:
+the maximum offset is 4950; smaller limits cannot advance beyond that boundary.
+Operators should replace catalog files atomically and avoid changing content
+mid-pagination; this API does not promise a multi-request snapshot. License
+expiry is revalidated on every page, and clients must stop and discard expired
+licensed results rather than retaining an earlier page indefinitely.
+
+`chart=douban-top250` is **licensed-provider only**. It first requires both
+`topSource` and `ratingSource` to normalize to `Douban` or `豆瓣` (Unicode width,
+case and surrounding whitespace normalized), a rank in 1..250, a non-null valid
+rating and `ratingScale: 10`. Matching records are sorted by rank, then stable ID,
+before pagination. This selects the operator's supplied chart records; it does
+not assert that the provider supplied a complete or unique 250-title chart.
+Request `limit=50` and follow `nextOffset` for at most five pages when the user
+selects the Top250 filter. Do not eagerly load chart pages on ordinary browse.
+Chart requests never call TMDB and never offer LibreTV as a chart substitute.
+A disabled, malformed or expired licensed provider returns `unavailable`, while
+a valid source with no qualifying chart entries returns `empty` with total zero.
+
+TMDB continues to request its first upstream page only and does not expose total
+or nextOffset. For `offset>0`, a valid licensed result is returned, including an
+empty final page. If no valid licensed source is available and TMDB is configured,
+the response is `unavailable` with `reason: "tmdb_offset_unsupported"`; no TMDB
+request is made. Offset-zero requests without a chart preserve the usual fallback
+chain and existing client behavior.
 
 ### Enable an operator-supplied catalog
 
@@ -171,7 +210,8 @@ show the supplied attribution; availability of a JSON file alone grants no right
 
 ### TMDB fallback, privacy and operational limits
 
-With `TMDB_READ_ACCESS_TOKEN` configured, catalog requests fall back to TMDB when
+With `TMDB_READ_ACCESS_TOKEN` configured, ordinary offset-zero catalog requests
+without a chart fall back to TMDB when
 the licensed provider is disabled, unavailable, expired or has no matches. A
 nonempty query uses `/search/movie` or `/search/tv`; no query uses `/movie/popular`
 or `/tv/popular`. Only the first result page is requested (so fewer than `limit`

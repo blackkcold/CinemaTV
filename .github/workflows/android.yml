@@ -97,4 +97,4 @@ jobs:
           cp "docs/releases/$TAG.md" /tmp/cinematv-release-notes.md
           printf '\nTested commit: `%s`\n\n[Build and full UI QA](%s/%s/actions/runs/%s)\n' "$GITHUB_SHA" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" >> /tmp/cinematv-release-notes.md
           gh release create "$TAG" dist/* --target "$GITHUB_SHA" --prerelease \
-            --title "CinemaTV $TAG · Immersive UI" --notes-file /tmp/cinematv-release-notes.md
+            --title "CinemaTV $TAG · Personal Library" --notes-file /tmp/cinematv-release-notes.md

@@ -129,6 +129,10 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
         private set
     private var completedSearchQuery = ""
     private var searchGeneration = 0L
+    private var chartJob: Job? = null
+    private var chartGeneration = 0L
+    var chartLoading by mutableStateOf(false)
+        private set
     val searchYears: List<String> get() = (catalogMovies + catalogSeries + queryCatalog + remoteSearch +
         repo.library.snapshot.records.map { it.item }).map { it.year }.filter { it.matches(Regex("\\d{4}")) }.distinct().sortedDescending()
 
@@ -418,8 +422,42 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun updateSearchFilters(filters: SearchFilters) {
+        val wasTop = searchFilters.doubanTopOnly
         searchFilters = filters
         rebuildSearch()
+        if (filters.doubanTopOnly && !wasTop) loadLicensedChart()
+        else if (!filters.doubanTopOnly) { chartGeneration++; chartJob?.cancel(); chartLoading = false }
+    }
+
+    private fun loadLicensedChart() {
+        chartJob?.cancel()
+        val request = ++chartGeneration
+        if (!repo.hasMetadataCatalog) {
+            chartLoading = false
+            searchStage = "未配置授权目录；豆瓣筛选不会使用其他来源替代。"
+            return
+        }
+        val generation = searchGeneration
+        val keyword = completedSearchQuery
+        chartJob = viewModelScope.launch {
+            chartLoading = true
+            try {
+                for (tv in listOf(false, true)) {
+                    var offset = 0
+                    for (pageIndex in 0 until 5) {
+                        val page = repo.catalog(keyword, tv, offset, topOnly = true)
+                        ensureActive()
+                        if (generation != searchGeneration || request != chartGeneration) return@launch
+                        queryCatalog = (queryCatalog + page.items).distinctBy { it.presentationKey }
+                        rebuildSearch()
+                        offset = page.nextOffset ?: break
+                    }
+                }
+                searchStage = "授权 TOP250 目录 · 仅显示有效许可记录"
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { searchStage = "授权 TOP250 目录暂不可用，已保留现有结果。" }
+            finally { if (request == chartGeneration) chartLoading = false }
+        }
     }
 
     private fun rebuildSearch() {
@@ -437,6 +475,7 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
         if (wd.isBlank()) return
         navigate(Page.SEARCH)
         searchJob?.cancel()
+        chartJob?.cancel()
         val generation = ++searchGeneration
         completedSearchQuery = wd
         remoteSearch = emptyList()
@@ -489,6 +528,7 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
                 if (searchGeneration == generation) busy = false
             }
         }
+        if (searchFilters.doubanTopOnly) loadLicensedChart()
     }
 
     fun episodeProgress(index: Int) = selected?.let { repo.library.snapshot.progress(it, index) }
@@ -508,7 +548,7 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
     fun playEpisode(index: Int = 0) {
         val item = selected ?: return
         val url = item.episodes.getOrNull(index)
-        if (url == null || !url.startsWith("http")) {
+        if (url == null || (!url.startsWith("https://") && !url.startsWith("http://"))) {
             message = "没有可播放的直链；请检查片源与剧集"
             return
         }
@@ -569,7 +609,9 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
                         val labelsMatch = current.episodeNames.getOrNull(playingEpisode)?.takeIf(String::isNotBlank)?.let { label ->
                             detailed.episodeNames.getOrNull(playingEpisode)?.let { MediaIdentity.normalizedTitle(it) == MediaIdentity.normalizedTitle(label) }
                         } ?: (detailed.episodes.size == current.episodes.size)
-                        if (sameSourceCandidate(current, detailed) && labelsMatch && detailed.episodes.getOrNull(playingEpisode)?.startsWith("http") == true) {
+                        val confirmedType = current.mediaTypeKnown && detailed.mediaTypeKnown && current.isTv == detailed.isTv
+                        val confirmedSeason = current.seasonNumber == detailed.seasonNumber
+                        if (sameSourceCandidate(current, detailed) && confirmedType && confirmedSeason && labelsMatch && detailed.episodes.getOrNull(playingEpisode)?.startsWith("http") == true) {
                             found = detailed
                             break
                         }

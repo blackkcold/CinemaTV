@@ -39,7 +39,7 @@ class UiFixtureServer(private val context: Context) : AutoCloseable {
         listOf(false, true).forEach { tv ->
             (0 until 24).filter { title(it, tv).contains(query) }.forEach { i ->
                 result += JSONObject().put("vodId", "${if (tv) "tv" else "movie"}-$i").put("name", title(i, tv))
-                    .put("pic", poster).put("sourceKey", "fixture").put("sourceName", "测试片库")
+                    .put("pic", poster).put("isTv", tv).put("sourceKey", "fixture").put("sourceName", "测试片库")
                     .put("sourceUrl", "$base/provider").put("year", if (i % 3 == 0) "2025" else "2026").put("typeName", "剧情")
             }
         }

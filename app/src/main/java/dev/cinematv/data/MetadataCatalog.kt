@@ -5,5 +5,6 @@ data class MetadataCatalog(
     val items: List<MediaItem> = emptyList(),
     val provider: String = "",
     val attribution: String = "",
-    val available: Boolean = false
+    val available: Boolean = false,
+    val nextOffset: Int? = null
 )
