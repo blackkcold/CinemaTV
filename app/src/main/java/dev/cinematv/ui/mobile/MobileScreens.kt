@@ -21,6 +21,8 @@ import androidx.compose.material.icons.outlined.LiveTv
 import androidx.compose.material.icons.outlined.VideoLibrary
 import androidx.compose.material.icons.outlined.Settings
 import dev.cinematv.ui.tv.design.GlassQuality
+import dev.cinematv.ui.tv.design.TvEffects
+import dev.cinematv.ui.tv.design.LocalTvEffects
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -55,6 +57,7 @@ private val stroke = Color(0xFF424650)
 @Composable
 fun MobileRootApp(model: CinemaViewModel) {
     val page = model.page
+    CompositionLocalProvider(LocalTvEffects provides TvEffects(model.reducedMotion, GlassQuality.BASIC)) {
     MaterialTheme(colorScheme = darkColorScheme(
         background = Ink, surface = surface, primary = Ivory, onPrimary = Ink,
         onBackground = Ivory, onSurface = Ivory, secondary = Accent
@@ -125,6 +128,7 @@ fun MobileRootApp(model: CinemaViewModel) {
             }
         }
     }
+}
 }
 
 @Composable

@@ -1,7 +1,10 @@
 package dev.cinematv.ui.mobile
 
 import android.view.ViewGroup
+import android.content.res.Configuration
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -9,6 +12,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -75,8 +82,29 @@ fun MobilePlayerPage(model: CinemaViewModel) {
             delay(1000)
         }
     }
+    if (LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE) {
+        Box(Modifier.fillMaxSize().background(Color.Black)) {
+            MobileVideoSurface(player, Modifier.fillMaxSize())
+            Row(Modifier.align(Alignment.TopStart).fillMaxWidth()
+                .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = .7f), Color.Transparent)))
+                .padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = { model.back() }) { Text("← 返回", color = Ivory) }
+                Text(model.playbackTitle, color = Ivory, fontSize = 15.sp, maxLines = 1, modifier = Modifier.weight(1f))
+                if (model.playerReturnPage == Page.DETAIL) TextButton(onClick = { model.back() }) { Text("选集", color = Ivory) }
+            }
+            if (error.isNotBlank() || model.failoverBusy) Surface(
+                color = Ink.copy(alpha = .95f), shape = RoundedCornerShape(15.dp),
+                modifier = Modifier.align(Alignment.Center).padding(20.dp)) {
+                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(model.failoverMessage.ifBlank { error }, color = Ivory)
+                    if (!model.failoverBusy) Button(onClick = { error = ""; player.prepare(); player.play() }) { Text("重试") }
+                }
+            }
+        }
+        return
+    }
     Column(
-        Modifier.fillMaxSize().background(Ink).padding(horizontal = 14.dp),
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).background(Ink).padding(horizontal = 14.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         Row(
@@ -87,22 +115,8 @@ fun MobilePlayerPage(model: CinemaViewModel) {
             Text(model.playbackTitle, color = Ivory, fontSize = 18.sp,
                 modifier = Modifier.weight(1f), maxLines = 2)
         }
-        AndroidView(
-            factory = { ctx ->
-                PlayerView(ctx).apply {
-                    this.player = player
-                    useController = true
-                    keepScreenOn = true
-                    isFocusable = true
-                    layoutParams = ViewGroup.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
-                    )
-                }
-            },
-            modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f)
-                .background(Color.Black, RoundedCornerShape(12.dp)),
-            update = { it.player = player }
-        )
+        MobileVideoSurface(player, Modifier.fillMaxWidth().aspectRatio(16f / 9f)
+            .background(Color.Black, RoundedCornerShape(12.dp)))
         Row(horizontalArrangement = Arrangement.spacedBy(9.dp),
             verticalAlignment = Alignment.CenterVertically) {
             OutlinedButton(onClick = {
@@ -116,7 +130,7 @@ fun MobilePlayerPage(model: CinemaViewModel) {
             }) { Text("+10秒") }
         }
         Text(
-            "播放进度：" + (position / 1000L) + " 秒 · Media3 触控控制器",
+            "播放进度：" + (position / 1000L) + " 秒",
             color = Muted, fontSize = 13.sp
         )
         if (model.playerReturnPage == Page.DETAIL) {
@@ -142,4 +156,20 @@ fun MobilePlayerPage(model: CinemaViewModel) {
             }
         }
     }
+}
+
+@Composable
+private fun MobileVideoSurface(player: Player, modifier: Modifier = Modifier) {
+    AndroidView(
+        factory = { context -> PlayerView(context).apply {
+            this.player = player
+            useController = true
+            keepScreenOn = true
+            isFocusable = true
+            layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        } },
+        modifier = modifier.semantics { contentDescription = "视频画面" },
+        onRelease = { it.player = null },
+        update = { it.player = player }
+    )
 }

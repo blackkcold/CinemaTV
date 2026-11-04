@@ -19,7 +19,7 @@ jobs:
             api: 30
             size: 1080x1920
             density: 420
-            classes: dev.cinematv.MobileNavigationSmokeTest,dev.cinematv.TvLaunchSmokeTest
+            classes: dev.cinematv.MobileNavigationSmokeTest,dev.cinematv.TvLaunchSmokeTest,dev.cinematv.MobilePlaybackSmokeTest
           - name: tv1080
             api: 33
             size: 1920x1080
