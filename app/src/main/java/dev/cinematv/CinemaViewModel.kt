@@ -18,6 +18,7 @@ import dev.cinematv.ui.tv.design.GlassQuality
 import dev.cinematv.ui.shared.presentationKey
 import dev.cinematv.ui.shared.WorkNavigationProjection
 import dev.cinematv.playback.PlaybackSession
+import dev.cinematv.playback.PlaybackRecoveryPolicy
 import dev.cinematv.playback.PlaybackSessionGuard
 
 enum class Page { HOME, EXPLORE, MOVIES, SERIES, SEARCH, LIVE, LIBRARY, SETTINGS, DETAIL, PLAYER }
@@ -778,67 +779,50 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
         page = Page.PLAYER
     }
 
-    /**
-     * Fail over only to the exact same title and, when known, the same year.
-     * Preserve episode number and position; never switch across mismatched episodes.
-     * At most 2 alternative origins per playback session.
-     */
+    /** Refresh only a verified episode in its own source namespace. Other sources require a choice. */
     fun recoverPlayback(cause: String, lastPosition: Long, session: PlaybackSession? = playbackSession) {
         session ?: return
-        if (!isCurrentPlayback(session)) return
-        if (failoverBusy) return
+        if (!isCurrentPlayback(session) || failoverBusy) return
         val current = session.item
-        if (current == null || !playbackSessions.canRecover(session)) {
+        val choiceMessage = "无法确认同一集的备用链接。请选择“返回换源”，确认片源和剧集；仅续播所选片源的已存进度，无记录则从头播放。"
+        if (current == null) {
             failoverMessage = cause
             return
         }
+        if (!playbackSessions.tryRefresh(session)) {
+            failoverMessage = choiceMessage
+            return
+        }
         failoverBusy = true
-        failoverMessage = "播放失败，正在搜索同名备用片源..."
+        failoverMessage = "播放失败，正在验证当前片源的同一集链接..."
         playbackRecoveryJob = viewModelScope.launch {
             try {
-                val searchResults = repo.search(current.title)
+                val detailed = PlaybackRecoveryPolicy.refreshCurrent(session, playbackSessions) {
+                    repo.detail(it)
+                } ?: return@launch
                 ensureActive()
                 if (!isCurrentPlayback(session)) return@launch
-                val alternatives = searchResults.filter { candidate ->
-                    sameSourceCandidate(current, candidate) && candidate.source?.url?.let {
-                        playbackSessions.canTrySource(session, it)
-                    } == true
-                }.take(12)
-                for (candidate in alternatives) {
-                    ensureActive()
-                    if (!isCurrentPlayback(session)) return@launch
-                    val sourceUrl = candidate.source?.url ?: continue
-                    if (!playbackSessions.trySource(session, sourceUrl)) continue
-                    val detailed = try {
-                        repo.detail(candidate)
-                    } catch (cancelled: CancellationException) { throw cancelled }
-                    catch (_: Exception) { continue }
-                    ensureActive()
-                    if (!isCurrentPlayback(session)) return@launch
-                    val episode = session.episodeIndex
-                    val labelsMatch = current.episodeNames.getOrNull(episode)?.takeIf(String::isNotBlank)?.let { label ->
-                        detailed.episodeNames.getOrNull(episode)?.let { MediaIdentity.normalizedTitle(it) == MediaIdentity.normalizedTitle(label) }
-                    } ?: (detailed.episodes.size == current.episodes.size)
-                    val confirmedType = current.mediaTypeKnown && detailed.mediaTypeKnown && current.isTv == detailed.isTv
-                    val confirmedSeason = current.seasonNumber == detailed.seasonNumber
-                    val newUrl = detailed.episodes.getOrNull(episode) ?: continue
-                    if (!newUrl.startsWith("https://") && !newUrl.startsWith("http://")) continue
-                    if (!sameSourceCandidate(current, detailed) || !confirmedType || !confirmedSeason || !labelsMatch) continue
-                    if (newUrl == session.url) continue // A different provider returning the failed stream is not a recovery.
-                    val recoveredSession = playbackSessions.switchSource(session, detailed, newUrl) ?: return@launch
-                    // No suspension between the final session check and publishing the replacement player.
-                    selected = detailed
-                    playbackPosition = lastPosition.coerceAtLeast(0)
-                    playbackUrl = newUrl
-                    playbackSession = recoveredSession
-                    failoverMessage = "已切换备用片源：${detailed.source?.name ?: "未知"}"
-                    failoverBusy = false
+                val episode = session.episodeIndex
+                if (!PlaybackRecoveryPolicy.canRetainPosition(current, episode, detailed, episode)) {
+                    failoverMessage = choiceMessage
                     return@launch
                 }
-                throw IllegalStateException("未找到同作品、同集数的备用片源")
+                val newUrl = detailed.episodes[episode]
+                if (!SourceResolutionPolicy.usableUrl(newUrl) || newUrl == session.url) {
+                    failoverMessage = choiceMessage
+                    return@launch
+                }
+                val recoveredSession = playbackSessions.switchSource(session, detailed, newUrl) ?: return@launch
+                // No suspension between ownership validation and publishing a replacement player.
+                selected = detailed
+                playbackPosition = lastPosition.coerceAtLeast(0)
+                playbackUrl = newUrl
+                playbackSession = recoveredSession
+                failoverMessage = "已刷新当前片源的同一集链接"
+                failoverBusy = false
             } catch (cancelled: CancellationException) { throw cancelled }
-            catch (error: Exception) {
-                if (isCurrentPlayback(session)) failoverMessage = "无法自动换源：${error.message ?: cause}"
+            catch (_: Exception) {
+                if (isCurrentPlayback(session)) failoverMessage = choiceMessage
             } finally {
                 // A cancelled older job must never clear a newer recovery's loading state.
                 if (isCurrentPlayback(session)) failoverBusy = false
