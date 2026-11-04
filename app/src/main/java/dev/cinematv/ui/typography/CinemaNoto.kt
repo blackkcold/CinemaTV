@@ -59,7 +59,7 @@ internal object NotoFontCache {
                     .setTtcIndex(region.ttcIndex).setWeight(400).setItalic(false).build()
                 if (typeface == null) {
                     failures += region.name; FontFamily.SansSerif
-                } else FontFamily(typeface)
+                } else FontFamily(PreloadedNotoFont(typeface))
             } catch (_: Exception) {
                 failures += region.name; FontFamily.SansSerif
             }
