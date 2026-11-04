@@ -5,6 +5,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
@@ -23,9 +24,9 @@ import dev.cinematv.ui.tv.focus.*
 fun CatalogScreen(model: CinemaViewModel, series: Boolean) {
     val all = if (series) model.tvShows else model.featured
     val layout = LocalTvLayout.current
-    var category by remember { mutableStateOf<String?>(null) }
-    var year by remember { mutableStateOf<String?>(null) }
-    var rated by remember { mutableStateOf(false) }
+    var category by rememberSaveable { mutableStateOf<String?>(null) }
+    var year by rememberSaveable { mutableStateOf<String?>(null) }
+    var rated by rememberSaveable { mutableStateOf(false) }
     val filtered = remember(all, category, year, rated) { CatalogFilter(category, year, rated).apply(all) }
     val region = if (series) "series-grid" else "movie-grid"
     val saved = remember { model.focusCoordinator.scroll(model.page.name, region) }

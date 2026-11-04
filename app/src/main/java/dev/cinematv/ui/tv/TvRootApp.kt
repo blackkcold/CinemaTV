@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -21,6 +22,7 @@ import dev.cinematv.ui.tv.pages.*
 @Composable
 fun TvRootApp(model: CinemaViewModel) {
     CinemaTvTheme(model.reducedMotion, model.glassQuality) {
+        val savedPages = rememberSaveableStateHolder()
         val registry = remember { TvFocusRegistry() }
         val navigation = remember { FocusRequester() }
         val content = remember(model.page) { FocusRequester() }
@@ -35,19 +37,21 @@ fun TvRootApp(model: CinemaViewModel) {
                 if (model.page != Page.PLAYER) BackdropLayer(
                     if (model.page == Page.DETAIL) model.selected else model.focused ?: model.featured.firstOrNull()
                 ) { decodedArt = it }
-                key(model.page) {
+                savedPages.SaveableStateProvider(model.page.name) {
+                  key(model.page) {
                     when (model.page) {
                         Page.HOME -> HomeScreen(model)
                         Page.EXPLORE -> ExploreScreen(model)
                         Page.MOVIES -> CatalogScreen(model, false)
                         Page.SERIES -> CatalogScreen(model, true)
-                        Page.SEARCH -> SearchPage(model)
-                        Page.DETAIL -> DetailPage(model)
+                        Page.SEARCH -> SearchScreen(model)
+                        Page.DETAIL -> DetailScreen(model)
                         Page.PLAYER -> TvPlayerPage(model)
-                        Page.LIVE -> LivePage(model)
-                        Page.LIBRARY -> LibraryPage(model)
-                        Page.SETTINGS -> SettingsPage(model)
+                        Page.LIVE -> LiveScreen(model)
+                        Page.LIBRARY -> LibraryScreen(model)
+                        Page.SETTINGS -> SettingsScreen(model)
                     }
+                }
                 }
                 if (showNav) FloatingNavigation(model, { navigationHasFocus = it }, Modifier.align(Alignment.TopCenter).padding(top = layout.navigationTop))
                 if (model.message.isNotBlank() && model.page != Page.PLAYER) {
