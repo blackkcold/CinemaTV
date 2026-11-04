@@ -124,7 +124,8 @@ private fun discoveryCatalogControls(rule: ComposeContentTestRule, activity: Com
         for (title in listOf("Paging fixture series 0", "Paging fixture series 1")) {
             val card = rule.onNodeWithContentDescription(title).assertIsDisplayed().getUnclippedBoundsInRoot()
             assertTrue("Coverflow poster is vertically clipped: $card outside $rail", card.top >= rail.top && card.bottom <= rail.bottom)
-            assertTrue("Portrait was height-constrained before its translucent layer: $card", card.height.value >= card.width.value * 1.5f - 1.5f)
+            assertTrue("Portrait was height-constrained before its translucent layer: $card",
+                (card.bottom - card.top).value >= (card.right - card.left).value * 1.5f - 1.5f)
         }
         rule.onRoot().performKeyInput { pressKey(Key.DirectionDown) }
         rule.onNodeWithTag("catalog-panel-open").assertIsFocused().performKeyInput { pressKey(Key.DirectionCenter) }
