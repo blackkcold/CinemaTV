@@ -11,7 +11,8 @@ import org.junit.Test
 
 class LibrarySnapshotTest {
     private val item = MediaItem("42", "Series", isTv = true,
-        source = TvSource("source", "Source", "https://example.com"), lastEpisode = 1)
+        source = TvSource("source", "Source", "https://example.com"), lastEpisode = 1,
+        episodes = listOf("https://example.com/one", "https://example.com/two"))
     private fun progress(index: Int) = EpisodeProgress.record(MediaDomainMapper.episodeId(item, index),
         MediaDomainMapper.entryId(item), index, (index + 1L) * 1000, 10_000, 100)
 

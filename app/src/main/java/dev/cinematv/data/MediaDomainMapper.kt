@@ -9,7 +9,7 @@ import dev.cinematv.domain.WorkKind
 import java.security.MessageDigest
 
 /**
- * Local IDs deliberately do not use title similarity, year, artwork or stream URLs.
+ * Work IDs deliberately do not use title similarity, year, artwork or stream URLs.
  * Signed playback URLs can rotate. Two unrelated CMS sources can reuse the same vod ID.
  * Only an explicit trusted metadata ID can associate sources with a common work.
  */
@@ -45,8 +45,26 @@ object MediaDomainMapper {
     }
 
     fun seasonId(item: MediaItem): String = id("season", workId(item), item.seasonNumber?.toString() ?: "unknown")
-    fun episodeId(item: MediaItem, index: Int): String = id("episode", entryId(item),
-        item.seasonNumber?.toString() ?: "unknown", index.coerceAtLeast(0).toString())
+    /** Only unique, provider-supplied evidence is authoritative. Never normalize signed URLs. */
+    fun episodeIdentity(item: MediaItem, index: Int): String? {
+        if (index !in item.episodes.indices) return null
+        fun unique(values: List<String>): String? = values.getOrNull(index)?.trim()
+            ?.takeIf { value -> value.isNotBlank() && values.count { it.trim() == value } == 1 }
+        unique(item.episodeIds)?.let { return "provider-id:$it" }
+        unique(item.episodeNames)?.takeUnless(::isGeneratedEpisodeLabel)?.let { return "provider-name:$it" }
+        // Exact URL equality is useful evidence; removing arbitrary query parameters is not.
+        val url = item.episodes[index]
+        return url.takeIf { it.isNotBlank() && item.episodes.count { candidate -> candidate == it } == 1 }
+            ?.let { "exact-url:$it" }
+    }
+
+    private fun isGeneratedEpisodeLabel(value: String): Boolean =
+        value == "正片" || Regex("(?i)(第\\s*\\d+\\s*集|分段\\s*\\d+|episode\\s*\\d+|ep\\s*\\d+|\\d+)").matches(value)
+
+    fun episodeId(item: MediaItem, index: Int): String = episodeIdentity(item, index)?.let {
+        id("episode-v2", entryId(item), item.seasonNumber?.toString() ?: "unknown", it)
+    } ?: id("episode-unresolved", entryId(item), item.seasonNumber?.toString() ?: "unknown",
+        item.episodes.joinToString("") { "${it.length}:$it" }, index.coerceAtLeast(0).toString())
 
     fun map(item: MediaItem): MediaGraph {
         val work = Work(workId(item), item.title,

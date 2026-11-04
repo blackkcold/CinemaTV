@@ -9,7 +9,7 @@ import org.junit.Test
 class MediaDomainTest {
     private val source = TvSource("key", "Source", "https://one.example/api")
     private val item = MediaItem("42", "A title", source = source,
-        isTv = true, episodes = listOf("https://one.example/1?token=old", "https://one.example/2"))
+        isTv = true, episodeNames = listOf("Pilot", "Arrival"), episodes = listOf("https://one.example/1?token=old", "https://one.example/2"))
 
     @Test fun `source collisions and similar titles never merge local records`() {
         val other = item.copy(source = source.copy(url = "https://two.example/api"))

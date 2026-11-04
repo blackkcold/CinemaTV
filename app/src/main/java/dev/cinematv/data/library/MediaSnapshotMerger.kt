@@ -14,6 +14,7 @@ internal object MediaSnapshotMerger {
         fun text(current: String, previous: String) = if (hasCatalogUpdate) current else current.ifBlank { previous }
         fun values(current: List<String>, previous: List<String>) =
             if (hasCatalogUpdate) current else current.ifEmpty { previous }
+        val hasPlaylist = fresh.playlistKnown || fresh.episodes.isNotEmpty()
         return fresh.copy(
             title = text(fresh.title, old.title).ifBlank { fresh.id },
             poster = text(fresh.poster, old.poster), backdrop = text(fresh.backdrop, old.backdrop),
@@ -26,10 +27,15 @@ internal object MediaSnapshotMerger {
             catalogProvider = if (hasCatalogUpdate) fresh.catalogProvider else old.catalogProvider,
             catalogAttribution = if (hasCatalogUpdate) fresh.catalogAttribution else old.catalogAttribution,
             catalogLicenseExpiresAt = if (hasCatalogUpdate) fresh.catalogLicenseExpiresAt else old.catalogLicenseExpiresAt,
-            episodes = fresh.episodes.ifEmpty { old.episodes }, episodeNames = fresh.episodeNames.ifEmpty { old.episodeNames },
+            // Playlist and aligned identity arrays must travel atomically. Old names at new
+            // positions would silently assign a checkpoint to the wrong episode.
+            episodes = if (hasPlaylist) fresh.episodes else old.episodes,
+            playlistKnown = hasPlaylist || old.playlistKnown,
+            episodeNames = if (hasPlaylist) fresh.episodeNames else old.episodeNames,
+            episodeIds = if (hasPlaylist) fresh.episodeIds else old.episodeIds,
             aliases = values(fresh.aliases, old.aliases), actors = values(fresh.actors, old.actors),
             metadataIds = if (hasCatalogUpdate) fresh.metadataIds else old.metadataIds + fresh.metadataIds,
-            seasonNumber = fresh.seasonNumber ?: old.seasonNumber,
+            seasonNumber = if (hasPlaylist) fresh.seasonNumber else fresh.seasonNumber ?: old.seasonNumber,
             mediaTypeKnown = fresh.mediaTypeKnown || old.mediaTypeKnown,
             isTv = if (fresh.mediaTypeKnown) fresh.isTv else old.isTv,
             sourceCount = maxOf(old.sourceCount, fresh.sourceCount)
