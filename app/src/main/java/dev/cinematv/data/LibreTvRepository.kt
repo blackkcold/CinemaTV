@@ -124,6 +124,7 @@ class LibreTvRepository(context: Context) {
             val text = (if (status in 200..299) conn.inputStream else conn.errorStream)
                 ?.bufferedReader(Charsets.UTF_8)?.use { it.readText() } ?: ""
             if (status !in 200..299) {
+                if (status == 401) sessionCookie = null
                 val message = runCatching { JSONObject(text).optString("error") }.getOrDefault("")
                 throw IOException("HTTP $status: ${message.ifBlank { "服务暂不可用" }}")
             }

@@ -97,6 +97,15 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
 
     fun dismissMessage() { message = "" }
 
+    private fun connectionError(error: Throwable) {
+        message = ConnectionErrors.message(error)
+        if (ConnectionErrors.classify(error) == ConnectionFailure.AUTHENTICATION) {
+            authorized = false
+            passwordRequired = true
+            if (page != Page.PLAYER) page = Page.SETTINGS
+        }
+    }
+
     fun refreshConnection() {
         viewModelScope.launch {
             busy = true
@@ -108,7 +117,7 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
                     liveSources = status.liveSources
                     message = if (authorized) "" else "此服务器要求密码，请在设置中登录。"
                     if (authorized) loadHome()
-                }.onFailure { message = it.message ?: "服务器连接失败" }
+                }.onFailure { authorized = false; connectionError(it) }
             busy = false
         }
     }
@@ -139,7 +148,7 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
                 authorized = it
                 if (it) { message = "连接成功"; refreshConnection() }
                 else message = "密码错误"
-            }.onFailure { message = it.message ?: "登录失败" }
+            }.onFailure { connectionError(it) }
             busy = false
         }
     }
@@ -243,7 +252,7 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
                         }
                     }
                 }
-                .onFailure { message = "详情读取失败：${it.message}" }
+                .onFailure { connectionError(it) }
             busy = false
         }
     }
@@ -399,7 +408,7 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             busy = true
             runCatching { repo.channels(source) }.onSuccess { channels = it }
-                .onFailure { message = "直播订阅失败：${it.message}"; channels = emptyList() }
+                .onFailure { connectionError(it); channels = emptyList() }
             busy = false
         }
     }
