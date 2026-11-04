@@ -1,6 +1,8 @@
 package dev.cinematv.playback
 
 import android.content.Context
+import androidx.annotation.OptIn
+import dev.cinematv.BuildConfig
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.database.StandaloneDatabaseProvider
 import androidx.media3.datasource.DefaultHttpDataSource
@@ -38,7 +40,7 @@ object PlaybackFactory {
         if (!cacheVod) return ExoPlayer.Builder(context, renderers).build()
         val http = DefaultHttpDataSource.Factory()
             .setAllowCrossProtocolRedirects(true)
-            .setUserAgent("CinemaTV/0.1 (Android TV)")
+            .setUserAgent("CinemaTV/${BuildConfig.VERSION_NAME} (Android)")
         val source = CacheDataSource.Factory()
             .setCache(getCache(context))
             .setUpstreamDataSourceFactory(http)

@@ -29,8 +29,9 @@ fun TvRootApp(model: CinemaViewModel) {
         var navigationHasFocus by remember { mutableStateOf(false) }
         var decodedArt by remember { mutableStateOf<String?>(null) }
         val showNav = model.page !in listOf(Page.DETAIL, Page.PLAYER, Page.SETTINGS)
+        LaunchedEffect(showNav) { if (!showNav) navigationHasFocus = false }
         CompositionLocalProvider(LocalTvFocusRegistry provides registry, LocalNavigationFocus provides navigation,
-            LocalContentFocus provides content, LocalNavigationHasFocus provides navigationHasFocus,
+            LocalContentFocus provides content, LocalNavigationHasFocus provides (navigationHasFocus && showNav),
             LocalBackdropArt provides decodedArt) {
             val layout = LocalTvLayout.current
             if (model.page != Page.PLAYER) ArtworkPrefetch(model.featured + model.tvShows, model.focused)

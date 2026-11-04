@@ -47,6 +47,7 @@ import kotlinx.coroutines.isActive
 private enum class PlayerPanel { QUALITY, AUDIO, SUBTITLE, SPEED }
 private data class TrackChoice(val title: String, val group: Tracks.Group, val trackIndex: Int)
 
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 private fun trackChoices(player: Player, type: Int): List<TrackChoice> =
     player.currentTracks.groups.filter { it.type == type }.flatMap { group ->
         (0 until group.length).filter { group.isTrackSupported(it) }.map { index ->

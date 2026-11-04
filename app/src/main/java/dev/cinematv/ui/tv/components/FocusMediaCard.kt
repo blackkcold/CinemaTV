@@ -42,7 +42,8 @@ fun FocusMediaCard(
     modifier: Modifier = Modifier,
     portrait: Boolean = false,
     selected: Boolean = false,
-    continueWatching: Boolean = false
+    continueWatching: Boolean = false,
+    showCaption: Boolean = true
 ) {
     var focused by remember(item.presentationKey) { mutableStateOf(false) }
     var loading by remember(item.poster, item.backdrop) { mutableStateOf(false) }
@@ -110,9 +111,11 @@ fun FocusMediaCard(
             Box(Modifier.matchParentSize().border(if (focused) 2.dp else .5.dp,
                 if (focused) TvColors.Text else Color.White.copy(alpha = if (selected) .6f else .08f), shape))
         }
-        Text(item.title, color = TvColors.Text, fontSize = 15.sp, fontWeight = FontWeight.Medium,
+        if (showCaption) {
+          Text(item.title, color = TvColors.Text, fontSize = 15.sp, fontWeight = FontWeight.Medium,
             maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text(item.metadataLine().ifBlank { if (item.isTv) "剧集" else "电影" }, color = TvColors.Secondary,
             fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
     }
 }

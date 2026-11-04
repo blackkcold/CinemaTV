@@ -8,6 +8,7 @@ import android.view.KeyEvent
 import android.view.Window
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import dev.cinematv.data.LibraryStatus
@@ -103,7 +104,9 @@ class TvUiRegressionTest {
         screenshot("09-live")
         rule.onNodeWithContentDescription("打开片库").performClick()
         screenshot("10-library")
-        rule.onNodeWithContentDescription("打开设置").performClick()
+        rule.onNodeWithContentDescription("打开设置").performSemanticsAction(SemanticsActions.RequestFocus) { it() }
+        key(KeyEvent.KEYCODE_DPAD_CENTER)
+        rule.onNodeWithText("连接与账户").assertIsFocused()
         screenshot("11-settings")
         key(KeyEvent.KEYCODE_DPAD_DOWN)
         key(KeyEvent.KEYCODE_DPAD_DOWN)

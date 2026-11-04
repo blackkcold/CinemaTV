@@ -55,7 +55,7 @@ fun ExploreScreen(model: CinemaViewModel) {
                 val tilt by animateFloatAsState(if (effects.reducedMotion) 0f else when { index < active -> 12f; index > active -> -12f; else -> 0f }, tween(effects.focusMillis), label = "coverflow-tilt")
                 val scale by animateFloatAsState(if (center) 1f else .90f, tween(effects.focusMillis), label = "coverflow-scale")
                 val target = rememberFocusTarget(model, "coverflow", item.presentationKey)
-                FocusMediaCard(item, onFocus = { active = index; model.onMediaFocus(item, "coverflow") }, onClick = { model.open(item) }, portrait = true,
+                FocusMediaCard(item, onFocus = { active = index; model.onMediaFocus(item, "coverflow") }, onClick = { model.open(item) }, portrait = true, showCaption = false,
                     modifier = Modifier.width(cardWidth).focusRequester(target)
                         .then(if (index == active) Modifier.focusRequester(entry) else Modifier)
                         .focusProperties { up = nav }

@@ -9,6 +9,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -40,7 +41,9 @@ fun SearchScreen(model: CinemaViewModel) {
             Spacer(Modifier.height(18.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 TvInput(model.query, { model.query = it }, "输入片名或关键词",
-                    Modifier.weight(1f).height(52.dp).focusRequester(entry).focusRequester(input).focusProperties { up = navigation },
+                    Modifier.weight(1f).height(52.dp).focusRequester(entry).focusRequester(input)
+                        .onFocusChanged { if (it.hasFocus) model.focusCoordinator.remember(model.page.name, "search", "input") }
+                        .focusProperties { up = navigation },
                     onSubmit = submit)
                 GlassAction("搜索", Modifier.width(110.dp).height(52.dp), prominent = true, onClick = submit)
             }
