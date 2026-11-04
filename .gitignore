@@ -11,3 +11,4 @@ captures/
 .env
 node_modules/
 .DS_Store
+app/src/androidTest/assets/playback-fixture.mp4
