@@ -342,40 +342,131 @@ fun DetailPage(model: CinemaViewModel) {
 
 @Composable
 fun LivePage(model: CinemaViewModel) {
-    Column(Modifier.fillMaxSize().padding(top = 116.dp, start = margin, end = margin)) {
-        PageHeading("直播电视", "通过你的 LibreTV M3U 订阅加载频道")
+    val active = model.activeChannel
+    val now = System.currentTimeMillis()
+    val programs = model.epgPrograms.sortedBy { it.start }
+    val current = programs.firstOrNull { now in it.start until it.stop }
+    val next = programs.firstOrNull { it.start > now }
+    val listState = rememberLazyListState()
+
+    Column(Modifier.fillMaxSize().padding(top = 112.dp, start = margin, end = margin)) {
+        PageHeading("直播电视", "频道与 24 小时 XMLTV 节目导览")
         Spacer(Modifier.height(18.dp))
         if (model.liveSources.isEmpty()) {
-            EmptyMessage("尚未配置直播源，请进入设置添加 M3U 订阅", Modifier.fillMaxWidth().height(130.dp))
-        } else {
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                items(model.liveSources) { source ->
-                    GlassAction(source.name, Modifier.width(185.dp).height(46.dp),
-                        selected = model.activeLiveSource?.url == source.url) { model.loadChannels(source) }
+            EmptyMessage("尚未配置直播订阅。请在设置中添加 M3U / XMLTV。",
+                Modifier.fillMaxWidth().height(130.dp))
+            return@Column
+        }
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            items(model.liveSources, key = { it.url }) { source ->
+                GlassAction(source.name, Modifier.width(185.dp).height(46.dp),
+                    selected = model.activeLiveSource?.url == source.url) {
+                    model.loadChannels(source)
                 }
             }
         }
-        Spacer(Modifier.height(14.dp))
-        model.activeChannel?.let { channel ->
-            val now = System.currentTimeMillis()
-            val current = model.epgPrograms.firstOrNull { now in it.start until it.stop }
-            Text("当前频道：${channel.name}  ·  ${current?.title ?: "暂无节目单"}",
-                color = Accent, fontSize = 16.sp)
-        }
-        Spacer(Modifier.height(16.dp))
-        if (model.busy) CircularProgressIndicator(color = Accent)
-        else if (model.channels.isEmpty()) EmptyMessage("暂无频道", Modifier.fillMaxWidth().height(140.dp))
-        else LazyVerticalGrid(
-            columns = GridCells.Fixed(4), horizontalArrangement = Arrangement.spacedBy(15.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(bottom = 45.dp)
+        Spacer(Modifier.height(21.dp))
+        if (model.busy) {
+            CircularProgressIndicator(color = Accent)
+        } else if (model.channels.isEmpty()) {
+            EmptyMessage("直播订阅没有返回可用频道", Modifier.fillMaxWidth().height(145.dp))
+        } else Row(
+            Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(32.dp)
         ) {
-            items(model.channels, key = { it.id }) { channel ->
-                GlassAction(channel.name, Modifier.fillMaxWidth().height(62.dp),
-                    onFocus = { model.focusChannel(channel) }) { model.playChannel(channel) }
+            Column(Modifier.weight(.49f)) {
+                Text("频道列表 · ${model.channels.size}", color = Ivory, fontSize = 20.sp)
+                Spacer(Modifier.height(12.dp))
+                LazyColumn(
+                    state = listState,
+                    verticalArrangement = Arrangement.spacedBy(9.dp),
+                    contentPadding = PaddingValues(bottom = 52.dp)
+                ) {
+                    items(model.channels, key = { it.id }) { channel ->
+                        val focused = active?.id == channel.id
+                        Row(Modifier.fillMaxWidth().height(65.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            if (channel.logo.isNotBlank()) {
+                                AsyncImage(
+                                    model = channel.logo, contentDescription = null,
+                                    modifier = Modifier.width(64.dp).height(46.dp),
+                                    contentScale = ContentScale.Fit
+                                )
+                            }
+                            GlassAction(channel.name,
+                                Modifier.weight(1f).height(54.dp),
+                                selected = focused,
+                                onFocus = { model.focusChannel(channel) }
+                            ) { model.playChannel(channel) }
+                        }
+                    }
+                }
+            }
+            Column(
+                Modifier.weight(.51f).fillMaxHeight()
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(Color(0xBB22232B))
+                    .border(1.dp, Color.White.copy(alpha = .12f), RoundedCornerShape(24.dp))
+                    .padding(25.dp)
+            ) {
+                Text(active?.name ?: "节目单", color = Ivory, fontSize = 28.sp,
+                    fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    if (active == null) "使用遥控器选择左侧频道"
+                    else if (programs.isEmpty()) "当前频道暂无可用 XMLTV 节目单"
+                    else "当前节目与后续播出安排",
+                    color = Muted, fontSize = 15.sp
+                )
+                if (current != null) {
+                    Spacer(Modifier.height(18.dp))
+                    Text("正在播放", color = Accent, fontSize = 15.sp)
+                    Text(current.title, color = Ivory, fontSize = 22.sp,
+                        fontWeight = FontWeight.SemiBold, maxLines = 2)
+                    Spacer(Modifier.height(9.dp))
+                    Text("${epgTime(current.start)} — ${epgTime(current.stop)}",
+                        color = Muted, fontSize = 15.sp)
+                    Spacer(Modifier.height(10.dp))
+                    Box(Modifier.fillMaxWidth().height(5.dp)
+                        .background(Color.White.copy(alpha = .2f), RoundedCornerShape(3.dp))) {
+                        val progress = ((now - current.start).toFloat() /
+                            (current.stop - current.start).coerceAtLeast(1L)).coerceIn(0f, 1f)
+                        Box(Modifier.fillMaxWidth(progress).fillMaxHeight().background(Accent))
+                    }
+                }
+                if (next != null) {
+                    Spacer(Modifier.height(22.dp))
+                    Text("即将播出", color = Accent, fontSize = 15.sp)
+                    Spacer(Modifier.height(5.dp))
+                    Text("${epgTime(next.start)}  ${next.title}", color = Ivory,
+                        fontSize = 17.sp, maxLines = 2)
+                }
+                Spacer(Modifier.height(22.dp))
+                Text("后续节目", color = Ivory, fontSize = 19.sp)
+                Spacer(Modifier.height(9.dp))
+                val future = programs.filter { it.start > now }.take(36)
+                if (future.isEmpty()) {
+                    Text("暂无更多节目安排", color = Muted, fontSize = 15.sp)
+                } else LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(13.dp),
+                    contentPadding = PaddingValues(bottom = 25.dp)
+                ) {
+                    items(future, key = { "${it.start}:${it.title}" }) { program ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(14.dp),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            Text(epgTime(program.start), color = Accent, fontSize = 15.sp)
+                            Text(program.title, color = Ivory, fontSize = 16.sp, maxLines = 2)
+                        }
+                    }
+                }
             }
         }
     }
 }
+
+private fun epgTime(timeMs: Long): String =
+    java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+        .format(java.util.Date(timeMs))
 
 @Composable
 fun LibraryPage(model: CinemaViewModel) {
