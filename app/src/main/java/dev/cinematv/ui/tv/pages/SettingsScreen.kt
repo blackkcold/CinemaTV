@@ -8,7 +8,10 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.testTag
+import dev.cinematv.ui.recommendation.RecommendationDashboardDialog
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -29,6 +32,14 @@ fun SettingsScreen(model: CinemaViewModel) {
     val uriHandler = LocalUriHandler.current
     val layout = LocalTvLayout.current
     val entry = LocalContentFocus.current
+    var recommendationOpen by remember { mutableStateOf(false) }
+    var recommendationWasOpened by remember { mutableStateOf(false) }
+    val recommendationEntry = remember { FocusRequester() }
+    LaunchedEffect(recommendationOpen) {
+        if (!recommendationOpen && recommendationWasOpened) { withFrameNanos { }; runCatching { recommendationEntry.requestFocus() } }
+    }
+    if (recommendationOpen) RecommendationDashboardDialog(model.recommendationSnapshots, tv = true,
+        onDismiss = { recommendationOpen = false }, onOpenItem = { recommendationOpen = false; model.open(it) })
     var section by rememberSaveable { mutableIntStateOf(0) }
     RestorePageFocus(model)
     Column(Modifier.fillMaxSize().padding(horizontal = layout.gutter, vertical = 28.dp), verticalArrangement = Arrangement.spacedBy(22.dp)) {
@@ -108,6 +119,9 @@ fun SettingsScreen(model: CinemaViewModel) {
                             }
                             else -> {
                                 item { SettingTitle("CinemaTV", "版本 ${BuildConfig.VERSION_NAME}") }
+                                item { GlassAction("本地推荐看板", Modifier.testTag("recommendation-dashboard-open").focusRequester(recommendationEntry).width(180.dp).height(42.dp)) {
+                                    recommendationWasOpened = true; recommendationOpen = true
+                                } }
                                 item { Text("为大屏与故事而生。", color = TvColors.Text, fontSize = 22.sp) }
                                 if (model.metadataAddress.isNotBlank()) item { TmdbLogo() }
                                 item { GlassAction("TMDB 官网", Modifier.width(140.dp).height(36.dp)) { uriHandler.openUri("https://www.themoviedb.org") } }
