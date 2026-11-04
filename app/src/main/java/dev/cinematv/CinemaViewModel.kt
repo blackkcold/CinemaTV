@@ -397,17 +397,18 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
         homeJob = viewModelScope.launch {
             for (tv in listOf(false, true)) {
                 if (repo.hasMetadataCatalog) fetchBrowsePage(tv, false) { generation == browseGeneration }
-                if (!repo.hasMetadataCatalog || browseState(tv).catalog == null) {
-                    try {
-                        val fallback = repo.recommend(tv)
-                        ensureActive()
-                        if (generation != browseGeneration) return@launch
-                        if (tv) catalogSeries = fallback else catalogMovies = fallback
-                        val state = browseState(tv).copy(nextOffset = if (repo.hasMetadataCatalog) 0 else null,
-                            notice = "推荐预览 · 授权目录暂不可用，未获取完整目录")
-                        if (tv) seriesBrowse = state else movieBrowse = state
-                    } catch (cancelled: CancellationException) { throw cancelled }
-                    catch (_: Exception) { /* Local records remain available. */ }
+                ensureActive()
+                if (generation != browseGeneration) return@launch
+                if (!repo.hasMetadataCatalog) {
+                    val state = browseState(tv).copy(nextOffset = null,
+                        notice = "元数据目录未配置，当前使用本地记录；可搜索 LibreTV 获取更多内容。")
+                    if (tv) seriesBrowse = state else movieBrowse = state
+                } else if (browseState(tv).catalog == null) {
+                    // Keep the catalog's error/license notice and retry policy. The
+                    // local ranker supplies saved records without another network source.
+                    val state = browseState(tv).copy(notice = browseState(tv).notice +
+                        " 当前使用本地记录；可搜索 LibreTV 获取更多内容。")
+                    if (tv) seriesBrowse = state else movieBrowse = state
                 }
                 rebuildRecommendations()
             }

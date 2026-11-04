@@ -25,8 +25,9 @@ class MobilePlaybackSmokeTest {
         rule.activity.getSharedPreferences("cinema_settings", 0).edit().clear().commit()
     }
     @Test fun playbackSurvivesPortraitLandscapeAndReturnsWithProgress() {
-        server = UiFixtureServer(InstrumentationRegistry.getInstrumentation().context)
+        server = UiFixtureServer(InstrumentationRegistry.getInstrumentation().context).apply { homeCatalog = true }
         rule.runOnIdle {
+            model.repo.configureMetadata(server.base, "offline-fixture-token")
             model.serverAddress = server.base
             model.connect()
         }
