@@ -42,7 +42,9 @@ jobs:
   instrumented:
     name: UI / ${{ matrix.name }}
     needs: select-devices
-    runs-on: ubuntu-latest
+    # Keep the emulator off the moving ubuntu-latest OS release; Ubuntu 26.04
+    # images changed between passing and failing 4K runs (cause unconfirmed).
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     strategy:
       fail-fast: false
@@ -61,6 +63,9 @@ jobs:
           SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -1)
           yes | "$SDKMANAGER" --licenses >/dev/null || true
           "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0"
+          # Ubuntu 24.04 runners do not guarantee the synthetic media tools.
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y ffmpeg
           bash scripts/generate-test-media.sh
           python -m pip install 'Pillow==11.3.0'
       - name: Compile instrumentation before allocating emulator memory
@@ -88,7 +93,9 @@ jobs:
           # emulator connection during screenshot readback in this suite.
           emulator-build: '15004761'
           disable-animations: false
-          emulator-options: '-no-window -no-audio -gpu swiftshader -feature -Vulkan -no-snapshot -no-boot-anim -memory 2048'
+          # Lavapipe passed the isolated API 33 public phone run (41859160272);
+          # this motivates the renderer choice, but full matrix acceptance is pending.
+          emulator-options: '-no-window -no-audio -gpu lavapipe -feature -Vulkan -no-snapshot -no-boot-anim -memory 2048'
           script: bash scripts/run-device-qa.sh '${{ matrix.size }}' '${{ matrix.density }}' '${{ matrix.classes }}'
 
       - uses: actions/upload-artifact@v4

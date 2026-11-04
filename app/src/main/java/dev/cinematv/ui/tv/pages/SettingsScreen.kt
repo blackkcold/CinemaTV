@@ -1,5 +1,6 @@
 package dev.cinematv.ui.tv.pages
 
+import dev.cinematv.ui.icons.CinemaSymbol
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -34,7 +35,7 @@ fun SettingsScreen(model: CinemaViewModel) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("CinemaTV 设置", color = TvColors.Text, fontSize = 30.sp, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.weight(1f))
-            GlassAction("← 返回首页", Modifier.width(125.dp).height(38.dp)) { model.navigate(Page.HOME) }
+            GlassAction("← 返回首页", Modifier.width(125.dp).height(38.dp), icon = CinemaSymbol.Back) { model.navigate(Page.HOME) }
         }
         Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(25.dp)) {
             Column(Modifier.weight(.24f), verticalArrangement = Arrangement.spacedBy(12.dp)) {

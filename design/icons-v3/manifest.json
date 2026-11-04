@@ -1,0 +1,158 @@
+{
+  "version": "3-approved",
+  "status": "Approved visual direction; integration not included",
+  "approved_at": "2026-11-04",
+  "viewBox": [
+    0,
+    0,
+    48,
+    48
+  ],
+  "icons": [
+    {
+      "name": "home",
+      "suggested_accessibility_label_zh": "首页",
+      "auto_mirror_rtl": false,
+      "default_svg": "svg/compact/default/home.svg",
+      "selected_svg": "svg/compact/selected/home.svg",
+      "monochrome_svg": "svg/monochrome/home.svg"
+    },
+    {
+      "name": "search",
+      "suggested_accessibility_label_zh": "搜索",
+      "auto_mirror_rtl": false,
+      "default_svg": "svg/compact/default/search.svg",
+      "selected_svg": "svg/compact/selected/search.svg",
+      "monochrome_svg": "svg/monochrome/search.svg"
+    },
+    {
+      "name": "play",
+      "suggested_accessibility_label_zh": "播放",
+      "auto_mirror_rtl": false,
+      "default_svg": "svg/compact/default/play.svg",
+      "selected_svg": "svg/compact/selected/play.svg",
+      "monochrome_svg": "svg/monochrome/play.svg"
+    },
+    {
+      "name": "pause",
+      "suggested_accessibility_label_zh": "暂停",
+      "auto_mirror_rtl": false,
+      "default_svg": "svg/compact/default/pause.svg",
+      "selected_svg": "svg/compact/selected/pause.svg",
+      "monochrome_svg": "svg/monochrome/pause.svg"
+    },
+    {
+      "name": "library",
+      "suggested_accessibility_label_zh": "片库",
+      "auto_mirror_rtl": false,
+      "default_svg": "svg/compact/default/library.svg",
+      "selected_svg": "svg/compact/selected/library.svg",
+      "monochrome_svg": "svg/monochrome/library.svg"
+    },
+    {
+      "name": "bookmark",
+      "suggested_accessibility_label_zh": "收藏",
+      "auto_mirror_rtl": false,
+      "default_svg": "svg/compact/default/bookmark.svg",
+      "selected_svg": "svg/compact/selected/bookmark.svg",
+      "monochrome_svg": "svg/monochrome/bookmark.svg"
+    },
+    {
+      "name": "back",
+      "suggested_accessibility_label_zh": "返回",
+      "auto_mirror_rtl": true,
+      "default_svg": "svg/compact/default/back.svg",
+      "selected_svg": "svg/compact/selected/back.svg",
+      "monochrome_svg": "svg/monochrome/back.svg"
+    },
+    {
+      "name": "more",
+      "suggested_accessibility_label_zh": "更多",
+      "auto_mirror_rtl": false,
+      "default_svg": "svg/compact/default/more.svg",
+      "selected_svg": "svg/compact/selected/more.svg",
+      "monochrome_svg": "svg/monochrome/more.svg"
+    },
+    {
+      "name": "info",
+      "suggested_accessibility_label_zh": "信息",
+      "auto_mirror_rtl": false,
+      "default_svg": "svg/compact/default/info.svg",
+      "selected_svg": "svg/compact/selected/info.svg",
+      "monochrome_svg": "svg/monochrome/info.svg"
+    },
+    {
+      "name": "settings",
+      "suggested_accessibility_label_zh": "设置",
+      "auto_mirror_rtl": false,
+      "default_svg": "svg/compact/default/settings.svg",
+      "selected_svg": "svg/compact/selected/settings.svg",
+      "monochrome_svg": "svg/monochrome/settings.svg"
+    }
+  ],
+  "tokens": {
+    "default_front": [
+      {
+        "offset": 0,
+        "color": "#FFFFFF",
+        "opacity": 0.98
+      },
+      {
+        "offset": 0.5,
+        "color": "#E2EEF6",
+        "opacity": 0.91
+      },
+      {
+        "offset": 1,
+        "color": "#BACEDE",
+        "opacity": 0.85
+      }
+    ],
+    "selected_front": [
+      {
+        "offset": 0,
+        "color": "#A5DFFF"
+      },
+      {
+        "offset": 0.55,
+        "color": "#69B9FB"
+      },
+      {
+        "offset": 1,
+        "color": "#3D87DE"
+      }
+    ],
+    "rear": [
+      {
+        "offset": 0,
+        "color": "#D0ECFF",
+        "opacity": 0.55
+      },
+      {
+        "offset": 1,
+        "color": "#5B799A",
+        "opacity": 0.32
+      }
+    ],
+    "light_direction": "top to bottom",
+    "compact_stroke_width": 0,
+    "standard_stroke_width": 0.4,
+    "standard_shadow": {
+      "dx": 0,
+      "dy": 1.2,
+      "stdDeviation": 1,
+      "color": "#030C16",
+      "opacity": 0.35
+    }
+  },
+  "qa": {
+    "native_preview_sizes_px": [
+      24,
+      32,
+      48
+    ],
+    "compact_24_32_clip_check": "All 20 default samples had transparent outermost pixel rows and columns",
+    "selection_semantics": "Blue means selected; D-pad focus belongs to the control, not to this icon asset"
+  },
+  "source_geometry_note": "source-paths.json stores SVG shape fragments. Library icon aperture and layer styling are in the complete SVG assets; do not treat shape fragments alone as rendered output."
+}

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Documented Media3 drawable overrides keep its controller logic, labels and targets.
+         https://developer.android.com/reference/androidx/media3/ui/PlayerControlView -->
+    <item name="exo_styled_controls_play" type="drawable">@drawable/cinema_v3_play_default</item>
+    <item name="exo_styled_controls_pause" type="drawable">@drawable/cinema_v3_pause_default</item>
+</resources>

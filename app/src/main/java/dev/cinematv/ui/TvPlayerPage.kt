@@ -1,5 +1,6 @@
 package dev.cinematv.ui
 
+import dev.cinematv.ui.icons.CinemaSymbol
 import android.view.ViewGroup
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -236,7 +237,7 @@ fun TvPlayerPage(model: CinemaViewModel) {
                     .padding(start = 42.dp, end = 42.dp, top = 27.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                GlassAction("← 返回", Modifier.width(115.dp).height(48.dp), onFocus = { interaction++ }) {
+                GlassAction("← 返回", Modifier.width(115.dp).height(48.dp), icon = CinemaSymbol.Back, onFocus = { interaction++ }) {
                     model.back()
                 }
                 Spacer(Modifier.width(24.dp))
@@ -269,7 +270,7 @@ fun TvPlayerPage(model: CinemaViewModel) {
                     Row(horizontalArrangement = Arrangement.spacedBy(9.dp), verticalAlignment = Alignment.CenterVertically) {
                         GlassAction("−10s", Modifier.width(62.dp).height(41.dp), onFocus = { interaction++ }) { seek(-10000) }
                         GlassAction(if (isPlaying) "暂停" else "播放", Modifier.focusRequester(playFocus).width(80.dp).height(41.dp),
-                            prominent = true, onFocus = { interaction++ }) {
+                            prominent = true, icon = if (isPlaying) CinemaSymbol.Pause else CinemaSymbol.Play, onFocus = { interaction++ }) {
                             if (player.isPlaying) player.pause() else player.play()
                             interaction++
                         }
@@ -311,7 +312,7 @@ fun TvPlayerPage(model: CinemaViewModel) {
                     PlayerPanel.SPEED -> "播放速度"
                 }, color = Ivory, fontSize = 23.sp)
                 GlassAction("← 返回播放",
-                    Modifier.focusRequester(panelFocus).focusProperties { up = FocusRequester.Cancel }.fillMaxWidth().height(45.dp)) {
+                    Modifier.focusRequester(panelFocus).focusProperties { up = FocusRequester.Cancel }.fillMaxWidth().height(45.dp), icon = CinemaSymbol.Back) {
                     panel = null; interaction++
                 }
                 if (active == PlayerPanel.SPEED) {

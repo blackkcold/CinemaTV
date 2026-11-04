@@ -1,5 +1,6 @@
 package dev.cinematv.ui.tv.pages
 
+import dev.cinematv.ui.icons.CinemaSymbol
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -44,7 +45,7 @@ fun DetailScreen(model: CinemaViewModel) {
         item(key = "hero") {
             Column(Modifier.fillMaxWidth().padding(start = layout.gutter, end = layout.gutter, top = 28.dp),
                 verticalArrangement = Arrangement.spacedBy(15.dp)) {
-                GlassAction("← 返回", Modifier.width(96.dp).height(36.dp)) { model.back() }
+                GlassAction("← 返回", Modifier.width(96.dp).height(36.dp), icon = CinemaSymbol.Back) { model.back() }
                 Spacer(Modifier.height((layout.height * .07f).coerceAtLeast(15.dp)))
                 Text(item.title, color = TvColors.Text, fontSize = 44.sp, lineHeight = 50.sp,
                     fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth(.76f))
@@ -56,12 +57,12 @@ fun DetailScreen(model: CinemaViewModel) {
                     Text(model.selectedRecommendationReason, color = TvColors.Accent, fontSize = 12.sp)
                 Row(Modifier.padding(vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     GlassAction(if (item.positionMs > 0) "▶ 继续播放" else "▶ 立即播放",
-                        Modifier.focusRequester(entry).focusRequester(primary).width(150.dp).height(45.dp), prominent = true,
+                        Modifier.focusRequester(entry).focusRequester(primary).width(150.dp).height(45.dp), prominent = true, icon = CinemaSymbol.Play,
                         onFocus = { model.focusCoordinator.remember(model.focusRoute, "actions", "play") }) {
                         model.playEpisode(item.lastEpisode.coerceIn(0, (item.episodes.size - 1).coerceAtLeast(0)))
                     }
                     GlassAction(if (model.repo.isFavorite(item)) "已收藏 ✓" else "＋ 收藏",
-                        Modifier.width(115.dp).height(45.dp)) { model.toggleFavorite() }
+                        Modifier.width(115.dp).height(45.dp), icon = CinemaSymbol.Bookmark, iconSelected = model.repo.isFavorite(item)) { model.toggleFavorite() }
                     GlassAction("更换片源", Modifier.width(122.dp).height(45.dp)) { model.findAlternatives() }
                     GlassAction("片库状态", Modifier.focusRequester(shelf).width(122.dp).height(45.dp),
                         onFocus = { model.focusCoordinator.remember(model.focusRoute, "actions", "shelf") }) { pickerWasOpened = true; picker = true }

@@ -64,6 +64,9 @@ if name == "timeout":
         args[args.index("12m")] = "0.1s"
     os.execv(os.environ["REAL_TIMEOUT"], ["timeout", *args])
 if name == "adb":
+    if args == ["get-state"]:
+        print("device")
+        sys.exit(int(os.environ["MOCK_DIAGNOSTIC_STATUS"]))
     if args[:3] == ["shell", "wm", os.environ.get("MOCK_SETUP_COMMAND", "size")]:
         sys.exit(int(os.environ["MOCK_SETUP_STATUS"]))
     if args[:2] == ["shell", "find"] and os.environ.get("MOCK_DEVICE_EVIDENCE") == "1":
@@ -99,6 +102,9 @@ if name == "gradle":
 if name in ("free", "sudo"):
     print("host diagnostic fixture")
     sys.exit(int(os.environ["MOCK_DIAGNOSTIC_STATUS"]))
+if name == "ps":
+    print("3100 1 Sl qemu-system-x86")
+    print("3224 1 Sl adb")
 '''
 
 
@@ -113,7 +119,7 @@ class DeviceRunnerTest(unittest.TestCase):
             scripts = root / "scripts"
             scripts.mkdir()
             shutil.copy(SCRIPTS / "run-device-qa.sh", scripts)
-            for name in ("adb", "gradle", "timeout", "free", "sudo"):
+            for name in ("adb", "gradle", "timeout", "free", "sudo", "ps"):
                 path = binaries / name
                 path.write_text(f"#!{sys.executable}\n" + STUB)
                 path.chmod(0o755)
@@ -138,7 +144,7 @@ class DeviceRunnerTest(unittest.TestCase):
             self.files = {str(path.relative_to(root)): path.read_text()
                           for path in root.rglob("*") if path.is_file() and "bin" not in path.parts}
             self.calls = {name: [json.loads(line) for line in self.files.get(name + "-calls.jsonl", "").splitlines()]
-                          for name in ("adb", "gradle", "timeout", "free", "sudo")}
+                          for name in ("adb", "gradle", "timeout", "free", "sudo", "ps")}
             stages = self.files["qa/stages.tsv"]
             return result.returncode, stages, "qa/device.log" in self.files, bool(self.calls["gradle"])
 
@@ -228,7 +234,18 @@ class DeviceRunnerTest(unittest.TestCase):
         self.assertTrue(any(args[:4] == ["--signal=TERM", "--kill-after=5s", "18m", "python3"] for args in calls))
         for args in calls:
             if "adb" in args and "logcat" not in args and "pull" not in args:
-                self.assertEqual(args[:4], ["--signal=TERM", "--kill-after=5s", "20s", "adb"])
+                budget = "5s" if "get-state" in args else "20s"
+                self.assertEqual(args[:4], ["--signal=TERM", "--kill-after=5s", budget, "adb"])
+
+    def test_exit_metadata_has_no_process_arguments_or_environments(self):
+        code, _, _, _ = self.run_harness(gradle=7)
+        self.assertEqual(code, 7)
+        self.assertEqual(self.calls["ps"], [["-eo", "pid=,ppid=,stat=,comm="]])
+        metadata = self.files["qa/emulator-state.txt"]
+        self.assertIn("harness_exit_status=7", metadata)
+        self.assertIn("adb_state=device", metadata)
+        self.assertIn("3100 1 Sl qemu-system-x86", metadata)
+        self.assertNotIn("3224", metadata)
 
     def test_exported_evidence_is_copied_before_validation(self):
         code, stages, _, _ = self.run_harness(tv=True, exported=True)

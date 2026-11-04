@@ -67,8 +67,16 @@ class TvUiRegressionTest {
             if (!art.isNullOrBlank()) rule.waitUntil(8000) { rule.activity.decodedScene == art }
           }
         } finally {
+          android.util.Log.i("CinemaTVQa", "capture-begin=$name")
           val bitmap = rule.onRoot().captureToImage().asAndroidBitmap()
-          File(directory, "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+          try {
+            android.util.Log.i("CinemaTVQa", "readback-complete=$name width=${bitmap.width} height=${bitmap.height} bytes=${bitmap.allocationByteCount}")
+            val compressed = File(directory, "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            android.util.Log.i("CinemaTVQa", "PNG-complete=$name compressed=$compressed")
+          } finally {
+            // A 4K capture owns a large native pixel buffer; release after export.
+            bitmap.recycle()
+          }
         }
     }
     @Before fun connectFixture() {
@@ -188,12 +196,18 @@ class TvUiRegressionTest {
         val metrics = rule.activity.resources.displayMetrics
         // Resource display metrics can exclude the phone host's hidden navigation
         // inset. Record the actual full-screen Compose raster that was captured.
-        val viewport = rule.onRoot().captureToImage()
-        File(directory, "viewport.json").writeText(JSONObject()
-            .put("widthPx", viewport.width).put("heightPx", viewport.height)
-            .put("resourceWidthPx", metrics.widthPixels).put("resourceHeightPx", metrics.heightPixels)
-            .put("densityDpi", metrics.densityDpi).put("fixture", "Original vector artwork and synthetic H264/AAC")
-            .put("scope", "TV Compose UI on Android emulator; physical TV and decoder certification excluded").toString(2))
+        android.util.Log.i("CinemaTVQa", "capture-begin=viewport")
+        val viewport = rule.onRoot().captureToImage().asAndroidBitmap()
+        try {
+            android.util.Log.i("CinemaTVQa", "readback-complete=viewport width=${viewport.width} height=${viewport.height} bytes=${viewport.allocationByteCount}")
+            File(directory, "viewport.json").writeText(JSONObject()
+                .put("widthPx", viewport.width).put("heightPx", viewport.height)
+                .put("resourceWidthPx", metrics.widthPixels).put("resourceHeightPx", metrics.heightPixels)
+                .put("densityDpi", metrics.densityDpi).put("fixture", "Original vector artwork and synthetic H264/AAC")
+                .put("scope", "TV Compose UI on Android emulator; physical TV and decoder certification excluded").toString(2))
+        } finally {
+            viewport.recycle()
+        }
     }
     private fun recordFrameMetrics() {
         android.util.Log.i("CinemaTVQa", "frame sample begin")

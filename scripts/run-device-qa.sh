@@ -32,6 +32,15 @@ finish() {
     wait "$QA_LOG_PID" 2>/dev/null
   fi
   timeout --kill-after=5s 5s free -m > qa/host-memory-after.txt || true
+  # Only bounded status metadata, never process arguments, environments or dumps.
+  # This runs before emulator-runner tears the emulator down on a normal finish.
+  {
+    printf 'harness_exit_status=%s\n' "$status"
+    printf 'adb_state='
+    timeout --signal=TERM --kill-after=5s 5s adb get-state
+    printf '\nemulator_processes (pid ppid state name):\n'
+    timeout --kill-after=5s 5s ps -eo pid=,ppid=,stat=,comm= | awk '$4 ~ /^(emulator|qemu-system)/'
+  } > qa/emulator-state.txt 2>&1
   if [ "$status" -ne 0 ]; then
     timeout --kill-after=5s 10s sudo -n dmesg -T | tail -n 200 > qa/host-kernel.log || true
     # UTP may not export device files when instrumentation stalls or is cancelled.

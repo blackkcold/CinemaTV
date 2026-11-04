@@ -36,6 +36,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import dev.cinematv.data.MediaItem
+import dev.cinematv.ui.icons.CinemaIcon
+import dev.cinematv.ui.icons.CinemaSymbol
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.text
+import androidx.compose.ui.text.AnnotatedString
 
 val Ink = Color(0xFF090A0D)
 val Glass = Color(0xB5202229)
@@ -51,6 +56,8 @@ fun GlassAction(
     selected: Boolean = false,
     prominent: Boolean = false,
     onFocus: () -> Unit = {},
+    icon: CinemaSymbol? = null,
+    iconSelected: Boolean = selected,
     onClick: () -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
@@ -85,11 +92,17 @@ fun GlassAction(
         contentAlignment = Alignment.Center
     ) {
         GlassSheen(active = focused || selected, modifier = Modifier.matchParentSize())
-        Text(
-            label, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
-            color = if (focused || prominent) Ink else Ivory,
-            maxLines = 1
-        )
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            if (icon != null) CinemaIcon(icon, Modifier.size(20.dp), selected = iconSelected,
+                onLightSurface = focused || prominent)
+            if (label.isNotEmpty()) Text(
+                if (icon != null) label.removePrefix("← ").removePrefix("▶ ").removePrefix("＋ ") else label,
+                modifier = Modifier.clearAndSetSemantics { text = AnnotatedString(label) },
+                fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                color = if (focused || prominent) Ink else Ivory,
+                maxLines = 1
+            )
+        }
     }
 }
 

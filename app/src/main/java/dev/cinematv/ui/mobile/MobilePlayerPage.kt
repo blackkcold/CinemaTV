@@ -23,6 +23,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.ui.PlayerView
+import dev.cinematv.ui.icons.CinemaSymbol
 import dev.cinematv.CinemaViewModel
 import dev.cinematv.Page
 import dev.cinematv.playback.PlaybackFactory
@@ -87,7 +88,7 @@ fun MobilePlayerPage(model: CinemaViewModel) {
             Row(Modifier.align(Alignment.TopStart).fillMaxWidth()
                 .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = .7f), Color.Transparent)))
                 .padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = { model.back() }) { Text("← 返回", color = Ivory) }
+                TextButton(onClick = { model.back() }) { MobileIconLabel(CinemaSymbol.Back, "← 返回") }
                 Text(model.playbackTitle, color = Ivory, fontSize = 15.sp, maxLines = 1, modifier = Modifier.weight(1f))
                 if (model.playerReturnPage == Page.DETAIL) TextButton(onClick = { model.back() }) { Text("选集", color = Ivory) }
             }
@@ -110,7 +111,7 @@ fun MobilePlayerPage(model: CinemaViewModel) {
             Modifier.fillMaxWidth().padding(top = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            TextButton(onClick = { model.back() }) { Text("← 返回") }
+            TextButton(onClick = { model.back() }) { MobileIconLabel(CinemaSymbol.Back, "← 返回") }
             Text(model.playbackTitle, color = Ivory, fontSize = 18.sp,
                 modifier = Modifier.weight(1f), maxLines = 2)
         }
@@ -123,7 +124,7 @@ fun MobilePlayerPage(model: CinemaViewModel) {
             }) { Text("−10秒") }
             Button(onClick = {
                 if (player.isPlaying) player.pause() else player.play()
-            }) { Text(if (playing) "暂停" else "播放") }
+            }) { MobileIconLabel(if (playing) CinemaSymbol.Pause else CinemaSymbol.Play, if (playing) "暂停" else "播放") }
             OutlinedButton(onClick = {
                 if (player.isCurrentMediaItemSeekable) player.seekTo(player.currentPosition + 10000L)
             }) { Text("+10秒") }

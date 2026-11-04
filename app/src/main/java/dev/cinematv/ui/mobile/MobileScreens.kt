@@ -14,12 +14,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Movie
-import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.LiveTv
-import androidx.compose.material.icons.outlined.VideoLibrary
-import androidx.compose.material.icons.outlined.Settings
 import dev.cinematv.ui.tv.design.GlassQuality
 import dev.cinematv.ui.tv.design.TvEffects
 import dev.cinematv.ui.tv.design.LocalTvEffects
@@ -41,6 +37,8 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.ImeAction
 import coil3.compose.AsyncImage
+import dev.cinematv.ui.icons.CinemaIcon
+import dev.cinematv.ui.icons.CinemaSymbol
 import dev.cinematv.CinemaViewModel
 import dev.cinematv.Page
 import dev.cinematv.data.LibraryStatus
@@ -75,7 +73,7 @@ fun MobileRootApp(model: CinemaViewModel) {
                 ) {
                     Text("CinemaTV", fontSize = 19.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                     IconButton(onClick = { model.navigate(Page.SETTINGS) }, modifier = Modifier.semantics { contentDescription = "打开设置" }) {
-                        Icon(Icons.Outlined.Settings, contentDescription = null)
+                        CinemaIcon(CinemaSymbol.Settings, selected = page == Page.SETTINGS)
                     }
                 }
             },
@@ -83,17 +81,27 @@ fun MobileRootApp(model: CinemaViewModel) {
                 if (page != Page.DETAIL && page != Page.PLAYER) {
                     NavigationBar(containerColor = surface) {
                         listOf(
-                            Triple("精选", Page.HOME, Icons.Outlined.Home),
-                            Triple("浏览", Page.MOVIES, Icons.Outlined.Movie),
-                            Triple("搜索", Page.SEARCH, Icons.Outlined.Search),
-                            Triple("直播", Page.LIVE, Icons.Outlined.LiveTv),
-                            Triple("片库", Page.LIBRARY, Icons.Outlined.VideoLibrary)
-                        ).forEach { (label, destination, symbol) ->
+                            "精选" to Page.HOME,
+                            "浏览" to Page.MOVIES,
+                            "搜索" to Page.SEARCH,
+                            "直播" to Page.LIVE,
+                            "片库" to Page.LIBRARY
+                        ).forEach { (label, destination) ->
                             NavigationBarItem(
                                 modifier = Modifier.semantics { contentDescription = "打开" + label },
                                 selected = page == destination || (destination == Page.MOVIES && page in listOf(Page.SERIES, Page.EXPLORE)),
                                 onClick = { model.navigate(destination) },
-                                icon = { Icon(symbol, contentDescription = null, modifier = Modifier.size(22.dp)) },
+                                icon = {
+                                    val approved = when (destination) {
+                                        Page.HOME -> CinemaSymbol.Home
+                                        Page.SEARCH -> CinemaSymbol.Search
+                                        Page.LIBRARY -> CinemaSymbol.Library
+                                        else -> null
+                                    }
+                                    if (approved != null) CinemaIcon(approved, Modifier.size(24.dp), selected = page == destination)
+                                    else Icon(if (destination == Page.LIVE) Icons.Outlined.LiveTv else Icons.Outlined.Movie,
+                                        contentDescription = null, modifier = Modifier.size(22.dp))
+                                },
                                 label = { Text(label, fontSize = 10.sp, maxLines = 1) },
                                 alwaysShowLabel = true
                             )
@@ -345,7 +353,7 @@ private fun MobileDetail(model: CinemaViewModel) {
             TextButton(
                 onClick = { model.back() },
                 modifier = Modifier.align(Alignment.TopStart).padding(8.dp)
-            ) { Text("← 返回") }
+            ) { MobileIconLabel(CinemaSymbol.Back, "← 返回") }
         }
         Column(Modifier.padding(horizontal = 20.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -359,8 +367,8 @@ private fun MobileDetail(model: CinemaViewModel) {
             Row(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
                 Button(onClick = {
                     model.playEpisode(item.lastEpisode.coerceIn(0, (item.episodes.size - 1).coerceAtLeast(0)))
-                }) { Text("播放 / 续播") }
-                OutlinedButton(onClick = { model.toggleFavorite() }) { Text(if (model.repo.isFavorite(item)) "已收藏" else "收藏") }
+                }) { MobileIconLabel(CinemaSymbol.Play, "播放 / 续播") }
+                OutlinedButton(onClick = { model.toggleFavorite() }) { MobileIconLabel(CinemaSymbol.Bookmark, if (model.repo.isFavorite(item)) "已收藏" else "收藏", selected = model.repo.isFavorite(item)) }
             }
             OutlinedButton(onClick = { showAlternates = !showAlternates; model.findAlternatives() }) {
                 Text("选择片源")
