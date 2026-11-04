@@ -2,7 +2,7 @@
 
 **CinemaTV** is an open-source, native Android TV / Google TV video browsing and playback client for a **self-hosted LibreTV** instance.
 
-**Release status: v0.1.0 Preview (debug-signed)**. This is an installable technical preview, not a certified stable product or finished visual replica.
+**Release status: v0.1.0 Preview (debug-signed)**. Main branch has additional unshipped development commits; GitHub Actions builds are **not** hardware-certified. Stable release is blocked by [Release Gate #1](https://github.com/blackkcold/CinemaTV/issues/1).
 
 [Download preview APK from Releases](https://github.com/blackkcold/CinemaTV/releases/tag/v0.1.0-preview) · [CI builds](https://github.com/blackkcold/CinemaTV/actions/workflows/android.yml) · [中文安装与设备测试指南](docs/INSTALL.md) · [Release readiness tracker](https://github.com/blackkcold/CinemaTV/issues/1)
 
@@ -10,11 +10,11 @@
 
 - **Native TV presentation**: immersive cinematic hero, dark/frosted-glass top navigation, landscape content rails, center-focused poster Cover Flow, movies, series, search, library, settings and live.
 - **LibreTV protocol adapter**: auth/session cookie, recommended movies/TV, aggregate search, detail/episodes, optional custom CMS sources and M3U subscriptions.
-- **Media3**: integrated ExoPlayer with seek, resume, remote controls, 256 MiB bounded VOD cache, playback retry and limited same-title/same-episode automatic source fallback.
-- **Live**: M3U channel discovery and current XMLTV program when configured.
-- **Local library**: favorite media, watched items and playback progress.
-- **Optional Node 22 BFF**: independent backend API for unified search/metadata, with bearer authentication, no content feeds, and HTTP integration tests.
-- **Continuous verification**: Gradle Android Debug APK build, Node BFF tests, APK archive and debug signature verification on GitHub Actions.
+- **Media3**: integrated ExoPlayer with seek, per-episode resume, TV audio/subtitle/video track panels, speed selection, decoder fallback, 256 MiB bounded VOD cache and limited same-title/same-episode source failover.
+- **Live**: M3U discovery with XMLTV now/next and a future-program guide.
+- **Local library**: five-state shelves, favorites, watched items and per-episode progress.
+- **Optional Node 22 BFF**: bearer-authenticated API with optional TMDB title/year-verified 16:9 backdrops; requires self-managed service configuration. No content feeds are included.
+- **Continuous verification**: actual Android JUnit tests, AndroidTest APK compile, Node BFF tests, APK archive/signature validation and a separate emulator smoke workflow.
 
 ## Build
 
@@ -56,3 +56,20 @@ The current UI uses performant translucent/frosted surfaces rather than a fully 
 ## Licensing and safety
 
 CinemaTV-authored code is under the [MIT License](LICENSE). It is an independent original Android client; no DpadTV, FongMi or LibreTV code is copied into this repository. LibreTV and third-party libraries have independent licenses. Public deployment should use HTTPS; never check credentials, tokens, private signing keys or user source subscriptions into GitHub.
+
+## Main-branch features not yet in v0.1.0 Preview
+
+Main includes experimental opt-in Android 13+ AGSL specular glass, progressive
+LibreTV NDJSON search, remote focus restoration, source probes, error classification,
+enhanced live EPG, five-state library and a QA-gated release signing workflow.
+Code compilation is not a replacement for physical TV acceptance testing.
+
+**Stable release is not certified.** True backdrop refraction, reference-image
+pixel matching, additional hardware media compatibility, secure QR pairing,
+full secondary playback engine, long-run stability tests and production signing
+remain open in Release Gate #1.
+
+### TMDB / metadata notice
+This product may use the TMDB API through an independently configured BFF but
+is not endorsed or certified by TMDB. Users/operators must follow TMDB's
+attribution, API and image-use conditions. No TMDB access key is bundled.

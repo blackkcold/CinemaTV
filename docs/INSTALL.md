@@ -49,3 +49,32 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 - 性能：页面 FPS、缓存稳定性、内存压力、持续两小时播放
 
 **注意：本文件是测试指南而非测试通过报告。**
+
+## Main branch: optional high-resolution backdrops
+
+Deploy the independent Node TV-BFF (see `backend/tv-bff/README.md`) with:
+- `LIBRETV_URL` and optional `LIBRETV_PASSWORD`
+- `BFF_ACCESS_TOKEN` (16+ characters)
+- `TMDB_READ_ACCESS_TOKEN` (operator-managed TMDB read token)
+
+In CinemaTV Settings, enter the BFF URL and its access token under the
+optional metadata section. The BFF uses only work title, year and movie/TV
+type to perform a conservative TMDB match; no source URLs are sent to TMDB.
+The BFF token is kept in process memory and must be re-entered after restart.
+
+Android 13+ devices may optionally turn on optical specular highlights in
+Settings. This is not a full backdrop-refraction system and must be benchmarked
+on the intended television hardware before being a default.
+
+## Main branch: development build and stable-release restrictions
+
+```bash
+gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest
+npm --prefix backend/tv-bff test
+```
+
+For production release, complete `docs/RELEASE_CHECKLIST.md`, enter private
+signing secrets in GitHub Actions, and use the manual certified release workflow.
+The workflow refuses to publish while certification evidence is incomplete.
+A debug-signed APK from one CI runner may not upgrade over an APK signed by
+another debug keystore. Back up local state before reinstalling previews.
