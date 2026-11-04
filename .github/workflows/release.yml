@@ -24,7 +24,7 @@ jobs:
           CERTIFICATION: ${{ inputs.qa_certification }}
         shell: bash
         run: |
-          [[ "$RELEASE_TAG" =~ ^v[0-9]+\\.[0-9]+\\.[0-9]+$ ]] || exit 1
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
           [ "$CERTIFICATION" = "TV_HARDWARE_QA_PASSED" ] || exit 1
           if grep -Eq 'TBD|NOT ZERO' docs/RELEASE_CHECKLIST.md; then
             echo "Hardware testing evidence is incomplete"
