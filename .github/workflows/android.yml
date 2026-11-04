@@ -23,13 +23,14 @@ jobs:
           SDKMANAGER=$(find "${ANDROID_HOME}/cmdline-tools" -type f -name sdkmanager | head -1)
           if [ -z "$SDKMANAGER" ]; then echo "Android SDK command line tools missing"; exit 1; fi
           yes | "$SDKMANAGER" --licenses >/dev/null || true
-          "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0"
+          "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0"
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
       - name: Build and unit test
         run: |
           gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug
+          npm --prefix backend/tv-bff test
       - uses: actions/upload-artifact@v4
         with:
           name: CinemaTV-debug-apk
