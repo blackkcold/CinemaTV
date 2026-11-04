@@ -64,14 +64,12 @@ jobs:
           path: app/build/generated/notoAssets/fonts
           # Font bytes are platform-independent; Ubuntu APK and device jobs share this key.
           key: noto-fonts-v1-${{ hashFiles('scripts/fonts/noto-fonts.lock.json') }}
-      - name: Install compile SDK and original media fixture
+      - name: Install compile SDK and validate original media fixture
         run: |
           SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -1)
           yes | "$SDKMANAGER" --licenses >/dev/null || true
           "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0"
-          # Ubuntu 24.04 runners do not guarantee the synthetic media tools.
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends -y ffmpeg
+          # Validate committed synthetic bytes offline; no per-device FFmpeg install.
           bash scripts/generate-test-media.sh
           python -m pip install 'Pillow==11.3.0'
       - name: Compile instrumentation before allocating emulator memory
