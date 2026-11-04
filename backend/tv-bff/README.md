@@ -21,3 +21,13 @@ Keep the access token on a trusted LAN or behind an identity-aware reverse proxy
 - GET /v1/live/channels?sourceKey=...
 
 Authenticated endpoints require Authorization: Bearer <BFF_ACCESS_TOKEN>. Run `npm test` to validate the schema normalization.
+
+## Optional high-resolution backdrop metadata
+
+Set `TMDB_READ_ACCESS_TOKEN` in the **BFF environment**, not in the APK.
+The authenticated `GET /v1/metadata?title=...&year=2026&type=movie|tv`
+endpoint returns `{item:{backdrop,poster,overview,releaseDate,provider,providerId},status:"matched"}`
+or `{item:null,status:"unmatched"}` if an exact title/year match cannot be established.
+Only title/year/type are shared with TMDB; no CMS source URLs or playback links.
+Metadata images are returned as URLs, never redistributed by this service.
+Respect TMDB attribution and applicable API/image usage terms.

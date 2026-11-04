@@ -6,6 +6,10 @@ const adminPassword = String(process.env.LIBRETV_PASSWORD || '');
 const accessToken = String(process.env.BFF_ACCESS_TOKEN || '');
 const maxBytes = 65536;
 const timeoutMs = 18000;
+const tmdbToken = String(process.env.TMDB_READ_ACCESS_TOKEN || '');
+const tmdbApiBase = String(process.env.TMDB_API_URL || 'https://api.themoviedb.org/3').replace(/\/+$/, '');
+const metadataCache = new Map();
+const metadataCacheTtl = 24 * 60 * 60 * 1000;
 let cookie = '';
 let authPromise = null;
 
@@ -99,6 +103,56 @@ function requireKey(s, max = 120) {
   return s;
 }
 
+/** Exact normalized-name + compatible-year check; never invent a backdrop. */
+export function selectMetadata(title, year, candidates = [], type = 'movie') {
+  const normalize = value => String(value || '').normalize('NFKC')
+    .toLowerCase().replace(/[\\p{P}\\p{Z}\\s]+/gu, '');
+  const wanted = normalize(title);
+  if (!wanted) return null;
+  const allowed = candidates.filter(candidate => {
+    const candidateName = type === 'tv' ? candidate.name : candidate.title;
+    const original = type === 'tv' ? candidate.original_name : candidate.original_title;
+    if (normalize(candidateName) !== wanted && normalize(original) !== wanted) return false;
+    const release = String(type === 'tv' ? candidate.first_air_date : candidate.release_date || '').slice(0, 4);
+    return !year || !release || year === release;
+  });
+  // Ambiguous year-free titles should never receive an assumed image.
+  if (!year && allowed.length > 1) return null;
+  return allowed[0] || null;
+}
+
+function tmdbImage(path) {
+  return typeof path === 'string' && /^\\/[a-zA-Z0-9_\\/-]+\\.(?:jpg|jpeg|png|webp)$/i.test(path)
+    ? 'https://image.tmdb.org/t/p/original' + path : '';
+}
+
+async function resolveMetadata(title, year, type) {
+  if (!tmdbToken) throw new ApiError('Metadata enrichment not configured', 503);
+  const key = [type, title, year].join('|');
+  const cached = metadataCache.get(key);
+  if (cached && cached.expires > Date.now()) return cached.value;
+  const target = new URL(tmdbApiBase + '/search/' + type);
+  target.searchParams.set('query', title);
+  target.searchParams.set('language', 'zh-CN');
+  if (year) target.searchParams.set(type === 'movie' ? 'year' : 'first_air_date_year', year);
+  const response = await fetch(target, {
+    headers: { Authorization: 'Bearer ' + tmdbToken, accept: 'application/json' },
+    signal: AbortSignal.timeout(9000)
+  });
+  if (!response.ok) throw new ApiError('Metadata provider returned HTTP ' + response.status, 502);
+  const data = await response.json();
+  const result = selectMetadata(title, year, Array.isArray(data.results) ? data.results : [], type);
+  const value = result ? {
+    backdrop: tmdbImage(result.backdrop_path), poster: tmdbImage(result.poster_path),
+    overview: String(result.overview || '').slice(0, 4000),
+    releaseDate: String(type === 'tv' ? result.first_air_date || '' : result.release_date || ''),
+    provider: 'TMDB', providerId: result.id
+  } : null;
+  metadataCache.set(key, { value, expires: Date.now() + metadataCacheTtl });
+  if (metadataCache.size > 300) metadataCache.delete(metadataCache.keys().next().value);
+  return value;
+}
+
 async function handle(req, res) {
   const url = new URL(req.url || '/', 'http://localhost');
   if (url.pathname === '/healthz') return send(res, 200, { ok: true, service: 'cinematv-bff' });
@@ -141,6 +195,15 @@ async function handle(req, res) {
     const detail = await upstream('/api/detail?id=' + encodeURIComponent(id) +
       '&source=' + encodeURIComponent(JSON.stringify(source)));
     return send(res, 200, detail);
+  }
+  if (req.method === 'GET' && url.pathname === '/v1/metadata') {
+    const title = requireKey(String(url.searchParams.get('title') || '').trim(), 120);
+    const year = String(url.searchParams.get('year') || '').trim();
+    if (year && !/^\\d{4}$/.test(year)) throw new ApiError('Invalid year', 400);
+    const type = url.searchParams.get('type') || 'movie';
+    if (!['movie', 'tv'].includes(type)) throw new ApiError('Invalid title type', 400);
+    const metadata = await resolveMetadata(title, year, type);
+    return send(res, 200, { item: metadata, status: metadata ? 'matched' : 'unmatched' });
   }
   if (req.method === 'GET' && url.pathname === '/v1/live/channels') {
     const sourceKey = requireKey(url.searchParams.get('sourceKey') || '');
