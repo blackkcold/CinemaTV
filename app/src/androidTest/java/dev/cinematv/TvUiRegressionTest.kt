@@ -31,7 +31,15 @@ class TvUiRegressionTest {
         ?: rule.activity.getExternalFilesDir(null)!!.absolutePath, "ui-evidence").apply { mkdirs() }
     private fun key(code: Int) {
         android.util.Log.i("CinemaTVQa", "key=$code route=${model.focusRoute}")
-        if (code == KeyEvent.KEYCODE_BACK && model.page != Page.PLAYER) androidx.test.espresso.Espresso.pressBack()
+        if (code == KeyEvent.KEYCODE_BACK && model.page != Page.PLAYER) {
+            if (rule.onAllNodes(isDialog()).fetchSemanticsNodes().isNotEmpty()) {
+                // Compose's dialog owns a separate Android window. Activity-root
+                // selection can wait forever for focus that correctly moved here.
+                androidx.test.espresso.Espresso.onView(androidx.test.espresso.matcher.ViewMatchers.isRoot())
+                    .inRoot(androidx.test.espresso.matcher.RootMatchers.isDialog())
+                    .perform(androidx.test.espresso.action.ViewActions.pressBack())
+            } else androidx.test.espresso.Espresso.pressBack()
+        }
         else {
             val composeKey = when (code) {
                 KeyEvent.KEYCODE_DPAD_DOWN -> Key.DirectionDown
