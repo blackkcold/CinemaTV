@@ -100,8 +100,26 @@ into `app/build/generated/notoAssets/fonts` from a trusted build cache. A missin
 invalid file under `--offline` fails with an actionable message. The APK is entirely
 offline for fonts after installation, independent of the build cache/network.
 
+## Deterministic screenshot host
+
+The debug-only `TvTestActivity` installs the same `CinemaNotoProvider` as production.
+It exposes readiness only after every regional face is loaded with no reported
+asset failures. TV regression setup and capture both wait for this signal (15s
+bounded wait, with failures surfaced), so screenshots cannot silently record the
+initial system-font fallback. This adds no brand animation. Production still shows
+a usable system-font first frame. Phone tests use MainActivity, which already
+installs the provider; native font evidence is separately captured by the device test.
+
 ## Verification and release gate
 
+- `python scripts/fonts/verify-noto-gradle.py --gradle /path/to/gradle --report /tmp/noto-task-evidence`:
+  executes the actual Groovy task in an SDK-free temporary Gradle project, with
+  the real lock and downloads. Verifies cold download, offline reuse, same-length
+  corruption rejection, online repair and missing-offline rejection. It checks
+  hashes, no orphan `.part` files and no offline mutation. Gradle 8.13 completed
+  all five cases locally on 2026-11-04; this is not an Android build/Lint pass.
+  Uses an isolated writable Gradle home; honors a credential-free HTTPS proxy
+  when supplied by the environment. Logs remain in the requested report directory.
 - `python scripts/fonts/verify-noto-fonts.py`: standard-library offline verification
   of exact byte counts/hashes, names, versions, region indexes, shared CFF table and
   bundled OFL notices. It fails if assets are missing, not silently skips.

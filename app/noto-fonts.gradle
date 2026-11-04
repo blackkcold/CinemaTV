@@ -17,7 +17,7 @@ tasks.register('prepareNotoFonts') {
         def lock = new JsonSlurper().parse(notoLock)
         def directory = notoAssets.get().dir('fonts').asFile
         if (!directory.isDirectory() && !directory.mkdirs()) {
-            throw new GradleException("Cannot create Noto asset directory: $directory")
+            throw new GradleException("Cannot create Noto asset directory: ${directory}")
         }
         def digest = { File file ->
             def sha = MessageDigest.getInstance('SHA-256')
@@ -34,7 +34,7 @@ tasks.register('prepareNotoFonts') {
         for (def font : lock.fonts) {
             String name = font.name
             if (!name.matches('[A-Za-z0-9-]+\\.(ttf|ttc)')) {
-                throw new GradleException("Invalid font filename: $name")
+                throw new GradleException("Invalid font filename: ${name}")
             }
             long expectedSize = font.size as long
             String expectedHash = font.sha256
@@ -43,13 +43,13 @@ tasks.register('prepareNotoFonts') {
                 continue
             }
             if (gradle.startParameter.offline) {
-                throw new GradleException("Missing or invalid pinned Noto asset $name. Run prepareNotoFonts once online before --offline.")
+                throw new GradleException("Missing or invalid pinned Noto asset ${name}. Run prepareNotoFonts once online before --offline.")
             }
             def url = new URI(font.url as String).toURL()
             if (url.protocol != 'https' || url.host != 'raw.githubusercontent.com') {
-                throw new GradleException("Unexpected Noto source: $url")
+                throw new GradleException("Unexpected Noto source: ${url}")
             }
-            def temporary = new File(directory, "$name.part")
+            def temporary = new File(directory, "${name}.part")
             def connection = url.openConnection() as HttpURLConnection
             connection.connectTimeout = 20_000
             connection.readTimeout = 60_000
@@ -57,7 +57,7 @@ tasks.register('prepareNotoFonts') {
             long deadline = System.nanoTime() + 120_000_000_000L
             try {
                 if (connection.responseCode != 200) {
-                    throw new GradleException("Noto font download failed: HTTP ${connection.responseCode} ($name)")
+                    throw new GradleException("Noto font download failed: HTTP ${connection.responseCode} (${name})")
                 }
                 connection.inputStream.withCloseable { raw ->
                     def input = new BufferedInputStream(raw)
@@ -67,13 +67,13 @@ tasks.register('prepareNotoFonts') {
                         long total = 0L
                         while (true) {
                             if (System.nanoTime() >= deadline) {
-                                throw new GradleException("Noto font download deadline exceeded: $name")
+                                throw new GradleException("Noto font download deadline exceeded: ${name}")
                             }
                             int count = input.read(bytes)
                             if (count == -1) break
                             total += count
                             if (total > expectedSize) {
-                                throw new GradleException("Oversized Noto asset: $name")
+                                throw new GradleException("Oversized Noto asset: ${name}")
                             }
                             output.write(bytes, 0, count)
                         }
@@ -81,7 +81,7 @@ tasks.register('prepareNotoFonts') {
                     }
                 }
                 if (temporary.length() != expectedSize || digest(temporary) != expectedHash) {
-                    throw new GradleException("Noto asset integrity failure: $name")
+                    throw new GradleException("Noto asset integrity failure: ${name}")
                 }
                 Files.move(temporary.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
             } finally {

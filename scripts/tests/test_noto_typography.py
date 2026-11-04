@@ -19,7 +19,7 @@ class NotoTypographyContractTest(unittest.TestCase):
         script = (ROOT / 'app/noto-fonts.gradle').read_text()
         for guard in ('digest(target) == expectedHash', 'digest(temporary) != expectedHash',
                       'total > expectedSize', 'startParameter.offline', 'instanceFollowRedirects = false',
-                      'deadline', 'connectTimeout', 'readTimeout'):
+                      'deadline', 'connectTimeout', 'readTimeout', '${name}.part'):
             self.assertIn(guard, script)
 
     def test_generated_assets_and_licenses_are_packaged(self):
@@ -38,6 +38,12 @@ class NotoTypographyContractTest(unittest.TestCase):
     def test_both_surfaces_use_provider_and_font_only_theme_hook(self):
         source = ROOT / 'app/src/main/java/dev/cinematv'
         self.assertIn('CinemaNotoProvider {', (source / 'MainActivity.kt').read_text())
+        host = (ROOT / 'app/src/debug/java/dev/cinematv/TvTestActivity.kt').read_text()
+        self.assertIn('CinemaNotoProvider {', host)
+        self.assertIn('bundledFontsReady = fonts.regional.size == NotoRegion.entries.size', host)
+        regression = (ROOT / 'app/src/androidTest/java/dev/cinematv/TvUiRegressionTest.kt').read_text()
+        self.assertIn('private fun awaitBundledFonts()', regression)
+        self.assertIn('private fun screenshot(name: String, waitForArt: Boolean = true) {\n        awaitBundledFonts()', regression)
         for file in ('ui/mobile/MobileScreens.kt', 'ui/tv/design/TvTheme.kt'):
             self.assertIn('withCinemaNoto(cinemaUiFontFamily())', (source / file).read_text())
         for file in ('ui/mobile/MobileScreens.kt', 'ui/tv/components/CinemaHero.kt',

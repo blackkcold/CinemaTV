@@ -57,7 +57,13 @@ class TvUiRegressionTest {
         val trace = rule.onAllNodes(isFocused()).fetchSemanticsNodes().joinToString { it.config.toString() }
         File(directory, "focus-trace.txt").appendText("key=$code route=${model.focusRoute}\n$trace\n")
     }
+    private fun awaitBundledFonts() {
+        rule.waitUntil(15000) { rule.activity.bundledFontsReady || rule.activity.fontLoadFailures.isNotEmpty() }
+        assertTrue("Bundled Noto failed: ${rule.activity.fontLoadFailures}", rule.activity.bundledFontsReady)
+        rule.waitForIdle()
+    }
     private fun screenshot(name: String, waitForArt: Boolean = true) {
+        awaitBundledFonts()
         android.util.Log.i("CinemaTVQa", "capture=$name directory=${directory.absolutePath}")
         if (waitForArt) rule.runOnIdle { model.dismissMessage() }
         rule.waitForIdle()
@@ -80,6 +86,7 @@ class TvUiRegressionTest {
         }
     }
     @Before fun connectFixture() {
+        awaitBundledFonts()
         rule.waitUntil(10000) { rule.activity.hasWindowFocus() }
         server = UiFixtureServer(InstrumentationRegistry.getInstrumentation().context)
         rule.runOnIdle {
