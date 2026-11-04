@@ -21,6 +21,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.cinematv.ui.*
 import dev.cinematv.ui.mobile.MobileRootApp
+import dev.cinematv.ui.shared.CinemaBrandSession
+import dev.cinematv.ui.tv.design.GlassQuality
 import dev.cinematv.ui.tv.TvRootApp
 
 class MainActivity : ComponentActivity() {
@@ -59,7 +61,12 @@ class MainActivity : ComponentActivity() {
         setContent {
             CompositionLocalProvider(LocalOpticalGlass provides model.opticalGlassEnabled) {
                 BackHandler(enabled = model.page != Page.HOME) { model.back() }
-                if (isTv) TvRootApp(model) else MobileRootApp(model)
+                CinemaBrandSession(
+                    reducedMotion = model.reducedMotion,
+                    lowCost = model.glassQuality == GlassQuality.BASIC,
+                ) {
+                    if (isTv) TvRootApp(model) else MobileRootApp(model)
+                }
             }
         }
     }

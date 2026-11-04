@@ -46,6 +46,7 @@ import dev.cinematv.data.MediaItem
 import dev.cinematv.data.SearchFilters
 import dev.cinematv.ui.shared.metadataLine
 import dev.cinematv.ui.shared.TmdbLogo
+import dev.cinematv.ui.shared.CinemaBrandStartup
 import androidx.compose.ui.platform.LocalUriHandler
 import dev.cinematv.ui.CinemaBackdrop
 import dev.cinematv.ui.Ink
@@ -71,7 +72,9 @@ fun MobileRootApp(model: CinemaViewModel) {
                 if (page != Page.PLAYER && page != Page.DETAIL) Row(
                     Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("CinemaTV", fontSize = 19.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                        CinemaBrandStartup(Modifier.width(140.dp).height(34.dp))
+                    }
                     IconButton(onClick = { model.navigate(Page.SETTINGS) }, modifier = Modifier.semantics { contentDescription = "打开设置" }) {
                         CinemaIcon(CinemaSymbol.Settings, selected = page == Page.SETTINGS)
                     }

@@ -1,6 +1,5 @@
 package dev.cinematv.ui.tv.components
 
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
@@ -9,19 +8,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.tv.material3.Text
 import dev.cinematv.CinemaViewModel
 import dev.cinematv.Page
-import dev.cinematv.R
 import dev.cinematv.ui.GlassAction
 import dev.cinematv.ui.icons.CinemaSymbol
+import dev.cinematv.ui.shared.CinemaBrandStartup
 import dev.cinematv.ui.tv.design.*
 import dev.cinematv.ui.tv.focus.*
 
@@ -33,10 +27,7 @@ fun FloatingNavigation(model: CinemaViewModel, onFocusWithin: (Boolean) -> Unit,
     Row(modifier.fillMaxWidth().padding(horizontal = layout.gutter)
         .onFocusChanged { onFocusWithin(it.hasFocus) }.focusGroup(),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-        Row(Modifier.width(120.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-            Image(painterResource(R.drawable.ic_launcher_foreground), null, modifier = Modifier.size(26.dp))
-            Text("CinemaTV", color = TvColors.Text, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-        }
+        CinemaBrandStartup(Modifier.width(120.dp).height(29.dp))
         CinemaGlassSurface(radius = 28.dp, sampleBackdrop = true) {
             Row(Modifier.padding(4.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                 listOf("精选" to Page.HOME, "电影" to Page.MOVIES, "剧集" to Page.SERIES,
