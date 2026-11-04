@@ -186,16 +186,22 @@ class LibreTvRepository(context: Context) {
 
     suspend fun detail(item: MediaItem): MediaItem = withContext(Dispatchers.IO) {
         val entry = if (item.source == null) {
-            search(item.title).firstOrNull { it.title.equals(item.title, ignoreCase = true) }
-                ?: search(item.title).firstOrNull()
-                ?: throw IOException("在已配置的片源中未找到《${item.title}》")
+            search(item.title).firstOrNull {
+                MediaIdentity.isSameWork(item.title, item.year, it.title, it.year)
+            } ?: throw IOException("未找到可确认与《${item.title}》匹配的播放来源")
         } else item
         val src = requireNotNull(entry.source)
         val path = "/api/detail?id=${encode(entry.id)}&source=${encode(sourceJson(src).toString())}"
         val j = request(path)
         val info = j.optJSONObject("videoInfo") ?: JSONObject()
         val episodes = j.optJSONArray("episodes") ?: JSONArray()
+        val progress = history().firstOrNull { saved ->
+            (saved.source?.url == entry.source?.url && saved.id == entry.id) ||
+                (saved.source == null && MediaIdentity.isSameWork(saved.title, saved.year, entry.title, entry.year))
+        }
         entry.copy(
+            positionMs = progress?.positionMs ?: 0L,
+            lastEpisode = progress?.lastEpisode ?: 0,
             description = info.optString("desc"),
             poster = info.optString("cover").ifBlank { entry.poster },
             category = info.optString("typeName").ifBlank { entry.category },
@@ -223,9 +229,9 @@ class LibreTvRepository(context: Context) {
         }
     }
 
-    fun saveProgress(item: MediaItem, positionMs: Long) {
+    fun saveProgress(item: MediaItem, positionMs: Long, episodeIndex: Int = 0) {
         if (item.id.isBlank()) return
-        val updated = item.copy(positionMs = positionMs)
+        val updated = item.copy(positionMs = positionMs, lastEpisode = episodeIndex.coerceAtLeast(0))
         val existing = history().filterNot { it.id == item.id && it.source?.url == item.source?.url }
         val list = (listOf(updated) + existing).take(60)
         prefs.edit().putString("history", JSONArray(list.map { itemJson(it) }).toString()).apply()
@@ -237,7 +243,7 @@ class LibreTvRepository(context: Context) {
                 id = j.optString("id"), title = j.optString("title"),
                 poster = j.optString("poster"), year = j.optString("year"),
                 source = j.optJSONObject("source")?.let(::sourceFrom),
-                positionMs = j.optLong("positionMs")
+                positionMs = j.optLong("positionMs"), lastEpisode = j.optInt("lastEpisode", 0)
             )
         }
     }.getOrDefault(emptyList())
@@ -245,7 +251,7 @@ class LibreTvRepository(context: Context) {
     private fun itemJson(it: MediaItem) = JSONObject()
         .put("id", it.id).put("title", it.title).put("poster", it.poster)
         .put("year", it.year).put("source", it.source?.let(::sourceJson))
-        .put("positionMs", it.positionMs)
+        .put("positionMs", it.positionMs).put("lastEpisode", it.lastEpisode)
 
     fun toggleFavorite(item: MediaItem) {
         val current = favorites()

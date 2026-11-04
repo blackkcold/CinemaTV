@@ -185,8 +185,7 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
             busy = true
             runCatching { repo.search(item.title) }
                 .onSuccess { items ->
-                    alternatives = items.filter { it.title.equals(item.title, ignoreCase = true) }
-                        .ifEmpty { items.filter { it.title.contains(item.title) }.take(12) }
+                    alternatives = items.filter { MediaIdentity.isSameWork(item.title, item.year, it.title, it.year) }
                         .distinctBy { it.source?.url }
                 }
                 .onFailure { message = "换源失败：${it.message}" }
@@ -229,7 +228,7 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
         playerReturnPage = Page.DETAIL
         playbackUrl = url
         playbackTitle = item.title + if (item.episodes.size > 1) " · 第${index + 1}集" else ""
-        playbackPosition = if (index == 0) item.positionMs else 0L
+        playbackPosition = if (index == item.lastEpisode) item.positionMs else 0L
         playingEpisode = index
         failedSources.clear()
         item.source?.url?.let { failedSources.add(it) }
@@ -266,8 +265,7 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
             runCatching {
                 val alternatives = repo.search(current.title)
                     .filter { candidate ->
-                        candidate.title.equals(current.title, ignoreCase = true) &&
-                        (current.year.isBlank() || candidate.year.isBlank() || candidate.year == current.year) &&
+                        MediaIdentity.isSameWork(current.title, current.year, candidate.title, candidate.year) &&
                         candidate.source != null && candidate.source.url !in failedSources
                     }.take(12)
                 var found: MediaItem? = null
@@ -301,7 +299,7 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
 
     fun savePlaybackPosition(position: Long) {
         if (playerReturnPage == Page.DETAIL) selected?.let {
-            repo.saveProgress(it, position)
+            repo.saveProgress(it, position, playingEpisode)
             libraryVersion++
         }
     }
