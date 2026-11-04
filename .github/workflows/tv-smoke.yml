@@ -1,35 +1,52 @@
 name: CinemaTV device UI QA
 on:
   workflow_call:
+    inputs:
+      target:
+        description: Device target; full coverage is required before release
+        type: string
+        default: all
   workflow_dispatch:
+    inputs:
+      target:
+        description: Select one device for diagnosis, or all for acceptance
+        type: choice
+        default: all
+        options: [all, phone, tv1080, tv4k]
   schedule:
     - cron: '40 3 * * 1'
 permissions:
   contents: read
+concurrency:
+  # A reusable workflow must never share its caller's concurrency group.
+  group: cinematv-device-ui-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
+  select-devices:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      matrix: ${{ steps.select.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate device QA harness without an emulator
+        run: |
+          bash -n scripts/run-device-qa.sh
+          python3 -m unittest discover -s scripts/tests -v
+      - id: select
+        env:
+          QA_TARGET: ${{ inputs.target || 'all' }}
+        run: |
+          MATRIX=$(python3 scripts/qa-device-matrix.py "$QA_TARGET")
+          printf 'matrix=%s\n' "$MATRIX" >> "$GITHUB_OUTPUT"
   instrumented:
     name: UI / ${{ matrix.name }}
+    needs: select-devices
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - name: phone
-            api: 30
-            size: 1080x1920
-            density: 420
-            classes: dev.cinematv.MobileNavigationSmokeTest,dev.cinematv.TvLaunchSmokeTest,dev.cinematv.MobilePlaybackSmokeTest
-          - name: tv1080
-            api: 33
-            size: 1920x1080
-            density: 320
-            classes: dev.cinematv.TvUiRegressionTest
-          - name: tv4k
-            api: 33
-            size: 3840x2160
-            density: 640
-            classes: dev.cinematv.TvUiRegressionTest
+      matrix: ${{ fromJSON(needs.select-devices.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -47,10 +64,17 @@ jobs:
           bash scripts/generate-test-media.sh
           python -m pip install 'Pillow==11.3.0'
       - name: Compile instrumentation before allocating emulator memory
+        timeout-minutes: 13
         run: |
+          mkdir -p qa
           free -m
-          gradle --no-daemon --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process :app:assembleDebug :app:assembleDebugAndroidTest
+          START=$SECONDS
+          set +e
+          timeout --signal=TERM --kill-after=30s 12m gradle --no-daemon --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process :app:assembleDebug :app:assembleDebugAndroidTest
+          STATUS=$?
+          printf 'assemble\t%s\t%s\n' "$STATUS" "$((SECONDS - START))" > qa/stages.tsv
           free -m
+          exit "$STATUS"
       - name: Enable KVM
         run: sudo chmod 666 /dev/kvm
       - uses: reactivecircus/android-emulator-runner@v2
