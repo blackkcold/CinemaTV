@@ -2,7 +2,6 @@ package dev.cinematv.ui.tv.components
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusRequester
@@ -31,11 +30,22 @@ fun ContentRail(title: String, items: List<MediaItem>, model: CinemaViewModel, p
     val registry = LocalTvFocusRegistry.current
     val effects = LocalTvEffects.current
     val saved = remember { model.focusCoordinator.restore(model.focusRoute, region) }
-    var active by remember { mutableIntStateOf(items.indexOfFirst { it.presentationKey == saved }.coerceAtLeast(0)) }
-    var requested by remember { mutableIntStateOf(active) }
+    val itemKeys = items.map { it.presentationKey }
+    RegisterLazyFocusRegion(model, region, state, itemKeys)
+    var activeKey by remember { mutableStateOf(saved ?: itemKeys.first()) }
+    var requestedKey by remember { mutableStateOf(activeKey) }
+    val active = itemKeys.indexOf(activeKey).coerceAtLeast(0)
     var moving by remember { mutableStateOf(false) }
     var movement by remember { mutableStateOf<Job?>(null) }
     var generation by remember { mutableIntStateOf(0) }
+    LaunchedEffect(itemKeys) {
+        // A recommendation refresh must not finish a queued move to an index
+        // that now represents a different movie.
+        generation++
+        movement?.cancel()
+        moving = false
+        requestedKey = activeKey
+    }
     Column(Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 12.dp)) {
         Text(title, color = TvColors.Text, fontSize = 22.sp, fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(start = layout.gutter, bottom = 4.dp))
@@ -46,8 +56,8 @@ fun ContentRail(title: String, items: List<MediaItem>, model: CinemaViewModel, p
                 val item = items[index]
                 val target = rememberFocusTarget(model, region, item.presentationKey)
                 FocusMediaCard(item, onFocus = {
-                    active = index
-                    if (!moving) requested = index
+                    activeKey = item.presentationKey
+                    if (!moving) requestedKey = item.presentationKey
                     model.onMediaFocus(item, region)
                 }, onClick = { model.open(item) },
                     portrait = portrait, continueWatching = continueWatching,
@@ -56,9 +66,10 @@ fun ContentRail(title: String, items: List<MediaItem>, model: CinemaViewModel, p
                         .onPreviewKeyEvent { event ->
                             if (event.type != KeyEventType.KeyDown || event.key !in listOf(Key.DirectionLeft, Key.DirectionRight)) false
                             else {
+                                val requested = itemKeys.indexOf(requestedKey).coerceAtLeast(0)
                                 val next = (requested + if (event.key == Key.DirectionRight) 1 else -1).coerceIn(0, items.lastIndex)
                                 if (next != requested) {
-                                    requested = next; moving = true
+                                    requestedKey = itemKeys[next]; moving = true
                                     val token = ++generation
                                     movement?.cancel()
                                     movement = scope.launch {

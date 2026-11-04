@@ -85,7 +85,7 @@ object SearchIndex {
         catalog: List<MediaItem> = emptyList(),
         remote: List<MediaItem> = emptyList(),
         filters: SearchFilters = SearchFilters(),
-        limit: Int = 200,
+        limit: Int = if (filters.doubanTopOnly) 500 else 200,
         nowMs: Long = System.currentTimeMillis()
     ): List<SearchHit> {
         if (limit <= 0) return emptyList()
@@ -97,7 +97,16 @@ object SearchIndex {
                     // Provider IDs belong to their exact source origin. A refreshed
                     // year/season is a new snapshot, not a second clickable listing.
                     val sourceUrl = item.source?.url?.takeIf(String::isNotBlank)
-                    val key: Any = if (sourceUrl != null && item.id.isNotBlank()) sourceUrl to item.id else item
+                    val key: Any = when {
+                        sourceUrl != null && item.id.isNotBlank() -> sourceUrl to item.id
+                        item.source == null && item.id.isNotBlank() ->
+                            // Home and query responses can refresh the same catalog entry's
+                            // title/year. Replace the snapshot without mixing metadata bundles.
+                            // Provider-qualified entry IDs, not providerId alone, scope works;
+                            // unknown type must not silently become a movie or a series.
+                            MediaDomainMapper.entryId(item)
+                        else -> item
+                    }
                     val previous = snapshots[key]
                     val localSnapshot = previous != null && SearchOrigin.LIBRARY in previous.origins && origin != SearchOrigin.LIBRARY
                     val compatible = previous != null && SearchAggregator.sameWork(previous.item, item)
@@ -148,7 +157,11 @@ object SearchIndex {
                 group.alternatives.flatMap { origins[it].orEmpty() }.toCollection(linkedSetOf()),
                 best.second
             )
-        }.sortedByDescending { it.matchScore }.take(limit.coerceAtMost(1_000))
+        }.let { hits ->
+            if (filters.doubanTopOnly) hits.sortedWith(
+                compareBy<SearchHit> { it.item.doubanTopRank ?: Int.MAX_VALUE }.thenByDescending { it.matchScore }
+            ) else hits.sortedByDescending { it.matchScore }
+        }.take(limit.coerceAtMost(1_000))
     }
 
     private fun relevance(item: MediaItem, phrase: String, tokens: List<String>): Int? {

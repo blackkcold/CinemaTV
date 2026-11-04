@@ -218,4 +218,79 @@ class SearchIndexTest {
         assertTrue(result.item.mediaTypeKnown)
         assertTrue(result.item.isTv)
     }
+
+    @Test fun refreshedCatalogYearAndTitleReplaceSnapshotWithoutDuplicatePresentationKeys() {
+        val saved = MediaItem("catalog:fixture:movie:42", "Old title", year = "2024",
+            aliases = listOf("Old licensed alias"), actors = listOf("Old licensed actor"),
+            rating = "9.0", ratingSource = "Douban", doubanTopRank = 12,
+            catalogProvider = "Fixture", catalogAttribution = "Old attribution",
+            catalogLicenseExpiresAt = 2_000L, ratingLicenseExpiresAt = 2_000L)
+        val fresh = saved.copy(title = "Corrected title", year = "2025", aliases = listOf("Fresh alias"),
+            actors = emptyList(), rating = "8.5", doubanTopRank = 20,
+            catalogAttribution = "Fresh attribution", catalogLicenseExpiresAt = 3_000L,
+            ratingLicenseExpiresAt = 3_000L)
+        val hits = SearchIndex.search("", library = listOf(saved), catalog = listOf(saved, fresh), nowMs = now)
+        assertEquals(1, hits.size)
+        assertEquals(fresh, hits.single().item)
+        assertEquals(listOf(fresh), hits.single().alternatives)
+        assertEquals(setOf(SearchOrigin.LIBRARY, SearchOrigin.CATALOG), hits.single().origins)
+        assertEquals(hits.size, hits.map { MediaDomainMapper.entryId(it.item) }.distinct().size)
+        assertTrue(SearchIndex.search("Old licensed alias", catalog = listOf(saved, fresh), nowMs = now).isEmpty())
+        assertTrue(SearchIndex.search("Old licensed actor", catalog = listOf(saved, fresh), nowMs = now).isEmpty())
+    }
+
+    @Test fun catalogSnapshotIdentityUsesProviderQualifiedEntryNotSharedExternalId() {
+        val movie = MediaItem("catalog:fixture:movie:42", "Film", year = "2025",
+            catalogProvider = "Fixture", metadataIds = mapOf("fixture" to "42"))
+        val series = movie.copy(title = "Series", isTv = true)
+        val unknown = movie.copy(title = "Unknown", mediaTypeKnown = false)
+        val otherProvider = movie.copy(id = "catalog:other:movie:42", title = "Other film", catalogProvider = "Other")
+        val hits = SearchIndex.search("", catalog = listOf(movie, series, unknown, otherProvider))
+        assertEquals(4, hits.size)
+        assertEquals(setOf(movie, series, unknown, otherProvider), hits.map { it.item }.toSet())
+        assertEquals(4, hits.map { MediaDomainMapper.entryId(it.item) }.distinct().size)
+        assertEquals(listOf(movie.id, otherProvider.id), SearchIndex.search("",
+            catalog = listOf(movie, series, unknown, otherProvider), filters = SearchFilters(isTv = false)).map { it.item.id })
+        assertEquals(series.id, SearchIndex.search("", catalog = listOf(movie, series, unknown),
+            filters = SearchFilters(isTv = true)).single().item.id)
+    }
+
+    @Test fun blankProviderRecommendationRefreshAlsoReplacesOldSnapshot() {
+        val saved = MediaItem("recommend:movie:42", "Recommendation", year = "2024",
+            aliases = listOf("Old alias"), rating = "9.0", ratingSource = "LibreTV")
+        val fresh = saved.copy(year = "2025", aliases = emptyList(), rating = "8.0")
+        val hits = SearchIndex.search("Recommendation", library = listOf(saved), catalog = listOf(fresh))
+        assertEquals(listOf(fresh), hits.map { it.item })
+        assertEquals(listOf(fresh), hits.single().alternatives)
+        assertEquals(setOf(SearchOrigin.LIBRARY, SearchOrigin.CATALOG), hits.single().origins)
+        assertTrue(SearchIndex.search("Old alias", library = listOf(saved), catalog = listOf(fresh)).isEmpty())
+    }
+
+    @Test fun completeLicensedChartsKeepAllFiveHundredEntriesInRankOrder() {
+        val chart = listOf(false, true).flatMap { tv ->
+            (250 downTo 1).map { rank ->
+                MediaItem("catalog:fixture:${if (tv) "tv" else "movie"}:$rank", "Chart ${if (tv) "series" else "film"} $rank",
+                    year = "2025", isTv = tv, rating = "8.5", ratingSource = "Douban", doubanTopRank = rank,
+                    ratingLicenseExpiresAt = 2_000L, catalogProvider = "Fixture", catalogLicenseExpiresAt = 2_000L)
+            }
+        }
+        val top = SearchFilters(doubanTopOnly = true)
+        val hits = SearchIndex.search("", catalog = chart, filters = top, nowMs = now)
+        assertEquals(500, hits.size)
+        assertEquals((1..250).flatMap { listOf(it, it) }, hits.map { it.item.doubanTopRank })
+        assertEquals(chart.map { it.id }.toSet(), hits.map { it.item.id }.toSet())
+        assertEquals(250, SearchIndex.search("", catalog = chart, filters = top.copy(isTv = false), nowMs = now).size)
+        assertEquals(200, SearchIndex.search("", catalog = chart, nowMs = now).size)
+        assertEquals(17, SearchIndex.search("", catalog = chart, filters = top, limit = 17, nowMs = now).size)
+        assertTrue(SearchIndex.search("", catalog = chart, filters = top, limit = 0, nowMs = now).isEmpty())
+    }
+
+    @Test fun chartRankPrecedesRelevanceAndEqualRanksUseMatchScore() {
+        val ranked = film.copy(id = "ranked", title = "Needle", year = "2025", aliases = emptyList(),
+            actors = emptyList(), doubanTopRank = 2)
+        val prefix = ranked.copy(id = "prefix", title = "Needle story", doubanTopRank = 1)
+        val actor = ranked.copy(id = "actor", title = "Another story", actors = listOf("Needle"), doubanTopRank = 1)
+        assertEquals(listOf("prefix", "actor", "ranked"), SearchIndex.search("Needle",
+            catalog = listOf(ranked, actor, prefix), filters = SearchFilters(doubanTopOnly = true), nowMs = now).map { it.item.id })
+    }
 }

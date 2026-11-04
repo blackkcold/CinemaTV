@@ -32,8 +32,10 @@ fun HomeScreen(model: CinemaViewModel) {
             if (model.tvShows.isNotEmpty()) add("series" to "rail:值得追的好故事")
             if (model.featured.size > 6) add("more" to "rail:更多电影")
         }
-        val index = rows.indexOfFirst { it.second == bookmark?.region }
-        if (index >= 0 && state.layoutInfo.visibleItemsInfo.none { it.key == rows[index].first }) state.scrollToItem(index)
+        // A new continue rail can move the bookmarked row. If the whole region
+        // disappeared, compose the hero so the page fallback is still usable.
+        val index = resolveLazyFocusTarget(rows.map { it.second }, bookmark?.region.orEmpty())?.index ?: 0
+        if (state.layoutInfo.visibleItemsInfo.none { it.key == rows[index].first }) state.scrollToItem(index)
         prepared = true
     }
     RestorePageFocus(model, ready = prepared)

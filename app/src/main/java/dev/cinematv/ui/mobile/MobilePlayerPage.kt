@@ -40,10 +40,11 @@ import kotlinx.coroutines.isActive
 @Composable
 fun MobilePlayerPage(model: CinemaViewModel) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    val uri = model.playbackUrl
-    val episodeAtCreation = remember(uri) { model.playingEpisode }
-    val player = remember(uri) {
-        PlaybackFactory.create(context, cacheVod = model.playerReturnPage == Page.DETAIL).apply {
+    val session = model.playbackSession ?: return
+    val uri = session.url
+    val episodeAtCreation = session.episodeIndex
+    val player = remember(session) {
+        PlaybackFactory.create(context, cacheVod = session.item != null).apply {
             setMediaItem(MediaItem.fromUri(uri))
             prepare()
             playWhenReady = true
@@ -51,25 +52,23 @@ fun MobilePlayerPage(model: CinemaViewModel) {
         }
     }
     ObservePlaybackLifecycle(player)
-    var error by remember(uri) { mutableStateOf("") }
-    var position by remember(uri) { mutableLongStateOf(0L) }
-    var playing by remember(uri) { mutableStateOf(true) }
+    var error by remember(session) { mutableStateOf("") }
+    var position by remember(session) { mutableLongStateOf(0L) }
+    var playing by remember(session) { mutableStateOf(true) }
     DisposableEffect(player) {
         val listener = object : Player.Listener {
             override fun onPlayerError(exception: PlaybackException) {
                 error = exception.message ?: "播放失败"
-                model.recoverPlayback(error, player.currentPosition)
+                model.recoverPlayback(error, player.currentPosition, session)
             }
             override fun onPlaybackStateChanged(state: Int) {
-                if (state == Player.STATE_ENDED && model.playbackUrl == uri) model.playerEnded(player.currentPosition, player.duration.coerceAtLeast(0L), episodeAtCreation)
+                if (state == Player.STATE_ENDED) model.playerEnded(player.currentPosition, player.duration.coerceAtLeast(0L), episodeAtCreation, session)
             }
             override fun onIsPlayingChanged(isPlaying: Boolean) { playing = isPlaying }
         }
         player.addListener(listener)
         onDispose {
-            if (model.playbackUrl == uri) {
-                model.savePlaybackPosition(player.currentPosition.coerceAtLeast(0L), episodeAtCreation, player.duration.coerceAtLeast(0L))
-            }
+            model.savePlaybackPosition(player.currentPosition.coerceAtLeast(0L), episodeAtCreation, player.duration.coerceAtLeast(0L), session)
             player.removeListener(listener)
             player.release()
         }
@@ -78,7 +77,7 @@ fun MobilePlayerPage(model: CinemaViewModel) {
         var seconds = 0
         while (isActive) {
             position = player.currentPosition.coerceAtLeast(0L)
-            if (++seconds % 5 == 0) model.savePlaybackPosition(position, episodeAtCreation, player.duration.coerceAtLeast(0L))
+            if (++seconds % 5 == 0) model.savePlaybackPosition(position, episodeAtCreation, player.duration.coerceAtLeast(0L), session)
             delay(1000)
         }
     }

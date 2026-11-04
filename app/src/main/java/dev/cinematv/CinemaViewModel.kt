@@ -16,6 +16,8 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.coroutineScope
 import dev.cinematv.ui.tv.design.GlassQuality
 import dev.cinematv.ui.shared.presentationKey
+import dev.cinematv.playback.PlaybackSession
+import dev.cinematv.playback.PlaybackSessionGuard
 
 enum class Page { HOME, EXPLORE, MOVIES, SERIES, SEARCH, LIVE, LIBRARY, SETTINGS, DETAIL, PLAYER }
 
@@ -145,7 +147,10 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
         private set
     var failoverMessage by mutableStateOf("")
         private set
-    private val failedSources = mutableSetOf<String>()
+    private val playbackSessions = PlaybackSessionGuard()
+    private var playbackRecoveryJob: Job? = null
+    var playbackSession by mutableStateOf<PlaybackSession?>(null)
+        private set
     var playingEpisode by mutableStateOf(0)
         private set
 
@@ -209,6 +214,7 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
     fun connect() {
         runCatching {
             repo.configureServer(serverAddress)
+            invalidatePlayback()
             page = Page.SETTINGS
             refreshConnection()
         }.onFailure { message = it.message ?: "服务器地址无效" }
@@ -326,6 +332,7 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
 
     fun navigate(destination: Page) {
         if (destination == Page.PLAYER || destination == Page.DETAIL) return
+        invalidatePlayback()
         page = destination
         section = destination
         when (destination) {
@@ -359,6 +366,7 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun open(item: MediaItem) {
+        invalidatePlayback()
         backdropJob?.cancel()
         detailJob?.cancel()
         val generation = ++detailGeneration
@@ -448,7 +456,8 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
                         val page = repo.catalog(keyword, tv, offset, topOnly = true)
                         ensureActive()
                         if (generation != searchGeneration || request != chartGeneration) return@launch
-                        queryCatalog = (queryCatalog + page.items).distinctBy { it.presentationKey }
+                        // A chart refresh owns the latest complete metadata/expiry bundle.
+                        queryCatalog = (queryCatalog + page.items).associateBy { it.presentationKey }.values.toList()
                         rebuildSearch()
                         offset = page.nextOffset ?: break
                     }
@@ -545,6 +554,22 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    private fun invalidatePlayback(returningToDetail: Boolean = false) {
+        playbackRecoveryJob?.cancel()
+        playbackRecoveryJob = null
+        playbackSessions.invalidate(returningToDetail)
+        playbackSession = null
+        failoverBusy = false
+        failoverMessage = ""
+    }
+
+    private fun isCurrentPlayback(session: PlaybackSession): Boolean =
+        page == Page.PLAYER && playbackSessions.isCurrent(session) &&
+            playbackUrl == session.url && playingEpisode == session.episodeIndex &&
+            if (session.item != null) {
+                playerReturnPage == Page.DETAIL && selected?.presentationKey == session.mediaKey
+            } else playerReturnPage == Page.LIVE
+
     fun playEpisode(index: Int = 0) {
         val item = selected ?: return
         val url = item.episodes.getOrNull(index)
@@ -552,30 +577,34 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
             message = "没有可播放的直链；请检查片源与剧集"
             return
         }
+        invalidatePlayback()
+        val session = playbackSessions.start(item, url, index)
+        playbackSession = session
         playerReturnPage = Page.DETAIL
-        if (repo.libraryStatus(item) == null) viewModelScope.launch {
-            runCatching { repo.setLibraryStatus(item, LibraryStatus.WATCHING) }
-                .onFailure { message = "片库保存失败：${it.message}" }
-        }
         playbackUrl = url
         playbackTitle = item.title + if (item.episodes.size > 1) " · 第${index + 1}集" else ""
         val progress = repo.library.snapshot.progress(item, index)
         playbackPosition = progress?.positionMs ?: 0L
         playingEpisode = index
-        failedSources.clear()
-        item.source?.url?.let { failedSources.add(it) }
-        failoverBusy = false
-        failoverMessage = ""
         page = Page.PLAYER
+        if (repo.libraryStatus(item) == null) viewModelScope.launch {
+            try {
+                repo.setLibraryStatus(item, LibraryStatus.WATCHING)
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) {
+                if (isCurrentPlayback(session)) message = "片库保存失败：${error.message}"
+            }
+        }
     }
 
     fun playChannel(channel: TvChannel) {
+        invalidatePlayback()
+        playbackSession = playbackSessions.start(null, channel.url)
         playerReturnPage = Page.LIVE
-        failoverBusy = false
-        failoverMessage = ""
         playbackUrl = channel.url
         playbackTitle = channel.name
         playbackPosition = 0L
+        playingEpisode = 0
         page = Page.PLAYER
     }
 
@@ -584,80 +613,118 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
      * Preserve episode number and position; never switch across mismatched episodes.
      * At most 2 alternative origins per playback session.
      */
-    fun recoverPlayback(cause: String, lastPosition: Long) {
-        val current = selected
-        if (playerReturnPage != Page.DETAIL || current == null || failedSources.size >= 3) {
+    fun recoverPlayback(cause: String, lastPosition: Long, session: PlaybackSession? = playbackSession) {
+        session ?: return
+        if (!isCurrentPlayback(session)) return
+        if (failoverBusy) return
+        val current = session.item
+        if (current == null || !playbackSessions.canRecover(session)) {
             failoverMessage = cause
             return
         }
-        if (failoverBusy) return
         failoverBusy = true
         failoverMessage = "播放失败，正在搜索同名备用片源..."
-        viewModelScope.launch {
-            runCatching {
-                val alternatives = repo.search(current.title)
-                    .filter { candidate ->
-                        sameSourceCandidate(current, candidate) &&
-                        candidate.source != null && candidate.source.url !in failedSources
-                    }.take(12)
-                var found: MediaItem? = null
+        playbackRecoveryJob = viewModelScope.launch {
+            try {
+                val searchResults = repo.search(current.title)
+                ensureActive()
+                if (!isCurrentPlayback(session)) return@launch
+                val alternatives = searchResults.filter { candidate ->
+                    sameSourceCandidate(current, candidate) && candidate.source?.url?.let {
+                        playbackSessions.canTrySource(session, it)
+                    } == true
+                }.take(12)
                 for (candidate in alternatives) {
+                    ensureActive()
+                    if (!isCurrentPlayback(session)) return@launch
                     val sourceUrl = candidate.source?.url ?: continue
-                    failedSources.add(sourceUrl)
-                    try {
-                        val detailed = repo.detail(candidate)
-                        val labelsMatch = current.episodeNames.getOrNull(playingEpisode)?.takeIf(String::isNotBlank)?.let { label ->
-                            detailed.episodeNames.getOrNull(playingEpisode)?.let { MediaIdentity.normalizedTitle(it) == MediaIdentity.normalizedTitle(label) }
-                        } ?: (detailed.episodes.size == current.episodes.size)
-                        val confirmedType = current.mediaTypeKnown && detailed.mediaTypeKnown && current.isTv == detailed.isTv
-                        val confirmedSeason = current.seasonNumber == detailed.seasonNumber
-                        if (sameSourceCandidate(current, detailed) && confirmedType && confirmedSeason && labelsMatch && detailed.episodes.getOrNull(playingEpisode)?.startsWith("http") == true) {
-                            found = detailed
-                            break
-                        }
-                    } catch (_: Exception) { /* independently failed source */ }
-                    if (failedSources.size >= 3) break
-                }
-                found ?: throw IllegalStateException("未找到同作品、同集数的备用片源")
-            }.onSuccess { resolved ->
-                selected = resolved
-                playbackPosition = lastPosition.coerceAtLeast(0)
-                val newUrl = resolved.episodes[playingEpisode]
-                if (newUrl == playbackUrl) {
-                    failoverMessage = cause
-                } else {
+                    if (!playbackSessions.trySource(session, sourceUrl)) continue
+                    val detailed = try {
+                        repo.detail(candidate)
+                    } catch (cancelled: CancellationException) { throw cancelled }
+                    catch (_: Exception) { continue }
+                    ensureActive()
+                    if (!isCurrentPlayback(session)) return@launch
+                    val episode = session.episodeIndex
+                    val labelsMatch = current.episodeNames.getOrNull(episode)?.takeIf(String::isNotBlank)?.let { label ->
+                        detailed.episodeNames.getOrNull(episode)?.let { MediaIdentity.normalizedTitle(it) == MediaIdentity.normalizedTitle(label) }
+                    } ?: (detailed.episodes.size == current.episodes.size)
+                    val confirmedType = current.mediaTypeKnown && detailed.mediaTypeKnown && current.isTv == detailed.isTv
+                    val confirmedSeason = current.seasonNumber == detailed.seasonNumber
+                    val newUrl = detailed.episodes.getOrNull(episode) ?: continue
+                    if (!newUrl.startsWith("https://") && !newUrl.startsWith("http://")) continue
+                    if (!sameSourceCandidate(current, detailed) || !confirmedType || !confirmedSeason || !labelsMatch) continue
+                    if (newUrl == session.url) continue // A different provider returning the failed stream is not a recovery.
+                    val recoveredSession = playbackSessions.switchSource(session, detailed, newUrl) ?: return@launch
+                    // No suspension between the final session check and publishing the replacement player.
+                    selected = detailed
+                    playbackPosition = lastPosition.coerceAtLeast(0)
                     playbackUrl = newUrl
-                    failoverMessage = "已切换备用片源：${resolved.source?.name ?: "未知"}"
+                    playbackSession = recoveredSession
+                    failoverMessage = "已切换备用片源：${detailed.source?.name ?: "未知"}"
+                    failoverBusy = false
+                    return@launch
                 }
-            }.onFailure { failoverMessage = "无法自动换源：${it.message ?: cause}" }
-            failoverBusy = false
+                throw IllegalStateException("未找到同作品、同集数的备用片源")
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) {
+                if (isCurrentPlayback(session)) failoverMessage = "无法自动换源：${error.message ?: cause}"
+            } finally {
+                // A cancelled older job must never clear a newer recovery's loading state.
+                if (isCurrentPlayback(session)) failoverBusy = false
+            }
         }
     }
 
-    fun savePlaybackPosition(position: Long, episodeIndex: Int = playingEpisode, durationMs: Long = 0L) {
-        val item = selected ?: return
-        if (playerReturnPage != Page.DETAIL) return
+    fun savePlaybackPosition(
+        position: Long,
+        episodeIndex: Int = playingEpisode,
+        durationMs: Long = 0L,
+        session: PlaybackSession? = playbackSession
+    ) {
+        val item = session?.item ?: return
+        if (episodeIndex != session.episodeIndex) return
+        // Disposal may run after navigation. Persist its captured item, never the new selection.
         viewModelScope.launch {
-            runCatching { repo.saveProgress(item, position, episodeIndex, durationMs) }
-                .onSuccess {
-                    if (episodeIndex == playingEpisode && selected?.presentationKey == item.presentationKey) {
-                        selected = repo.library.snapshot.applyProgress(item)
-                    }
-                }.onFailure { message = "观看进度未能保存：${it.message}" }
+            if (!playbackSessions.canPersistCheckpoint(session)) return@launch
+            try {
+                repo.saveProgress(item, position, episodeIndex, durationMs)
+                ensureActive()
+                if (isCurrentPlayback(session) || (page == Page.DETAIL &&
+                        selected?.presentationKey == session.mediaKey && playbackSessions.canUpdateReturnedDetail(session))) {
+                    selected = repo.library.snapshot.applyProgress(selected ?: item)
+                }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) {
+                if (isCurrentPlayback(session)) message = "观看进度未能保存：${error.message}"
+            }
         }
     }
 
-    fun playerEnded(position: Long = 0, duration: Long = 0, episodeIndex: Int = playingEpisode) {
-        val entry = selected ?: return
-        if (playerReturnPage == Page.DETAIL && episodeIndex == playingEpisode) {
-            val endingUrl = playbackUrl
-            viewModelScope.launch {
-                runCatching { repo.saveProgress(entry, if (duration > 0) duration else position, episodeIndex, duration) }
-                    .onFailure { message = "最终观看进度未能保存：${it.message}" }
-                if (page != Page.PLAYER || playbackUrl != endingUrl || playingEpisode != episodeIndex) return@launch
-                if (episodeIndex + 1 < entry.episodes.size) playEpisode(episodeIndex + 1)
-                else runCatching { repo.setLibraryStatus(entry, LibraryStatus.WATCHED) }
-                    .onFailure { message = "片库保存失败：${it.message}" }
+    fun playerEnded(
+        position: Long = 0,
+        duration: Long = 0,
+        episodeIndex: Int = playingEpisode,
+        session: PlaybackSession? = playbackSession
+    ) {
+        val entry = session?.item ?: return
+        if (!isCurrentPlayback(session) || episodeIndex != session.episodeIndex) return
+        viewModelScope.launch {
+            if (!isCurrentPlayback(session) || !playbackSessions.canPersistCheckpoint(session)) return@launch
+            try {
+                repo.saveProgress(entry, if (duration > 0) duration else position, episodeIndex, duration)
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) {
+                if (isCurrentPlayback(session)) message = "最终观看进度未能保存：${error.message}"
+            }
+            ensureActive()
+            if (!isCurrentPlayback(session)) return@launch
+            if (episodeIndex + 1 < entry.episodes.size) playEpisode(episodeIndex + 1)
+            else try {
+                repo.setLibraryStatus(entry, LibraryStatus.WATCHED)
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) {
+                if (isCurrentPlayback(session)) message = "片库保存失败：${error.message}"
             }
         }
     }
@@ -705,8 +772,8 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
 
     fun back() {
         when (page) {
-            Page.PLAYER -> page = playerReturnPage
-            Page.DETAIL -> page = section
+            Page.PLAYER -> { invalidatePlayback(returningToDetail = playerReturnPage == Page.DETAIL); page = playerReturnPage }
+            Page.DETAIL -> { invalidatePlayback(); page = section }
             Page.HOME -> Unit
             else -> navigate(Page.HOME)
         }

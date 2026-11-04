@@ -91,32 +91,33 @@ private fun applyChoice(player: Player, type: Int, choice: TrackChoice?) {
 @Composable
 fun TvPlayerPage(model: CinemaViewModel) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    val uri = model.playbackUrl
-    val episodeAtCreation = remember(uri) { model.playingEpisode }
-    val player = remember(uri) {
-        PlaybackFactory.create(context, cacheVod = model.playerReturnPage == Page.DETAIL).apply {
+    val session = model.playbackSession ?: return
+    val uri = session.url
+    val episodeAtCreation = session.episodeIndex
+    val player = remember(session) {
+        PlaybackFactory.create(context, cacheVod = session.item != null).apply {
             setMediaItem(MediaItem.fromUri(uri))
             prepare()
             playWhenReady = true
             if (model.playbackPosition > 0) seekTo(model.playbackPosition)
         }
     }
-    var position by remember(uri) { mutableLongStateOf(0L) }
-    var duration by remember(uri) { mutableLongStateOf(0L) }
-    var error by remember(uri) { mutableStateOf("") }
-    var isPlaying by remember(uri) { mutableStateOf(true) }
-    var controlsVisible by remember(uri) { mutableStateOf(true) }
-    var panel by remember(uri) { mutableStateOf<PlayerPanel?>(null) }
-    var tracksVersion by remember(uri) { mutableIntStateOf(0) }
-    var interaction by remember(uri) { mutableIntStateOf(0) }
-    val rootFocus = remember(uri) { FocusRequester() }
-    val playFocus = remember(uri) { FocusRequester() }
-    val panelFocus = remember(uri) { FocusRequester() }
-    val qualityFocus = remember(uri) { FocusRequester() }
-    val audioFocus = remember(uri) { FocusRequester() }
-    val subtitleFocus = remember(uri) { FocusRequester() }
-    val speedFocus = remember(uri) { FocusRequester() }
-    var returnFocus by remember(uri) { mutableStateOf(playFocus) }
+    var position by remember(session) { mutableLongStateOf(0L) }
+    var duration by remember(session) { mutableLongStateOf(0L) }
+    var error by remember(session) { mutableStateOf("") }
+    var isPlaying by remember(session) { mutableStateOf(true) }
+    var controlsVisible by remember(session) { mutableStateOf(true) }
+    var panel by remember(session) { mutableStateOf<PlayerPanel?>(null) }
+    var tracksVersion by remember(session) { mutableIntStateOf(0) }
+    var interaction by remember(session) { mutableIntStateOf(0) }
+    val rootFocus = remember(session) { FocusRequester() }
+    val playFocus = remember(session) { FocusRequester() }
+    val panelFocus = remember(session) { FocusRequester() }
+    val qualityFocus = remember(session) { FocusRequester() }
+    val audioFocus = remember(session) { FocusRequester() }
+    val subtitleFocus = remember(session) { FocusRequester() }
+    val speedFocus = remember(session) { FocusRequester() }
+    var returnFocus by remember(session) { mutableStateOf(playFocus) }
     val layout = LocalTvLayout.current
     ObservePlaybackLifecycle(player)
     val handleBack: () -> Unit = {
@@ -139,20 +140,18 @@ fun TvPlayerPage(model: CinemaViewModel) {
         val listener = object : Player.Listener {
             override fun onPlayerError(exception: PlaybackException) {
                 error = exception.message ?: "视频解码或网络错误"
-                model.recoverPlayback(error, player.currentPosition)
+                model.recoverPlayback(error, player.currentPosition, session)
                 controlsVisible = true
             }
             override fun onPlaybackStateChanged(state: Int) {
-                if (state == Player.STATE_ENDED && model.playbackUrl == uri) model.playerEnded(player.currentPosition, player.duration.coerceAtLeast(0L), episodeAtCreation)
+                if (state == Player.STATE_ENDED) model.playerEnded(player.currentPosition, player.duration.coerceAtLeast(0L), episodeAtCreation, session)
             }
             override fun onIsPlayingChanged(playing: Boolean) { isPlaying = playing }
             override fun onTracksChanged(tracks: Tracks) { tracksVersion++ }
         }
         player.addListener(listener)
         onDispose {
-            if (model.playbackUrl == uri) {
-                model.savePlaybackPosition(player.currentPosition.coerceAtLeast(0L), episodeAtCreation, player.duration.coerceAtLeast(0L))
-            }
+            model.savePlaybackPosition(player.currentPosition.coerceAtLeast(0L), episodeAtCreation, player.duration.coerceAtLeast(0L), session)
             player.removeListener(listener)
             player.release()
         }
@@ -162,11 +161,11 @@ fun TvPlayerPage(model: CinemaViewModel) {
         while (isActive) {
             position = player.currentPosition.coerceAtLeast(0L)
             duration = player.duration.coerceAtLeast(0L)
-            if (++ticks % 5 == 0) model.savePlaybackPosition(position, episodeAtCreation, player.duration.coerceAtLeast(0L))
+            if (++ticks % 5 == 0) model.savePlaybackPosition(position, episodeAtCreation, player.duration.coerceAtLeast(0L), session)
             delay(1000)
         }
     }
-    LaunchedEffect(uri) { rootFocus.requestFocus() }
+    LaunchedEffect(session) { rootFocus.requestFocus() }
     LaunchedEffect(controlsVisible, panel, interaction, isPlaying) {
         if (controlsVisible && panel == null && isPlaying) {
             delay(6500)
