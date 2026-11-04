@@ -8,6 +8,7 @@ import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.cinematv.ui.typography.CinemaTvText as Text
@@ -19,9 +20,18 @@ import dev.cinematv.ui.tv.design.*
 import dev.cinematv.ui.tv.focus.*
 import dev.cinematv.ui.tv.pages.*
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun TvRootApp(model: CinemaViewModel, onSceneDecoded: (String?) -> Unit = {}) {
     CinemaTvTheme(model.reducedMotion, model.glassQuality) {
+        val keyboard = LocalSoftwareKeyboardController.current
+        val imeVisible = WindowInsets.isImeVisible
+        // Keep ownership in the persistent root: a restored Search editor can
+        // finish showing its IME after that route has already been disposed.
+        // Do not clear focus here; destination D-pad restoration owns focus.
+        LaunchedEffect(model.page, imeVisible) {
+            if (shouldHideTvIme(model.page, imeVisible)) keyboard?.hide()
+        }
         val savedPages = rememberSaveableStateHolder()
         val registry = remember { TvFocusRegistry() }
         val navigation = remember { FocusRequester() }
