@@ -16,6 +16,8 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
+import dev.cinematv.playback.PlaybackFactory
+import dev.cinematv.Page
 import dev.cinematv.CinemaViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -29,7 +31,7 @@ fun TvPlayerPage(model: CinemaViewModel) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val uri = model.playbackUrl
     val player = remember(uri) {
-        ExoPlayer.Builder(context).build().apply {
+        PlaybackFactory.create(context, cacheVod = model.playerReturnPage == Page.DETAIL).apply {
             setMediaItem(MediaItem.fromUri(uri))
             prepare()
             playWhenReady = true
