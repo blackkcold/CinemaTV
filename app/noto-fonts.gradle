@@ -9,6 +9,9 @@ import java.security.MessageDigest
 // Groovy avoids the Kotlin-script UAST crash in Lint; Lint itself stays fully enabled.
 def notoLock = rootProject.file('scripts/fonts/noto-fonts.lock.json')
 def notoAssets = layout.buildDirectory.dir('generated/notoAssets')
+// Download cache is deliberately NOT a task output or under build/. Gradle removes
+// stale generated outputs before doFirst/doLast on fresh execution history.
+def notoDownloadCache = rootProject.layout.projectDirectory.dir('.cache/cinematv-noto-fonts')
 
 tasks.register('prepareNotoFonts') {
     inputs.file(notoLock)
@@ -18,6 +21,10 @@ tasks.register('prepareNotoFonts') {
         def directory = notoAssets.get().dir('fonts').asFile
         if (!directory.isDirectory() && !directory.mkdirs()) {
             throw new GradleException("Cannot create Noto asset directory: ${directory}")
+        }
+        def cacheDirectory = notoDownloadCache.asFile
+        if (!cacheDirectory.isDirectory() && !cacheDirectory.mkdirs()) {
+            throw new GradleException("Cannot create Noto download cache: ${cacheDirectory}")
         }
         def digest = { File file ->
             def sha = MessageDigest.getInstance('SHA-256')
@@ -31,6 +38,21 @@ tasks.register('prepareNotoFonts') {
             }
             sha.digest().collect { String.format('%02x', it & 0xff) }.join()
         }
+        def valid = { File file, size, String hash ->
+            file.isFile() && file.length() == size && digest(file) == hash
+        }
+        def copyVerified = { File from, File to, size, String hash ->
+            def partial = File.createTempFile(to.name + '.', '.part', to.parentFile)
+            try {
+                Files.copy(from.toPath(), partial.toPath(), StandardCopyOption.REPLACE_EXISTING)
+                if (!valid(partial, size, hash)) {
+                    throw new GradleException("Noto copy integrity failure: ${to.name}")
+                }
+                Files.move(partial.toPath(), to.toPath(), StandardCopyOption.REPLACE_EXISTING)
+            } finally {
+                partial.delete()
+            }
+        }
         for (def font : lock.fonts) {
             String name = font.name
             if (!name.matches('[A-Za-z0-9-]+\\.(ttf|ttc)')) {
@@ -39,7 +61,18 @@ tasks.register('prepareNotoFonts') {
             long expectedSize = font.size as long
             String expectedHash = font.sha256
             def target = new File(directory, name)
-            if (target.isFile() && target.length() == expectedSize && digest(target) == expectedHash) {
+            def cachedFont = new File(cacheDirectory, name)
+            if (valid(target, expectedSize, expectedHash)) {
+                // Migrate a verified local generated file without requiring network access.
+                if (!valid(cachedFont, expectedSize, expectedHash)) {
+                    copyVerified(target, cachedFont, expectedSize, expectedHash)
+                }
+                logger.lifecycle("Verified generated Noto asset: ${name}")
+                continue
+            }
+            if (valid(cachedFont, expectedSize, expectedHash)) {
+                copyVerified(cachedFont, target, expectedSize, expectedHash)
+                logger.lifecycle("Reused verified Noto download cache: ${name}")
                 continue
             }
             if (gradle.startParameter.offline) {
@@ -49,7 +82,8 @@ tasks.register('prepareNotoFonts') {
             if (url.protocol != 'https' || url.host != 'raw.githubusercontent.com') {
                 throw new GradleException("Unexpected Noto source: ${url}")
             }
-            def temporary = new File(directory, "${name}.part")
+            logger.lifecycle("Fetching pinned Noto asset: ${name}")
+            def temporary = File.createTempFile(name + '.', '.part', cacheDirectory)
             def connection = url.openConnection() as HttpURLConnection
             connection.connectTimeout = 20_000
             connection.readTimeout = 60_000
@@ -83,7 +117,8 @@ tasks.register('prepareNotoFonts') {
                 if (temporary.length() != expectedSize || digest(temporary) != expectedHash) {
                     throw new GradleException("Noto asset integrity failure: ${name}")
                 }
-                Files.move(temporary.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
+                Files.move(temporary.toPath(), cachedFont.toPath(), StandardCopyOption.REPLACE_EXISTING)
+                copyVerified(cachedFont, target, expectedSize, expectedHash)
             } finally {
                 connection.disconnect()
                 temporary.delete()

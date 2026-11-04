@@ -17,10 +17,37 @@ class NotoTypographyContractTest(unittest.TestCase):
             self.assertRegex(entry['sha256'], r'^[a-f0-9]{64}$')
             self.assertGreater(entry['size'], 100_000)
         script = (ROOT / 'app/noto-fonts.gradle').read_text()
-        for guard in ('digest(target) == expectedHash', 'digest(temporary) != expectedHash',
+        for guard in ('valid(target, expectedSize, expectedHash)', 'digest(temporary) != expectedHash',
                       'total > expectedSize', 'startParameter.offline', 'instanceFollowRedirects = false',
-                      'deadline', 'connectTimeout', 'readTimeout', '${name}.part'):
+                      'deadline', 'connectTimeout', 'readTimeout', "File.createTempFile(name + '.', '.part', cacheDirectory)"):
             self.assertIn(guard, script)
+
+    def test_cjk_uses_weight_aware_descriptor_and_compose_regression(self):
+        source = ROOT / 'app/src/main/java/dev/cinematv/ui/typography'
+        loader = (source / 'CinemaNoto.kt').read_text()
+        self.assertIn('FontFamily(PreloadedNotoFont(typeface))', loader)
+        self.assertNotIn('else FontFamily(typeface)', loader)
+        descriptor = (source / 'PreloadedNotoFont.kt').read_text()
+        self.assertIn('override val weight: FontWeight = FontWeight.Normal', descriptor)
+        self.assertIn('(font as PreloadedNotoFont).typeface', descriptor)
+        self.assertNotIn('Typeface.Builder', descriptor)
+        self.assertNotIn('assets.open', descriptor)
+        regression = (ROOT / 'app/src/androidTest/java/dev/cinematv/ui/typography/NotoComposeWeightEvidence.kt').read_text()
+        for required in ('CinemaText(', 'CinemaTvText(', 'FontSynthesis.None',
+                         'bold.isBold', 'NotoCompositorCapture.capture(', 'boldInk > normalInk',
+                         'regular/no-synthesis pixels differ', 'boundsInWindow'):
+            self.assertIn(required, regression)
+        self.assertNotIn('isFakeBoldText', regression)
+        self.assertNotIn('captureToImage', regression)
+        capture = (ROOT / 'app/src/androidTest/java/dev/cinematv/ui/typography/NotoCompositorCapture.kt').read_text()
+        for required in ('getLocationOnScreen', 'getLocationInWindow', 'automation.takeScreenshot()',
+                         'future.get(TIMEOUT_SECONDS', 'if (abandoned)', 'bitmap.recycle()',
+                         'settleFreshFrame', 'rendered()', 'activity.hasWindowFocus()',
+                         'if (!waitForRoot) check(windowReady)',
+                         'if (windowReady && lastPackage == activity.packageName) return'):
+            self.assertIn(required, capture)
+        self.assertNotIn('captureToImage', capture)
+        self.assertNotIn('PixelCopy', capture)
 
     def test_generated_assets_and_licenses_are_packaged(self):
         self.assertIn('apply(from = "noto-fonts.gradle")', (ROOT / 'app/build.gradle.kts').read_text())
@@ -32,11 +59,15 @@ class NotoTypographyContractTest(unittest.TestCase):
         script = (ROOT / 'app/noto-fonts.gradle').read_text()
         self.assertNotIn('com.android.', script)
         self.assertNotIn('sourceSets', script)
+        self.assertIn("rootProject.layout.projectDirectory.dir('.cache/cinematv-noto-fonts')", script)
+        self.assertNotIn('outputs.dir(notoDownloadCache)', script)
+        self.assertIn('copyVerified(cachedFont, target, expectedSize, expectedHash)', script)
+        self.assertIn('valid(cachedFont, expectedSize, expectedHash)', script)
         self.assertFalse((ROOT / 'app/noto-fonts.gradle.kts').exists())
         self.assertIn('noCompress += listOf("ttc", "ttf")', build)
 
     def test_ci_font_cache_uses_only_exact_lock_and_asset_path(self):
-        expected_key = "noto-fonts-v1-${{ hashFiles('scripts/fonts/noto-fonts.lock.json') }}"
+        expected_key = "noto-fonts-v2-${{ hashFiles('scripts/fonts/noto-fonts.lock.json') }}"
         for name in ('android.yml', 'tv-smoke.yml'):
             workflow = (ROOT / '.github/workflows' / name).read_text()
             blocks = re.findall(
@@ -45,7 +76,7 @@ class NotoTypographyContractTest(unittest.TestCase):
             self.assertEqual(len(blocks), 1, name)
             block = blocks[0]
             self.assertIn('uses: actions/cache@v4', block)
-            self.assertIn('path: app/build/generated/notoAssets/fonts\n', block)
+            self.assertIn('path: .cache/cinematv-noto-fonts\n', block)
             self.assertIn('key: ' + expected_key + '\n', block)
             self.assertNotIn('restore-keys:', block)
             self.assertNotIn('if:', block)

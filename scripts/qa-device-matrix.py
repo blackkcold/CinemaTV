@@ -5,7 +5,7 @@ import sys
 
 DEVICES = [
     {"name": "phone", "target": "google_apis", "api": 30, "size": "1080x1920", "density": 420,
-     "classes": "dev.cinematv.MobileNavigationSmokeTest,dev.cinematv.TvLaunchSmokeTest,dev.cinematv.MobilePlaybackSmokeTest,dev.cinematv.data.LocalMediaLibraryTest,dev.cinematv.data.RepositoryContractTest,dev.cinematv.MobileGlassButtonTest,dev.cinematv.CinemaBrandStartupTest"},
+     "classes": "dev.cinematv.MobileNavigationSmokeTest,dev.cinematv.TvLaunchSmokeTest,dev.cinematv.MobilePlaybackSmokeTest,dev.cinematv.data.LocalMediaLibraryTest,dev.cinematv.data.RepositoryContractTest,dev.cinematv.MobileGlassButtonTest,dev.cinematv.CinemaBrandStartupTest,dev.cinematv.ui.typography.NotoFontsDeviceTest"},
     {"name": "tv1080", "target": "default", "api": 33, "size": "1920x1080", "density": 320,
      "classes": "dev.cinematv.TvUiRegressionTest,dev.cinematv.GlassMaterialSmokeTest,dev.cinematv.ui.typography.NotoFontsDeviceTest"},
     {"name": "tv4k", "target": "default", "api": 33, "size": "3840x2160", "density": 640,

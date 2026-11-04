@@ -37,9 +37,10 @@ jobs:
       - name: Restore pinned offline Noto fonts
         uses: actions/cache@v4
         with:
-          path: app/build/generated/notoAssets/fonts
-          # Font bytes are platform-independent; Ubuntu APK and device jobs share this key.
-          key: noto-fonts-v1-${{ hashFiles('scripts/fonts/noto-fonts.lock.json') }}
+          path: .cache/cinematv-noto-fonts
+          # Durable downloads, not Gradle task outputs (which stale-output cleanup may delete).
+          # Font bytes are platform-independent; APK and device jobs share this exact key.
+          key: noto-fonts-v2-${{ hashFiles('scripts/fonts/noto-fonts.lock.json') }}
       - name: Build, lint and test
         run: |
           bash scripts/generate-test-media.sh

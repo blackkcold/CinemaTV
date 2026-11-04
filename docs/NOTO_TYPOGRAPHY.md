@@ -43,12 +43,59 @@ All font bytes are unmodified, not locally subsetted:
   occupy the full **20,629,732 bytes**, plus ZIP/alignment overhead. That is about
   **4,542,473 bytes more** than the DEFLATE estimate. This is not a measured total
   APK delta; check the built artifact before release.
-- Latin 400 and 700 are real font files. CJK ships only 400; bold/medium and italic
-  use Android/Compose synthetic styling. No claim of true CJK 500/600/700 masters.
+- Latin 400 and 700 are real font files. CJK ships only 400; requested weights 600 and above and italic
+  use Android/Compose synthetic styling. Requested 500 stays at the regular face
+  under Compose's standard synthesis policy. No claim of true CJK 500/600/700 masters.
   This deliberately avoids another approximately 20 MB collection on TV devices.
 
 Both original copyright/OFL 1.1 licenses ship in `assets/fonts/`. Fonts remain under
 OFL, separate from the application's MIT source license. Do not strip the licenses.
+
+## Weight-resolution correction
+
+The original `FontFamily(android.graphics.Typeface)` adapter was incorrect for CJK
+weight requests. The built APK identifies Compose ui-text **1.10.6**. Its exact
+published source shows `AndroidTypefaceWrapper.getNativeTypeface` returns its
+wrapped face unchanged and ignores requested weight/style/synthesis. Therefore the
+regular CJK face stayed regular in bold headings, while the separate Latin font
+list correctly selected its real bold file. This was a real mixed-weight regression,
+not an intended visual difference of Noto. Native specimens that explicitly set
+`Paint.isFakeBoldText` did not test that Compose path.
+
+Regional faces now use `FontFamily(PreloadedNotoFont(typeface))`: a public-API
+`AndroidFont` descriptor advertising weight 400/style normal. Its blocking loader
+only returns the already-loaded native object, with no filesystem/network access.
+Compose's font-list resolver then applies its built-in requested-weight/style
+synthesis and honors `FontSynthesis.None`. API26/27 use the platform style-creation
+path; API28+ use weight/style creation. The shared TTC index and original bytes,
+background load, cache and failure fallback remain unchanged. No new font files.
+
+`NotoFontsDeviceTest.composeCjkBoldHonorsWeightAndSynthesisOnBothSurfaces` checks
+resolved native bold flags and captures real `CinemaText` and `CinemaTvText` output
+for each regional face, comparing regular/bold/synthesis-disabled CJK-only samples
+at the same size. It requires greater stroke coverage for synthetic bold, and the
+regular raster when synthesis is disabled, comparing crop dimensions and SHA256 of
+raw ARGB pixels as well as ink. It writes the display PNG, three specimen crops and
+ink/pixel-hash JSON to `ui-evidence/noto/compose-weight`.
+
+Capture uses one bounded UiAutomation compositor screenshot for each region/wrapper
+pair (ten total), then crops all three semantics rectangles from that same display
+image. It does not use Compose force-redraw/captureToImage or PixelCopy. Before each
+capture, a draw-observed epoch is changed with a frame listener armed; the test waits
+for that epoch to draw, a fresh window frame, and Compose idle. Foreground activity
+and accessibility package are checked around the readback. Late/abandoned bitmaps
+are recycled. This generic ComponentActivity is not assumed fullscreen: the Compose
+host's measured screen and window positions translate `boundsInWindow` into display
+coordinates. Out-of-display/clipped rectangles fail. Evidence records full display
+dimensions, window/screen offsets, exact crop bounds and the fresh draw epoch. No
+scaling or guessed (0,0) origin is permitted. No assertion compares different regional faces
+or relies on a platform-specific golden. The native specimen remains useful for
+asset/glyph checks, but cannot replace this Compose regression gate. Device/CI
+execution of this correction is still required before accepting new goldens.
+
+Exact dependency source used to verify the behavior (no dependency was added):
+https://dl.google.com/dl/android/maven2/androidx/compose/ui/ui-text-android/1.10.6/ui-text-android-1.10.6-sources.jar
+(`AndroidTypefaceWrapper.android.kt`, `AndroidFont.android.kt`, `FontSynthesis.android.kt`).
 
 ## Packaging and low-RAM tradeoff
 
@@ -96,12 +143,22 @@ rejects redirects, non-200 responses, excess length or hash mismatch, has connec
 read timeouts, and downloads to a temporary file before replacing the final file.
 Invalid input fails the build. No partial file becomes a packaged font.
 
-First build requires access to raw.githubusercontent.com. Once generated, an
-unchanged build reuses Gradle outputs; `--offline` works with verified local files.
-`clean` removes them, so an offline clean build needs these exact files restored
-into `app/build/generated/notoAssets/fonts` from a trusted build cache. A missing or
-invalid file under `--offline` fails with an actionable message. The APK is entirely
-offline for fonts after installation, independent of the build cache/network.
+A cold build without verified local assets requires access to raw.githubusercontent.com.
+The durable download cache lives in `.cache/cinematv-noto-fonts`, outside both
+`build/` task outputs and `.gradle/`. Actions restores only that directory with an
+exact lock-hash `noto-fonts-v2` key. The task checks size and SHA256 before reuse,
+then copies through a verified temporary file into generated assets. Only generated
+assets enter the APK, so the cache does not add another packaged font copy.
+
+This separation fixes a reproduced Gradle 8.13 lifecycle issue: when task execution
+history is absent, BasePlugin deletes stale generated outputs before `doFirst` or
+`doLast`, even if Actions has just restored valid font bytes there. Restoring into
+the output directory was therefore not a reliable cache. The dedicated cache
+survives `clean`, deleted task history and a fresh checkout with no generated files.
+`--offline` can restore from that verified cache, repair corrupt generated output,
+or seed the cache from valid generated files. If neither copy is valid, it fails
+with an actionable message. The APK remains entirely offline for fonts after
+installation, independent of the build cache/network.
 
 ## Deterministic screenshot host
 
@@ -117,10 +174,13 @@ installs the provider; native font evidence is separately captured by the device
 
 - `python scripts/fonts/verify-noto-gradle.py --gradle /path/to/gradle --report /tmp/noto-task-evidence`:
   executes the actual Groovy task in an SDK-free temporary Gradle project, with
-  the real lock and downloads. Verifies cold download, offline reuse, same-length
-  corruption rejection, online repair and missing-offline rejection. It checks
-  hashes, no orphan `.part` files and no offline mutation. Gradle 8.13 completed
-  all five cases locally on 2026-11-04; this is not an Android build/Lint pass.
+  the real lock, BasePlugin and official downloads. Ten scenarios cover genuine
+  cold download, offline reuse, clean, deleted execution history, cache-only fresh
+  checkout, corrupt-output repair, invalid-cache rejection, online repair,
+  missing-offline rejection and verified-output migration. The deleted-history
+  case requires the stale-output deletion log and successful verified-cache reuse.
+  Hashes and orphan `.part` files are checked throughout. Gradle 8.13 completed all
+  ten cases locally on 2026-11-04; this is not an Android build/Lint pass.
   Uses an isolated writable Gradle home; honors a credential-free HTTPS proxy
   when supplied by the environment. Logs remain in the requested report directory.
 - `python scripts/fonts/verify-noto-fonts.py`: standard-library offline verification

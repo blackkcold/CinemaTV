@@ -12,3 +12,4 @@ captures/
 node_modules/
 .DS_Store
 __pycache__/
+.cache/cinematv-noto-fonts/
