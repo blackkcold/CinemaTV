@@ -16,6 +16,7 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.coroutineScope
 import dev.cinematv.ui.tv.design.GlassQuality
 import dev.cinematv.ui.shared.presentationKey
+import dev.cinematv.ui.shared.WorkNavigationProjection
 import dev.cinematv.playback.PlaybackSession
 import dev.cinematv.playback.PlaybackSessionGuard
 
@@ -460,15 +461,28 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    fun open(item: MediaItem) {
+    val workNavigation get() = selected?.let { WorkNavigationProjection.build(repo.library.snapshot, it) }
+
+    /** Validate IDs against the latest snapshot; stale/removed choices are harmless. */
+    fun selectWorkSource(workId: String, seasonId: String, sourceId: String? = null) {
+        if (page != Page.DETAIL) return
+        val navigation = workNavigation?.takeIf { it.workId == workId } ?: return
+        val item = navigation.source(seasonId, sourceId) ?: return
+        if (MediaDomainMapper.entryId(item) == selected?.let(MediaDomainMapper::entryId)) return
+        openDetail(item, preserveWorkRoute = true)
+    }
+
+    fun open(item: MediaItem) = openDetail(item, preserveWorkRoute = false)
+
+    private fun openDetail(item: MediaItem, preserveWorkRoute: Boolean) {
         invalidatePlayback()
         backdropJob?.cancel()
         detailJob?.cancel()
         val generation = ++detailGeneration
         selectedRecommendationReason = recommendationReasons[item.presentationKey].orEmpty()
-        detailSessionKey = item.presentationKey
+        if (!preserveWorkRoute) detailSessionKey = item.presentationKey
         page = Page.DETAIL
-        selected = item
+        selected = repo.library.snapshot.applyProgress(item)
         resolutionStatus = ""
         alternatives = emptyList()
         busy = true
@@ -486,7 +500,7 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
                 if (repo.persistenceWarning.isNotBlank()) message = repo.persistenceWarning
                 busy = false
                 runCatching { repo.enrichMetadata(detailed) }.onSuccess { enhanced ->
-                    if (selected?.presentationKey == detailed.presentationKey && page == Page.DETAIL) selected = enhanced
+                    if (detailGeneration == generation && selected?.presentationKey == detailed.presentationKey && page == Page.DETAIL) selected = enhanced
                 }
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
                 throw cancelled
@@ -947,9 +961,9 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    fun libraryByStatus(status: LibraryStatus): List<MediaItem> = repo.libraryByStatus(status)
+    fun libraryByStatus(status: LibraryStatus): List<MediaItem> = WorkNavigationProjection.deduplicate(repo.libraryByStatus(status))
 
-    fun favorites() = repo.favorites()
+    fun favorites() = WorkNavigationProjection.deduplicate(repo.favorites())
     fun history() = repo.history()
 
     fun back() {
