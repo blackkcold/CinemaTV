@@ -4,6 +4,9 @@ on:
     branches: [main]
     paths:
       - 'app/src/androidTest/**'
+      - 'app/src/main/java/dev/cinematv/ui/mobile/**'
+      - 'app/src/main/java/dev/cinematv/MainActivity.kt'
+      - 'app/src/main/AndroidManifest.xml'
       - '.github/workflows/tv-smoke.yml'
   workflow_dispatch:
   schedule:

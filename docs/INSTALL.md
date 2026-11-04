@@ -78,3 +78,19 @@ signing secrets in GitHub Actions, and use the manual certified release workflow
 The workflow refuses to publish while certification evidence is incomplete.
 A debug-signed APK from one CI runner may not upgrade over an APK signed by
 another debug keystore. Back up local state before reinstalling previews.
+
+## 手机安装与测试（主分支 Android 双端构建）
+
+- 支持 Android 8.0（API 26）及以上手机；主屏启动器将显示 CinemaTV。
+- 不再强制横屏，手机默认跟随系统方向；TV 继续使用沉浸式横屏界面。
+- 首次打开填写自建 LibreTV 服务器，完成认证后使用手机触控首页、搜索、影视详情、选集、播放、直播与片库。
+- 手机使用 Media3 原生触摸播放器控制器；电视继续使用 D-pad 专用控制层。
+- 手机电视共用后端、播放历史和本地设置（仅同一应用安装空间内）。
+- 由旧版 Debug APK 升级如果出现 `INSTALL_FAILED_UPDATE_INCOMPATIBLE`，通常是测试构建的调试签名不同。卸载会清空本地数据，请先备份配置后再重装。
+
+### 品牌资源
+- `design/branding/cinematv-player-mark.svg`: 透明白色播放器标识
+- `design/branding/cinematv-app-icon.svg`: 黑底横向动态模糊主图标
+- `design/branding/cinematv-tv-banner.svg`: 居中播放器标识与 CinemaTV 字标
+- `app/src/main/res/drawable-nodpi/`: 从 SVG 导出的实际 Android PNG
+- 更改 SVG 后通过 `bash scripts/render-branding.sh` 生成对应 PNG（需安装 `rsvg-convert`）。

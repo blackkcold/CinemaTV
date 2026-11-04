@@ -1,6 +1,6 @@
 # CinemaTV
 
-**CinemaTV** is an open-source, native Android TV / Google TV video browsing and playback client for a **self-hosted LibreTV** instance.
+**CinemaTV** is an open-source, native Android TV / Google TV and Android phone video browsing and playback client for a **self-hosted LibreTV** instance.
 
 **Release status: v0.2.0 Preview (debug-signed, when its CI finishes)**. Main branch is not hardware-certified. Stable release is blocked by [Release Gate #1](https://github.com/blackkcold/CinemaTV/issues/1).
 
@@ -73,3 +73,15 @@ remain open in Release Gate #1.
 This product may use the TMDB API through an independently configured BFF but
 is not endorsed or certified by TMDB. Users/operators must follow TMDB's
 attribution, API and image-use conditions. No TMDB access key is bundled.
+
+## Brand assets and phone support (development)
+
+- All source graphics are **original editable SVG** under [`design/branding/`](design/branding/).
+- The app icon is a white minimal player glyph on a predominantly black field with restrained horizontal motion-blurred light streaks.
+- The **TV banner is 320 × 180 px at runtime**, designed from a 1280 × 720 SVG. Both the player symbol and CinemaTV wordmark use the precise horizontal centerline (`x=640` in source).
+- Android launchers use adaptive icon foreground/background resources; TV launchers use a PNG banner. Android PNGs are regenerated automatically when SVG sources change.
+- Phone builds offer a touch-first UI with portrait orientation, home, browse, search, detail, playback, live, library and settings. The same backend credentials and player engine are shared with TV.
+- Device selection is based on Android television UI mode; a phone is **not** shown the TV D-pad layout.
+- Android emulator smoke tests validate launch/navigation. This does not certify any physical TV, codec, GPU or full liquid-glass implementation.
+
+See [branding guidance](design/branding/README.md) and [installation guide](docs/INSTALL.md). Stable release is still gated by physical hardware certification.
