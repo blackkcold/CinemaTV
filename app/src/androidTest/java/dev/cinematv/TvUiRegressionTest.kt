@@ -30,6 +30,7 @@ class TvUiRegressionTest {
     private val directory get() = File(InstrumentationRegistry.getArguments().getString("additionalTestOutputDir")
         ?: rule.activity.getExternalFilesDir(null)!!.absolutePath, "ui-evidence").apply { mkdirs() }
     private fun key(code: Int) {
+        android.util.Log.i("CinemaTVQa", "key=$code route=${model.focusRoute}")
         if (code == KeyEvent.KEYCODE_BACK && model.page != Page.PLAYER) androidx.test.espresso.Espresso.pressBack()
         else {
             val composeKey = when (code) {
@@ -49,6 +50,7 @@ class TvUiRegressionTest {
         File(directory, "focus-trace.txt").appendText("key=$code route=${model.focusRoute}\n$trace\n")
     }
     private fun screenshot(name: String, waitForArt: Boolean = true) {
+        android.util.Log.i("CinemaTVQa", "capture=$name directory=${directory.absolutePath}")
         if (waitForArt) rule.runOnIdle { model.dismissMessage() }
         rule.waitForIdle()
         try {
@@ -185,6 +187,7 @@ class TvUiRegressionTest {
             .put("scope", "TV Compose UI on Android emulator; physical TV and decoder certification excluded").toString(2))
     }
     private fun recordFrameMetrics() {
+        android.util.Log.i("CinemaTVQa", "frame sample begin")
         val frames = Collections.synchronizedList(mutableListOf<Double>())
         val thread = HandlerThread("frame-evidence").apply { start() }
         val listener = Window.OnFrameMetricsAvailableListener { _, metrics, _ ->
@@ -201,6 +204,7 @@ class TvUiRegressionTest {
         rule.runOnIdle { rule.activity.window.removeOnFrameMetricsAvailableListener(listener) }
         thread.quitSafely(); thread.join(2000)
         val values = synchronized(frames) { frames.toList().sorted() }
+        android.util.Log.i("CinemaTVQa", "frame sample complete: ${values.size} frames")
         assertTrue("Frame evidence must contain rendered frames", values.isNotEmpty())
         File(directory, "frames.json").writeText(JSONObject().put("frames", values.size)
             .put("p95Ms", values[((values.size - 1) * .95).toInt()]).put("p99Ms", values[((values.size - 1) * .99).toInt()])

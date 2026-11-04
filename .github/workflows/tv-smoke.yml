@@ -49,6 +49,7 @@ jobs:
       - name: Enable KVM
         run: sudo chmod 666 /dev/kvm
       - uses: reactivecircus/android-emulator-runner@v2
+        timeout-minutes: 25
         with:
           api-level: ${{ matrix.api }}
           target: google_apis
