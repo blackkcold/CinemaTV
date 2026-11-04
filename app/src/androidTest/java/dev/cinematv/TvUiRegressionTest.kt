@@ -175,8 +175,12 @@ class TvUiRegressionTest {
         rule.onNodeWithContentDescription(selected).assertIsFocused()
         recordFrameMetrics()
         val metrics = rule.activity.resources.displayMetrics
+        // Resource display metrics can exclude the phone host's hidden navigation
+        // inset. Record the actual full-screen Compose raster that was captured.
+        val viewport = rule.onRoot().captureToImage()
         File(directory, "viewport.json").writeText(JSONObject()
-            .put("widthPx", metrics.widthPixels).put("heightPx", metrics.heightPixels)
+            .put("widthPx", viewport.width).put("heightPx", viewport.height)
+            .put("resourceWidthPx", metrics.widthPixels).put("resourceHeightPx", metrics.heightPixels)
             .put("densityDpi", metrics.densityDpi).put("fixture", "Original vector artwork and synthetic H264/AAC")
             .put("scope", "TV Compose UI on Android emulator; physical TV and decoder certification excluded").toString(2))
     }
