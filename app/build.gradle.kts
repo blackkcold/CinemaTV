@@ -14,8 +14,21 @@ android {
         versionCode = 1
         versionName = "0.1.0"
     }
+    signingConfigs {
+        if (!System.getenv("CINEMATV_KEYSTORE_PATH").isNullOrBlank()) {
+            create("production") {
+                storeFile = file(System.getenv("CINEMATV_KEYSTORE_PATH")!!)
+                storePassword = System.getenv("CINEMATV_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("CINEMATV_KEY_ALIAS")
+                keyPassword = System.getenv("CINEMATV_KEY_PASSWORD")
+            }
+        }
+    }
     buildTypes {
-        release { isMinifyEnabled = false }
+        release {
+            isMinifyEnabled = false
+            signingConfig = signingConfigs.findByName("production")
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
