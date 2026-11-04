@@ -4,14 +4,17 @@ import argparse
 import json
 from pathlib import Path
 
-from PIL import Image, ImageChops, ImageStat
+from PIL import Image, ImageChops, ImageDraw, ImageStat
 
 SIZE = (960, 540)
 
 
-def normalized(path):
+def normalized(path, masks):
     with Image.open(path) as image:
-        return image.convert("RGB").resize(SIZE, Image.Resampling.LANCZOS)
+        result = image.convert("RGB").resize(SIZE, Image.Resampling.LANCZOS)
+    for rectangle in masks:
+        ImageDraw.Draw(result).rectangle(rectangle, fill="black")
+    return result
 
 
 def main():
@@ -23,16 +26,19 @@ def main():
     parser.add_argument("--changed-limit", type=float, default=0.08)
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
-    baselines = sorted(args.baseline.glob("*.png"))
-    if not baselines:
+    manifest = json.loads((args.baseline / "manifest.json").read_text())
+    screens = manifest["screens"]
+    if not screens:
         raise SystemExit("No reviewed golden images found")
     report = []
-    for baseline in baselines:
+    for screen in screens:
+        baseline = args.baseline / screen["file"]
         candidate = args.candidate / baseline.name
-        if not candidate.is_file():
-            report.append({"screen": baseline.name, "passed": False, "reason": "Missing screenshot"})
+        if not baseline.is_file() or not candidate.is_file():
+            report.append({"screen": baseline.name, "passed": False, "reason": "Missing baseline or screenshot"})
             continue
-        before, after = normalized(baseline), normalized(candidate)
+        masks = screen.get("masks", [])
+        before, after = normalized(baseline, masks), normalized(candidate, masks)
         difference = ImageChops.difference(before, after)
         mean = sum(ImageStat.Stat(difference).mean) / (3 * 255)
         changed = sum(1 for pixel in difference.getdata() if max(pixel) > 32) / (SIZE[0] * SIZE[1])
@@ -41,7 +47,10 @@ def main():
         if not passed:
             difference.save(args.output / (baseline.stem + "-difference.png"))
             Image.blend(before, after, .5).save(args.output / (baseline.stem + "-overlay.png"))
-    (args.output / "comparison.json").write_text(json.dumps({"normalizedSize": SIZE, "screens": report}, indent=2))
+    (args.output / "comparison.json").write_text(json.dumps({
+        "normalizedSize": SIZE, "sourceCommit": manifest["sourceCommit"],
+        "meanLimit": args.mean_limit, "changedLimit": args.changed_limit, "screens": report,
+    }, indent=2))
     for row in report:
         print(json.dumps(row))
     if not all(row["passed"] for row in report):

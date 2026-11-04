@@ -3,7 +3,7 @@
 A native Android TV / Google TV and Android phone client for a self-hosted LibreTV instance.
 Kotlin, Jetpack Compose for TV and Media3; separate TV and touch layouts.
 
-**Main branch: immersive UI rebuild for v0.4.0 Preview.** Releases are debug-signed
+**v0.4.0 Preview: native immersive UI rebuild.** Releases are debug-signed
 previews. Physical TV certification and production signing remain tracked in
 [Release Gate #1](https://github.com/blackkcold/CinemaTV/issues/1).
 
@@ -45,7 +45,8 @@ The Actions build validates the APK archive and signature. UI QA covers a portra
 phone (API 30) plus 1920×1080 and 3840×2160 TV UI viewports (API 33). `[ui-qa]`
 commits run the full instrumentation matrix; `[preview-release]` additionally
 publishes only after build and all UI jobs pass **at that commit**. Screenshots,
-JUnit results and informational emulator frame metrics accompany the preview.
+JUnit results, reviewed screenshot comparisons and informational emulator frame
+metrics accompany the preview. Missing evidence or failed comparisons block publication.
 
 ## Setup
 

@@ -57,3 +57,18 @@ art fields without invalidating older records.
   regression baseline; Apple screenshots are not used as copyrighted pixel goldens.
 
 Physical hardware and signed-stable gates stay open until measured evidence exists.
+
+## Visual regression contract
+
+`design/ui/goldens/tv1080` and `tv4k` contain six reviewed captures (home,
+detail, movie catalog, series catalog, discovery and settings) from the original
+fixture. Each manifest records its source commit/run and small dynamic masks:
+the transient library notification and settings' ephemeral localhost port.
+No control bounds are masked. Separate viewport baselines retain platform
+font/inset rasterization rather than widening the difference threshold.
+
+CI normalizes captures to 960×540, requires mean RGB error ≤0.020 and the fraction
+of pixels differing by more than 32 channel levels ≤0.08, and exports overlays
+for failures. It also requires all 14 full-resolution captures, matching viewport
+metadata, a nonempty focus trace and rendered frame samples. Emulator P95/P99 are
+informational. Golden updates require visual review, not automatic acceptance.

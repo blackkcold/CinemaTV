@@ -45,6 +45,7 @@ jobs:
           yes | "$SDKMANAGER" --licenses >/dev/null || true
           "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0"
           bash scripts/generate-test-media.sh
+          python -m pip install 'Pillow==11.3.0'
       - name: Enable KVM
         run: sudo chmod 666 /dev/kvm
       - uses: reactivecircus/android-emulator-runner@v2
@@ -65,5 +66,4 @@ jobs:
             qa/
             app/build/reports/androidTests/
             app/build/outputs/androidTest-results/
-            app/build/outputs/connected_android_test_additional_output/
           if-no-files-found: error

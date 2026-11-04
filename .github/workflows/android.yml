@@ -82,7 +82,10 @@ jobs:
           TAG="v$VERSION"
           if [[ "$GITHUB_REF" == refs/tags/* ]]; then test "$GITHUB_REF_NAME" = "$TAG"; fi
           mv dist/app-debug.apk "dist/CinemaTV-$TAG.apk"
+          cp qa/ui-evidence-tv1080/qa/ui-evidence/01-home.png "dist/CinemaTV-$TAG-home.png"
           (cd qa && zip -qr "../dist/CinemaTV-$TAG-ui-evidence.zip" .)
-          (cd dist && sha256sum *.apk *.zip > SHA256SUMS.txt)
+          (cd dist && sha256sum *.apk *.png *.zip > SHA256SUMS.txt)
+          cp "docs/releases/$TAG.md" /tmp/cinematv-release-notes.md
+          printf '\nTested commit: `%s`\n\n[Build and full UI QA](%s/%s/actions/runs/%s)\n' "$GITHUB_SHA" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" >> /tmp/cinematv-release-notes.md
           gh release create "$TAG" dist/* --target "$GITHUB_SHA" --prerelease \
-            --title "CinemaTV $TAG · Immersive UI" --notes-file "docs/releases/$TAG.md"
+            --title "CinemaTV $TAG · Immersive UI" --notes-file /tmp/cinematv-release-notes.md

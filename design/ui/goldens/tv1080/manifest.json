@@ -1,0 +1,72 @@
+{
+  "sourceCommit": "07d85420df3fd13a83e0d9b41b740927d5011bc0",
+  "workflowRun": 41819223687,
+  "reviewedDate": "2026-11-04",
+  "viewport": "tv1080",
+  "normalizedSize": [
+    960,
+    540
+  ],
+  "fixture": "Fictional titles and CinemaTV original vector landscapes; no Apple screenshot copying",
+  "maskNotes": "Bottom-center transient library notification; settings ephemeral localhost server port. Control bounds and all other screen pixels remain compared. Separate viewport baselines preserve platform text/inset rasterization.",
+  "screens": [
+    {
+      "file": "01-home.png",
+      "masks": []
+    },
+    {
+      "file": "03-detail.png",
+      "masks": []
+    },
+    {
+      "file": "05-movies.png",
+      "masks": [
+        [
+          410,
+          482,
+          555,
+          530
+        ]
+      ]
+    },
+    {
+      "file": "06-series.png",
+      "masks": [
+        [
+          410,
+          482,
+          555,
+          530
+        ]
+      ]
+    },
+    {
+      "file": "07-discovery.png",
+      "masks": [
+        [
+          410,
+          482,
+          555,
+          530
+        ]
+      ]
+    },
+    {
+      "file": "11-settings.png",
+      "masks": [
+        [
+          410,
+          482,
+          555,
+          530
+        ],
+        [
+          455,
+          199,
+          515,
+          235
+        ]
+      ]
+    }
+  ]
+}
