@@ -70,6 +70,11 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
     var epgPrograms by mutableStateOf<List<TvProgram>>(emptyList())
         private set
     private var epgJob: Job? = null
+    var failoverBusy by mutableStateOf(false)
+        private set
+    var failoverMessage by mutableStateOf("")
+        private set
+    private val failedSources = mutableSetOf<String>()
     var playingEpisode by mutableStateOf(0)
         private set
 
@@ -226,15 +231,72 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
         playbackTitle = item.title + if (item.episodes.size > 1) " · 第${index + 1}集" else ""
         playbackPosition = if (index == 0) item.positionMs else 0L
         playingEpisode = index
+        failedSources.clear()
+        item.source?.url?.let { failedSources.add(it) }
+        failoverBusy = false
+        failoverMessage = ""
         page = Page.PLAYER
     }
 
     fun playChannel(channel: TvChannel) {
         playerReturnPage = Page.LIVE
+        failoverBusy = false
+        failoverMessage = ""
         playbackUrl = channel.url
         playbackTitle = channel.name
         playbackPosition = 0L
         page = Page.PLAYER
+    }
+
+    /**
+     * Fail over only to the exact same title and, when known, the same year.
+     * Preserve episode number and position; never switch across mismatched episodes.
+     * At most 2 alternative origins per playback session.
+     */
+    fun recoverPlayback(cause: String, lastPosition: Long) {
+        val current = selected
+        if (playerReturnPage != Page.DETAIL || current == null || failedSources.size >= 3) {
+            failoverMessage = cause
+            return
+        }
+        if (failoverBusy) return
+        failoverBusy = true
+        failoverMessage = "播放失败，正在搜索同名备用片源..."
+        viewModelScope.launch {
+            runCatching {
+                val alternatives = repo.search(current.title)
+                    .filter { candidate ->
+                        candidate.title.equals(current.title, ignoreCase = true) &&
+                        (current.year.isBlank() || candidate.year.isBlank() || candidate.year == current.year) &&
+                        candidate.source != null && candidate.source.url !in failedSources
+                    }.take(12)
+                var found: MediaItem? = null
+                for (candidate in alternatives) {
+                    val sourceUrl = candidate.source?.url ?: continue
+                    failedSources.add(sourceUrl)
+                    try {
+                        val detailed = repo.detail(candidate)
+                        if (detailed.episodes.getOrNull(playingEpisode)?.startsWith("http") == true) {
+                            found = detailed
+                            break
+                        }
+                    } catch (_: Exception) { /* independently failed source */ }
+                    if (failedSources.size >= 3) break
+                }
+                found ?: throw IllegalStateException("未找到同作品、同集数的备用片源")
+            }.onSuccess { resolved ->
+                selected = resolved
+                playbackPosition = lastPosition.coerceAtLeast(0)
+                val newUrl = resolved.episodes[playingEpisode]
+                if (newUrl == playbackUrl) {
+                    failoverMessage = cause
+                } else {
+                    playbackUrl = newUrl
+                    failoverMessage = "已切换备用片源：${resolved.source?.name ?: "未知"}"
+                }
+            }.onFailure { failoverMessage = "无法自动换源：${it.message ?: cause}" }
+            failoverBusy = false
+        }
     }
 
     fun savePlaybackPosition(position: Long) {

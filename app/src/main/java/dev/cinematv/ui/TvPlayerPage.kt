@@ -47,6 +47,7 @@ fun TvPlayerPage(model: CinemaViewModel) {
         val listener = object : Player.Listener {
             override fun onPlayerError(exception: PlaybackException) {
                 error = exception.message ?: "视频解码或网络错误"
+                model.recoverPlayback(error, player.currentPosition)
             }
             override fun onPlaybackStateChanged(playbackState: Int) {
                 if (playbackState == Player.STATE_ENDED) model.playerEnded()
@@ -102,7 +103,7 @@ fun TvPlayerPage(model: CinemaViewModel) {
                 color = Muted, fontSize = 15.sp
             )
         }
-        if (error.isNotBlank()) {
+        if (error.isNotBlank() || model.failoverBusy) {
             Column(
                 modifier = Modifier.align(Alignment.Center)
                     .background(Color(0xE9292027), androidx.compose.foundation.shape.RoundedCornerShape(18.dp))
@@ -110,8 +111,8 @@ fun TvPlayerPage(model: CinemaViewModel) {
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                Text(error, color = Ivory, fontSize = 18.sp)
-                GlassAction("重试播放", Modifier.width(145.dp).height(47.dp)) {
+                Text(model.failoverMessage.ifBlank { error }, color = Ivory, fontSize = 18.sp)
+                if (!model.failoverBusy) GlassAction("重试播放", Modifier.width(145.dp).height(47.dp)) {
                     error = ""
                     player.prepare()
                     player.play()
