@@ -7,6 +7,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -100,17 +103,29 @@ private fun HeroBackground(item: MediaItem?) = CinemaBackdrop(item)
 @Composable
 fun MediaRail(title: String, items: List<MediaItem>, model: CinemaViewModel) {
     if (items.isEmpty()) return
+    val region = "rail:$title"
+    val listState = rememberLazyListState()
+    val restore = remember(model.page, title) { model.focusCoordinator.restore(model.page.name, region) }
+    LaunchedEffect(restore) {
+        val index = items.indexOfFirst { it.id + ":" + (it.source?.key ?: "") == restore }
+        if (index >= 0) listState.scrollToItem(index)
+    }
     Column(Modifier.fillMaxWidth().padding(vertical = 16.dp)) {
         Text(title, color = Ivory, fontSize = 22.sp, fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(start = margin, bottom = 20.dp))
         LazyRow(
+            state = listState,
             contentPadding = PaddingValues(horizontal = margin),
             horizontalArrangement = Arrangement.spacedBy(22.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
             items(items, key = { it.id + (it.source?.key ?: "") }) { item ->
-                MediaTile(item, onFocus = { model.onMediaFocus(item) },
-                    onClick = { model.open(item) }, modifier = Modifier.width(255.dp))
+                val key = item.id + ":" + (item.source?.key ?: "")
+                val focusRequester = remember(key) { FocusRequester() }
+                if (key == restore) LaunchedEffect(key) { focusRequester.requestFocus() }
+                MediaTile(item, onFocus = { model.onMediaFocus(item, region) },
+                    onClick = { model.open(item) },
+                    modifier = Modifier.focusRequester(focusRequester).width(255.dp))
             }
         }
     }
@@ -119,7 +134,12 @@ fun MediaRail(title: String, items: List<MediaItem>, model: CinemaViewModel) {
 @Composable
 fun ExplorePage(model: CinemaViewModel) {
     val entries = (model.featured + model.tvShows).distinctBy { it.title + it.year }
-    var activeIndex by remember { mutableIntStateOf(0) }
+    var activeIndex by remember { mutableIntStateOf(
+        entries.indexOfFirst { item ->
+            item.id + ":" + (item.source?.key ?: "") ==
+                model.focusCoordinator.restore(Page.EXPLORE.name, "coverflow")
+        }.coerceAtLeast(0)
+    ) }
     val railState = rememberLazyListState()
     Box(
         Modifier.fillMaxSize().background(
@@ -179,7 +199,7 @@ fun ExplorePage(model: CinemaViewModel) {
                                     modifier = Modifier.fillMaxWidth(),
                                     onFocus = {
                                         activeIndex = index
-                                        model.onMediaFocus(item)
+                                        model.onMediaFocus(item, "coverflow")
                                     },
                                     onClick = { model.open(item) }
                                 )
@@ -207,18 +227,30 @@ fun ExplorePage(model: CinemaViewModel) {
 @Composable
 fun CatalogPage(model: CinemaViewModel, isTv: Boolean) {
     val items = if (isTv) model.tvShows else model.featured
+    val region = if (isTv) "series-grid" else "movie-grid"
+    val restore = remember(model.page) { model.focusCoordinator.restore(model.page.name, region) }
+    val gridState = rememberLazyGridState()
+    LaunchedEffect(restore) {
+        val index = items.indexOfFirst { it.id + ":" + (it.source?.key ?: "") == restore }
+        if (index >= 0) gridState.scrollToItem(index)
+    }
     Column(Modifier.fillMaxSize().padding(top = 116.dp, start = margin, end = margin)) {
         PageHeading(if (isTv) "剧集" else "电影", "探索 LibreTV 推荐内容；点击作品进入片源搜索与详情")
         Spacer(Modifier.height(28.dp))
         if (items.isEmpty()) EmptyMessage("暂无内容，请检查服务器连接", Modifier.fillMaxSize())
         else LazyVerticalGrid(
+            state = gridState,
             columns = GridCells.Fixed(5),
             horizontalArrangement = Arrangement.spacedBy(18.dp),
             verticalArrangement = Arrangement.spacedBy(26.dp),
             contentPadding = PaddingValues(bottom = 50.dp)
         ) {
             items(items, key = { it.id }) { item ->
-                MediaTile(item, onFocus = { model.onMediaFocus(item) }, onClick = { model.open(item) })
+                val key = item.id + ":" + (item.source?.key ?: "")
+                val requester = remember(key) { FocusRequester() }
+                if (key == restore) LaunchedEffect(key) { requester.requestFocus() }
+                MediaTile(item, onFocus = { model.onMediaFocus(item, region) },
+                    onClick = { model.open(item) }, modifier = Modifier.focusRequester(requester))
             }
         }
     }

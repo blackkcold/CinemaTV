@@ -15,6 +15,7 @@ enum class Page { HOME, EXPLORE, MOVIES, SERIES, SEARCH, LIVE, LIBRARY, SETTINGS
 
 class CinemaViewModel(application: Application) : AndroidViewModel(application) {
     val repo = LibreTvRepository(application)
+    val focusCoordinator = FocusCoordinator()
     var page by mutableStateOf(if (repo.isConnected) Page.HOME else Page.SETTINGS)
         private set
     var section by mutableStateOf(Page.HOME)
@@ -164,7 +165,10 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    fun onMediaFocus(item: MediaItem) { focused = item }
+    fun onMediaFocus(item: MediaItem, region: String = "general") {
+        focused = item
+        focusCoordinator.remember(page.name, region, item.id + ":" + (item.source?.key ?: ""))
+    }
 
     fun open(item: MediaItem) {
         page = Page.DETAIL
