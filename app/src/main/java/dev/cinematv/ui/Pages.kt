@@ -532,9 +532,25 @@ fun SettingsPage(model: CinemaViewModel) {
         }
         Text("已配置点播源（自定义来源可移除）：", color = Muted, fontSize = 14.sp)
         model.sources.forEach { source ->
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                Text(source.name, color = Ivory, fontSize = 15.sp, modifier = Modifier.weight(1f))
-                if (source.key.startsWith("custom_")) GlassAction("移除", Modifier.width(96.dp).height(36.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(source.name, color = if (source.enabled) Ivory else Muted,
+                    fontSize = 15.sp, modifier = Modifier.weight(1f), maxLines = 1)
+                val health = model.sourceProbes[source.url]
+                Text(
+                    when {
+                        !source.enabled -> "已停用"
+                        health == null -> "未检测"
+                        health.reachable -> "正常 · ${health.latencyMs}ms"
+                        else -> health.message.take(24)
+                    },
+                    color = if (health?.reachable == true && source.enabled) Accent else Muted,
+                    fontSize = 13.sp, modifier = Modifier.width(178.dp), maxLines = 1
+                )
+                GlassAction("测速", Modifier.width(82.dp).height(40.dp)) { model.probeSource(source) }
+                GlassAction(if (source.enabled) "停用" else "启用", Modifier.width(82.dp).height(40.dp)) {
+                    model.toggleSource(source)
+                }
+                if (source.key.startsWith("custom_")) GlassAction("移除", Modifier.width(82.dp).height(40.dp)) {
                     model.removeSource(source.url)
                 }
             }

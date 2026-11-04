@@ -59,6 +59,8 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
     var liveEpg by mutableStateOf("")
     var sources by mutableStateOf<List<TvSource>>(emptyList())
         private set
+    var sourceProbes by mutableStateOf<Map<String, SourceProbe>>(emptyMap())
+        private set
     var liveSources by mutableStateOf<List<LiveSource>>(emptyList())
         private set
     var channels by mutableStateOf<List<TvChannel>>(emptyList())
@@ -148,6 +150,22 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
             liveSources = repo.liveSources()
             message = "添加成功"
         }.onFailure { message = it.message ?: "添加失败" }
+    }
+
+    fun toggleSource(source: TvSource) {
+        repo.setSourceEnabled(source.url, !source.enabled)
+        sources = repo.sources()
+    }
+
+    fun probeSource(source: TvSource) {
+        viewModelScope.launch {
+            sourceProbes = sourceProbes + (source.url to SourceProbe(false, 0, "检测中…"))
+            runCatching { repo.probeSource(source) }
+                .onSuccess { sourceProbes = sourceProbes + (source.url to it) }
+                .onFailure { sourceProbes = sourceProbes + (
+                    source.url to SourceProbe(false, 0, it.message ?: "无法连接")
+                ) }
+        }
     }
 
     fun removeSource(url: String, live: Boolean = false) {

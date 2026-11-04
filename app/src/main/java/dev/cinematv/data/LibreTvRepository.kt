@@ -152,7 +152,38 @@ class LibreTvRepository(context: Context) {
         return parseArray(arr, ::liveSourceFrom)
     }
 
-    fun sources(): List<TvSource> = (storedSources() + defaultSources).distinctBy { it.url }
+    private fun disabledSourceUrls(): Set<String> =
+        prefs.getStringSet("disabled_sources", emptySet()) ?: emptySet()
+
+    fun sources(): List<TvSource> = (storedSources() + defaultSources)
+        .distinctBy { it.url }
+        .map { it.copy(enabled = it.url !in disabledSourceUrls()) }
+
+    fun setSourceEnabled(url: String, enabled: Boolean) {
+        val updated = disabledSourceUrls().toMutableSet()
+        if (enabled) updated.remove(url) else updated.add(url)
+        prefs.edit().putStringSet("disabled_sources", updated).apply()
+    }
+
+    suspend fun probeSource(source: TvSource): SourceProbe = withContext(Dispatchers.IO) {
+        val address = source.url + if (source.url.contains("?")) "&ac=list" else "?ac=list"
+        val started = System.nanoTime()
+        val conn = (URL(address).openConnection() as HttpURLConnection).apply {
+            connectTimeout = 5000
+            readTimeout = 7000
+            requestMethod = "GET"
+            instanceFollowRedirects = false
+            setRequestProperty("Accept", "application/json")
+        }
+        try {
+            val status = conn.responseCode
+            val ms = (System.nanoTime() - started) / 1_000_000L
+            val isJson = conn.contentType.orEmpty().contains("json", ignoreCase = true)
+            SourceProbe(status in 200..299 && isJson, ms,
+                if (status in 200..299 && isJson) "正常"
+                else "HTTP $status / 非 JSON 接口")
+        } finally { conn.disconnect() }
+    }
     fun liveSources(): List<LiveSource> = (storedLiveSources() + defaultLiveSources).distinctBy { it.url }
 
     fun addSource(name: String, url: String) {
@@ -238,7 +269,7 @@ class LibreTvRepository(context: Context) {
         .put("sources", JSONArray(active.map(::sourceJson)))
 
     suspend fun search(keyword: String): List<MediaItem> = withContext(Dispatchers.IO) {
-        val active = sources()
+        val active = sources().filter { it.enabled }
         require(active.isNotEmpty()) { "请先在设置中添加点播源" }
         val response = request("/api/search", "POST", searchPayload(keyword, active))
         decodeSearchList(response.optJSONArray("list"), active)
@@ -250,7 +281,7 @@ class LibreTvRepository(context: Context) {
      * usable, cancellation closes the network stream immediately.
      */
     fun searchProgressively(keyword: String): Flow<List<MediaItem>> = flow {
-        val active = sources()
+        val active = sources().filter { it.enabled }
         require(active.isNotEmpty()) { "请先在设置中添加点播源" }
         val conn = (URL(server + "/api/search?stream=1").openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"

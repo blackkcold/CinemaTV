@@ -4,7 +4,8 @@ data class TvSource(
     val key: String,
     val name: String,
     val url: String,
-    val detail: String = ""
+    val detail: String = "",
+    val enabled: Boolean = true
 )
 
 data class LiveSource(
@@ -53,3 +54,5 @@ data class ServerStatus(
     val liveSources: List<LiveSource>,
     val version: String
 )
+
+data class SourceProbe(val reachable: Boolean, val latencyMs: Long, val message: String)
