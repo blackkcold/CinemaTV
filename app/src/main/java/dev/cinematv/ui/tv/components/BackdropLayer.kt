@@ -43,6 +43,8 @@ fun AmbientArtwork(modifier: Modifier = Modifier, seed: Int = 0) {
 fun BackdropLayer(item: MediaItem?, onDecodedArt: (String?) -> Unit = {}) {
     val context = LocalContext.current
     val effects = LocalTvEffects.current
+    val decodeWidth = if (effects.glass == GlassQuality.BASIC) 960 else 1600
+    val decodeHeight = if (effects.glass == GlassQuality.BASIC) 540 else 900
     val requested = landscapeArt(item)
     val latest by rememberUpdatedState(requested)
     val notify by rememberUpdatedState(onDecodedArt)
@@ -53,9 +55,9 @@ fun BackdropLayer(item: MediaItem?, onDecodedArt: (String?) -> Unit = {}) {
     Box(Modifier.fillMaxSize()) {
         AmbientArtwork(Modifier.matchParentSize(), item?.title?.hashCode() ?: 0)
         if (requested != null) {
-            val request = remember(requested, effects.glass) {
+            val request = remember(requested, decodeWidth) {
                 ImageRequest.Builder(context).data(requested)
-                    .size(if (effects.glass == GlassQuality.BASIC) 960 else 1600, if (effects.glass == GlassQuality.BASIC) 540 else 900).build()
+                    .size(decodeWidth, decodeHeight).build()
             }
             AsyncImage(model = request, contentDescription = null,
                 modifier = Modifier.size(1.dp).alpha(0f),
@@ -71,7 +73,7 @@ fun BackdropLayer(item: MediaItem?, onDecodedArt: (String?) -> Unit = {}) {
         }
         Crossfade(targetState = decoded, animationSpec = tween(effects.sceneMillis), label = "decoded-backdrop") { art ->
             if (art != null) AsyncImage(
-                model = ImageRequest.Builder(context).data(art).size(1600, 900).build(),
+                model = ImageRequest.Builder(context).data(art).size(decodeWidth, decodeHeight).build(),
                 contentDescription = null, contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
             )

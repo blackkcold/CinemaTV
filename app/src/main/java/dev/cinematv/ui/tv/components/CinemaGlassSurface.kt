@@ -17,9 +17,11 @@ import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil3.compose.rememberAsyncImagePainter
+import coil3.request.ImageRequest
 import dev.cinematv.ui.GlassSheen
 import dev.cinematv.ui.tv.design.*
 import kotlin.math.max
@@ -37,10 +39,12 @@ fun CinemaGlassSurface(
     val effects = LocalTvEffects.current
     val layout = LocalTvLayout.current
     val density = LocalDensity.current
+    val context = LocalContext.current
     var position by remember { mutableStateOf(Offset.Zero) }
     Box(modifier.onGloballyPositioned { position = it.positionInRoot() }.clip(shape)) {
         if (sampleBackdrop && art != null && effects.glass != GlassQuality.BASIC) {
-            val painter = rememberAsyncImagePainter(art)
+            val request = remember(art) { ImageRequest.Builder(context).data(art).size(1600, 900).build() }
+            val painter = rememberAsyncImagePainter(request)
             val viewport = with(density) { Size(layout.width.toPx(), layout.height.toPx()) }
             Canvas(Modifier.matchParentSize().blur(20.dp)) {
                 val intrinsic = painter.intrinsicSize

@@ -10,6 +10,7 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.input.key.Key
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import dev.cinematv.data.LibraryStatus
@@ -28,7 +29,19 @@ class TvUiRegressionTest {
     private val directory get() = File(InstrumentationRegistry.getArguments().getString("additionalTestOutputDir")
         ?: rule.activity.getExternalFilesDir(null)!!.absolutePath, "ui-evidence").apply { mkdirs() }
     private fun key(code: Int) {
-        InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(code)
+        if (code == KeyEvent.KEYCODE_BACK) androidx.test.espresso.Espresso.pressBack()
+        else {
+            val composeKey = when (code) {
+                KeyEvent.KEYCODE_DPAD_DOWN -> Key.DirectionDown
+                KeyEvent.KEYCODE_DPAD_UP -> Key.DirectionUp
+                KeyEvent.KEYCODE_DPAD_LEFT -> Key.DirectionLeft
+                KeyEvent.KEYCODE_DPAD_RIGHT -> Key.DirectionRight
+                KeyEvent.KEYCODE_DPAD_CENTER -> Key.DirectionCenter
+                else -> error("Unsupported test key: $code")
+            }
+            val target = if (rule.onAllNodes(isDialog()).fetchSemanticsNodes().isNotEmpty()) rule.onNode(isDialog()) else rule.onRoot()
+            target.performKeyInput { pressKey(composeKey) }
+        }
         rule.waitForIdle()
         val trace = rule.onAllNodes(isFocused()).fetchSemanticsNodes().joinToString { it.config.toString() }
         File(directory, "focus-trace.txt").appendText("key=$code route=${model.focusRoute}\n$trace\n")
@@ -46,6 +59,7 @@ class TvUiRegressionTest {
         }
     }
     @Before fun connectFixture() {
+        rule.waitUntil(10000) { rule.activity.hasWindowFocus() }
         server = UiFixtureServer(InstrumentationRegistry.getInstrumentation().context)
         rule.runOnIdle {
             model.updateReducedMotion(true)
@@ -71,7 +85,9 @@ class TvUiRegressionTest {
         repeat(9) { key(KeyEvent.KEYCODE_DPAD_RIGHT) }
         val selected = server.title(9)
         rule.onNodeWithContentDescription(selected).assertIsFocused()
+        rule.runOnIdle { model.updateReducedMotion(false) }
         screenshot("02-focused-rail")
+        rule.runOnIdle { model.updateReducedMotion(true) }
         key(KeyEvent.KEYCODE_DPAD_CENTER)
         rule.waitUntil(15000) { model.page == Page.DETAIL && !model.busy && model.selected?.episodes?.size == 36 }
         screenshot("03-detail")
