@@ -1,0 +1,118 @@
+{
+  "schemaVersion": 1,
+  "kind": "controlled-static-protocol-fixture",
+  "verifiedAt": "2026-11-04T20:00:57Z",
+  "publicationStatus": "Prepared locally; no hosted fixture verified and no positive LibreTV run performed",
+  "fixture": {
+    "path": "blender-bbb-static-cms.json",
+    "sha256": "8d84db9bf37fd22cccb41738b61e3795e547c77bbc7e7925bb19babbd7a8a73d",
+    "mediaBundled": false,
+    "originalDescription": true,
+    "copiedDataset": false
+  },
+  "provider": {
+    "detailUrl": "https://video.blender.org/api/v1/videos/6402b77c-b61f-4a06-96ca-c8420a2becf4",
+    "responseSha256": "b200a213050d1d605950a2cfb02c517cc6ba8b680c019c1a19b7f3f2b0f054a4",
+    "httpStatus": 200,
+    "uuid": "6402b77c-b61f-4a06-96ca-c8420a2becf4",
+    "name": "Big Buck Bunny 60fps 4K - Official Blender Foundation Short Film",
+    "durationSeconds": 634,
+    "channel": {
+      "name": "blender_open_movies",
+      "host": "video.blender.org",
+      "url": "https://video.blender.org/video-channels/blender_open_movies"
+    },
+    "account": {
+      "name": "blender",
+      "host": "video.blender.org",
+      "url": "https://video.blender.org/accounts/blender"
+    },
+    "licence": {
+      "id": 1,
+      "label": "Attribution"
+    }
+  },
+  "rights": {
+    "license": "CC BY 3.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by/3.0/",
+    "attribution": "Big Buck Bunny © 2008 Blender Foundation / www.bigbuckbunny.org. CC BY 3.0: https://creativecommons.org/licenses/by/3.0/ . Sunflower version: Janus Bager Kristensen and the credited Sunflower contributors. Retain the complete ending credits. The linked Blender-hosted media is unchanged.",
+    "primaryAboutUrl": "https://peach.blender.org/about/",
+    "aboutPageSha256": "bd9eb73ddec647bbb486c47316163042a9655a8483358c093121341d0dc080cf",
+    "aboutPageRequirement": "Include the entire credits roll in ending.",
+    "freshEndingFrameEvidence": [
+      {
+        "timestampSeconds": 617,
+        "sha256": "06468a76c571f91aaf94f4f8edbea7ff0dab83628621069b5923101ea42fc1db",
+        "observation": "Both original Big Buck Bunny and Sunflower rendition explicitly display Creative Commons Attribution 3.0."
+      },
+      {
+        "timestampSeconds": 580,
+        "sha256": "358285d2f3d2d4943ba64b72ac10692e7bbb0d4dea3680576d1db69c4b357d12",
+        "observation": "Sunflower version names Janus Bager Kristensen and other rendition contributors."
+      }
+    ],
+    "frameCaptureMethod": "Fresh bounded ranges of exact allowed MP4, assembled sparsely in /tmp, decoded with FFmpeg. Frame hashes match existing backend provenance frames; no new media or frames bundled here."
+  },
+  "media": {
+    "url": "https://video.blender.org/object-storage/web_videos/6402b77c-b61f-4a06-96ca-c8420a2becf4-240.mp4",
+    "httpStatus": 206,
+    "contentType": "video/mp4",
+    "contentRange": "bytes 0-2097151/52991998",
+    "firstRangeBytes": 2097152,
+    "firstRangeSha256": "93f1b5587745473561f364af570af8373edef20d85e832c7bcbbc8e8e0544570",
+    "tailContentRange": "bytes 44000000-52991997/52991998",
+    "tailRangeSha256": "f41fa753957a9abf137fd59f0d9fead8cd203bae86b504980592293bd198c3e1",
+    "probe": {
+      "programs": [],
+      "stream_groups": [],
+      "streams": [
+        {
+          "codec_name": "h264",
+          "codec_type": "video",
+          "width": 426,
+          "height": 240
+        },
+        {
+          "codec_name": "aac",
+          "codec_type": "audio"
+        }
+      ],
+      "format": {
+        "duration": "634.667000"
+      }
+    },
+    "localDecode": {
+      "durationSeconds": 5,
+      "videoFrames": 150,
+      "exitCode": 0,
+      "scope": "FFmpeg host decode only; not Android playback or full-film decode"
+    }
+  },
+  "rawGithubQueryProbe": {
+    "url": "https://raw.githubusercontent.com/blackkcold/CinemaTV/847170a/scripts/libretv-contracts/README.md",
+    "resolvedCommit": "847170a8ce105e8fabf6f831fb07a72d691d60dc",
+    "queryVariants": [
+      "",
+      "?ac=videolist&wd=Big%20Buck%20Bunny&pg=1",
+      "?ac=videolist&ids=6402b77c-b61f-4a06-96ca-c8420a2becf4"
+    ],
+    "allBodySha256": "d7bbe39cf7f97a2f79842c689301b3cbd854d3c539c2dfa68d98ff00e0416c77",
+    "observation": "All three successful fetches returned identical file bytes; this is a raw-file query tolerance probe, not a fixture fetch or dynamic API test."
+  },
+  "upstreamParser": {
+    "url": "https://raw.githubusercontent.com/LibreSpark/LibreTV/29cbeb3d37b4876f909a0354087a3531af0447f6/src/lib/cms-parser.ts",
+    "sha256": "e7047df1bb3f9fdd54d873bcdccb306186c94a27d0c7a7d19d5a70f2e67a6d6d",
+    "observations": [
+      "Search maps list items and respects pagecount=1.",
+      "Detail selects list[0], not matching ids; play URL parser accepts HTTPS MP4 in name$URL format.",
+      "Search route applies relevance filtering after retrieval; provider fixture itself ignores every query parameter."
+    ]
+  },
+  "limitations": [
+    "No keyword, page, ID filtering or dynamic bridge implemented.",
+    "An unknown ID would return the same static record; do not claim correct unknown-ID behavior.",
+    "No Douban requests, ratings, copyrighted catalog, poster assets, external source discovery or credentials.",
+    "No Android, TV input, home service, production deployment, multi-episode, live, DRM or HDR acceptance.",
+    "Positive upstream search/detail requires parent-approved immutable committed HTTPS URL and a fresh isolated official-release run."
+  ]
+}
