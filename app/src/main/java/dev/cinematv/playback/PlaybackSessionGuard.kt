@@ -11,6 +11,10 @@ class PlaybackSession internal constructor(
     val episodeIndex: Int
 ) {
     val mediaKey: String? = item?.let(MediaDomainMapper::entryId)
+    // Use the same source/season/episode identity as persistence, never the mutable playlist ordinal.
+    val checkpointKey: String? = item?.takeIf {
+        MediaDomainMapper.episodeIdentity(it, episodeIndex) != null
+    }?.let { MediaDomainMapper.episodeId(it, episodeIndex) }
 }
 
 /** Main-thread owner of playback generations and the two-alternative failover budget. */
@@ -18,13 +22,15 @@ class PlaybackSessionGuard {
     private var generation = 0L
     private var current: PlaybackSession? = null
     private var returnedDetail: PlaybackSession? = null
-    private val checkpointOwners = mutableMapOf<Pair<String, Int>, Long>()
+    private val checkpointOwners = mutableMapOf<String, Long>()
     private val attemptedSources = mutableSetOf<String>()
     private var remainingAlternatives = 0
+    private var refreshAttempted = false
 
     fun start(item: MediaItem?, url: String, episodeIndex: Int = 0): PlaybackSession {
         returnedDetail = null
         attemptedSources.clear()
+        refreshAttempted = false
         item?.source?.url?.let(attemptedSources::add)
         remainingAlternatives = if (item == null) 0 else 2
         return activate(item, url, episodeIndex)
@@ -35,6 +41,7 @@ class PlaybackSessionGuard {
         returnedDetail = if (returningToDetail) current else null
         current = null
         attemptedSources.clear()
+        refreshAttempted = false
         remainingAlternatives = 0
     }
 
@@ -44,9 +51,9 @@ class PlaybackSessionGuard {
     fun canUpdateReturnedDetail(session: PlaybackSession): Boolean =
         current == null && returnedDetail === session && session.item != null
 
-    /** Final saves survive navigation, unless that exact entry/episode has since restarted. */
-    fun canPersistCheckpoint(session: PlaybackSession): Boolean = session.mediaKey?.let {
-        checkpointOwners[it to session.episodeIndex] == session.generation
+    /** Final saves survive navigation unless that source episode restarted. Unknown identity cannot save. */
+    fun canPersistCheckpoint(session: PlaybackSession): Boolean = session.checkpointKey?.let {
+        checkpointOwners[it] == session.generation
     } == true
 
     fun canRecover(session: PlaybackSession): Boolean =
@@ -54,6 +61,13 @@ class PlaybackSessionGuard {
 
     fun canTrySource(session: PlaybackSession, sourceUrl: String): Boolean =
         canRecover(session) && sourceUrl !in attemptedSources
+
+    /** At most one own-source refresh across replacement generations; stale jobs cannot consume it. */
+    fun tryRefresh(session: PlaybackSession): Boolean {
+        if (!isCurrent(session) || session.item?.source == null || refreshAttempted) return false
+        refreshAttempted = true
+        return true
+    }
 
     /** A suspended older recovery cannot consume the next player's retry budget. */
     fun trySource(session: PlaybackSession, sourceUrl: String): Boolean {
@@ -72,6 +86,6 @@ class PlaybackSessionGuard {
     private fun activate(item: MediaItem?, url: String, episodeIndex: Int): PlaybackSession =
         PlaybackSession(++generation, item, url, episodeIndex).also { session ->
             current = session
-            session.mediaKey?.let { checkpointOwners[it to episodeIndex] = session.generation }
+            session.checkpointKey?.let { checkpointOwners[it] = session.generation }
         }
 }

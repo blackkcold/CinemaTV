@@ -186,6 +186,7 @@ class PlaybackSessionGuardTest {
     @Test fun differentEpisodeMayStillPersistItsDisposalCheckpoint() {
         val guard = PlaybackSessionGuard()
         val item = media(urls = listOf("https://shared", "https://shared"))
+            .copy(episodeIds = listOf("episode-a", "episode-b"))
         val first = guard.start(item, item.episodes[0], 0)
         val second = guard.start(item, item.episodes[1], 1)
 
@@ -203,4 +204,39 @@ class PlaybackSessionGuardTest {
         assertFalse(guard.canPersistCheckpoint(old))
         assertTrue(guard.canPersistCheckpoint(restarted))
     }
+    @Test fun reorderedSameEpisodeRestartRejectsOldCheckpointAtDifferentIndex() {
+        val guard = PlaybackSessionGuard()
+        val original = media().copy(episodeIds = listOf("a", "b"))
+        val oldB = guard.start(original, original.episodes[1], 1)
+        val reordered = original.copy(episodes = original.episodes.reversed(), episodeIds = listOf("b", "a"))
+        val newB = guard.start(reordered, reordered.episodes[0], 0)
+        assertEquals(oldB.checkpointKey, newB.checkpointKey)
+        assertFalse(guard.canPersistCheckpoint(oldB))
+        assertTrue(guard.canPersistCheckpoint(newB))
+        guard.invalidate(returningToDetail = true)
+        assertFalse(guard.canPersistCheckpoint(oldB))
+        assertTrue(guard.canPersistCheckpoint(newB))
+    }
+
+    @Test fun distinctEpisodeAtSameIndexDoesNotInvalidateOtherEpisodesSave() {
+        val guard = PlaybackSessionGuard()
+        val original = media().copy(episodeIds = listOf("a", "b"))
+        val oldA = guard.start(original, original.episodes[0], 0)
+        val reordered = original.copy(episodes = original.episodes.reversed(), episodeIds = listOf("b", "a"))
+        val newB = guard.start(reordered, reordered.episodes[0], 0)
+        assertNotEquals(oldA.checkpointKey, newB.checkpointKey)
+        assertTrue(guard.canPersistCheckpoint(oldA))
+        assertTrue(guard.canPersistCheckpoint(newB))
+    }
+
+    @Test fun ambiguousEpisodeIdentityNeverAcquiresCheckpointOwnership() {
+        val guard = PlaybackSessionGuard()
+        val ambiguous = media(urls = listOf("https://shared", "https://shared"))
+        val session = guard.start(ambiguous, ambiguous.episodes[0], 0)
+        assertNull(session.checkpointKey)
+        assertFalse(guard.canPersistCheckpoint(session))
+        guard.invalidate(returningToDetail = true)
+        assertFalse(guard.canPersistCheckpoint(session))
+    }
+
 }
