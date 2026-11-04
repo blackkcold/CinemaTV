@@ -41,6 +41,8 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
         private set
     var section by mutableStateOf(Page.HOME)
         private set
+    private var detailSessionKey by mutableStateOf("")
+    val focusRoute: String get() = if (page == Page.DETAIL) "DETAIL:$detailSessionKey" else page.name
     var featured by mutableStateOf<List<MediaItem>>(emptyList())
         private set
     var tvShows by mutableStateOf<List<MediaItem>>(emptyList())
@@ -263,6 +265,7 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
     fun open(item: MediaItem) {
         backdropJob?.cancel()
         detailJob?.cancel()
+        detailSessionKey = item.presentationKey
         page = Page.DETAIL
         selected = item
         alternatives = emptyList()

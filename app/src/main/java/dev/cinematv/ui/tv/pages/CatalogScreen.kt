@@ -29,9 +29,9 @@ fun CatalogScreen(model: CinemaViewModel, series: Boolean) {
     var rated by rememberSaveable { mutableStateOf(false) }
     val filtered = remember(all, category, year, rated) { CatalogFilter(category, year, rated).apply(all) }
     val region = if (series) "series-grid" else "movie-grid"
-    val saved = remember { model.focusCoordinator.scroll(model.page.name, region) }
+    val saved = remember { model.focusCoordinator.scroll(model.focusRoute, region) }
     val grid = rememberLazyGridState(saved.index, saved.offset)
-    val route = model.page.name
+    val route = model.focusRoute
     DisposableEffect(grid) { onDispose { model.focusCoordinator.saveScroll(route, region, grid.firstVisibleItemIndex, grid.firstVisibleItemScrollOffset) } }
     val entry = LocalContentFocus.current
     val nav = LocalNavigationFocus.current

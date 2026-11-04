@@ -14,8 +14,8 @@ class TvFocusRegistry {
     }
     fun detach(route: String, region: String, key: String) { targets.remove(Triple(route, region, key)) }
     fun restore(model: CinemaViewModel): Boolean {
-        val last = model.focusCoordinator.last(model.page.name) ?: return false
-        val target = targets[Triple(model.page.name, last.region, last.itemKey)] ?: return false
+        val last = model.focusCoordinator.last(model.focusRoute) ?: return false
+        val target = targets[Triple(model.focusRoute, last.region, last.itemKey)] ?: return false
         return runCatching { target.requestFocus() }.getOrDefault(false)
     }
 }
@@ -29,7 +29,7 @@ val LocalNavigationHasFocus = compositionLocalOf { false }
 fun rememberFocusTarget(model: CinemaViewModel, region: String, key: String): FocusRequester {
     val requester = remember(region, key) { FocusRequester() }
     val registry = LocalTvFocusRegistry.current
-    val route = model.page.name
+    val route = model.focusRoute
     DisposableEffect(route, region, key) {
         registry.attach(route, region, key, requester)
         onDispose { registry.detach(route, region, key) }
@@ -53,7 +53,7 @@ fun RestorePageFocus(model: CinemaViewModel, ready: Boolean = true) {
 
 @Composable
 fun rememberTvListState(model: CinemaViewModel, region: String): LazyListState {
-    val route = model.page.name
+    val route = model.focusRoute
     val saved = remember(route, region) { model.focusCoordinator.scroll(route, region) }
     val state = rememberLazyListState(saved.index, saved.offset)
     DisposableEffect(route, region, state) {

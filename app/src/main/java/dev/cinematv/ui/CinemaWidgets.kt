@@ -20,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -79,6 +80,7 @@ fun GlassAction(
                 RoundedCornerShape(26.dp)
             )
             .onFocusChanged { focused = it.isFocused; if (it.isFocused) onFocus() }
+            .focusProperties { canFocus = true }
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {

@@ -9,6 +9,7 @@ import android.view.Window
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import dev.cinematv.data.LibraryStatus
@@ -31,9 +32,8 @@ class TvUiRegressionTest {
     }
     private fun screenshot(name: String) {
         rule.waitForIdle()
-        val bitmap = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
-        assertNotNull("Screenshot capture must succeed", bitmap)
-        File(directory, "$name.png").outputStream().use { bitmap!!.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        val bitmap = rule.onRoot().captureToImage().asAndroidBitmap()
+        File(directory, "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
     @Before fun connectFixture() {
         server = UiFixtureServer(InstrumentationRegistry.getInstrumentation().context)
@@ -47,7 +47,9 @@ class TvUiRegressionTest {
         rule.waitForIdle()
     }
     @After fun exportFinalState() {
-        runCatching { screenshot("99-final-state") }
+        runCatching { screenshot("99-final-state") }.onFailure {
+            File(directory, "capture-error.txt").writeText(it.stackTraceToString())
+        }
         if (::server.isInitialized) server.close()
         rule.activity.getSharedPreferences("cinema_settings", 0).edit().clear().commit()
     }

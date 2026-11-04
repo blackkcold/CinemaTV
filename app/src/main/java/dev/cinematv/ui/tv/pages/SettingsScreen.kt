@@ -39,7 +39,7 @@ fun SettingsScreen(model: CinemaViewModel) {
                     val target = rememberFocusTarget(model, "settings-menu", index.toString())
                     GlassAction(label, Modifier.fillMaxWidth().height(48.dp).focusRequester(target)
                         .then(if (index == section) Modifier.focusRequester(entry) else Modifier), selected = index == section,
-                        onFocus = { model.focusCoordinator.remember(model.page.name, "settings-menu", index.toString()) }) { section = index }
+                        onFocus = { model.focusCoordinator.remember(model.focusRoute, "settings-menu", index.toString()) }) { section = index }
                 }
             }
             CinemaGlassSurface(Modifier.weight(.76f).fillMaxHeight(), radius = 22.dp) {

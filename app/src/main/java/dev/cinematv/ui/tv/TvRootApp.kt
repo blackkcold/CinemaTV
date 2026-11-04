@@ -25,7 +25,7 @@ fun TvRootApp(model: CinemaViewModel) {
         val savedPages = rememberSaveableStateHolder()
         val registry = remember { TvFocusRegistry() }
         val navigation = remember { FocusRequester() }
-        val content = remember(model.page) { FocusRequester() }
+        val content = remember(model.focusRoute) { FocusRequester() }
         var navigationHasFocus by remember { mutableStateOf(false) }
         var decodedArt by remember { mutableStateOf<String?>(null) }
         val showNav = model.page !in listOf(Page.DETAIL, Page.PLAYER, Page.SETTINGS)
@@ -39,8 +39,8 @@ fun TvRootApp(model: CinemaViewModel) {
                 if (model.page != Page.PLAYER) BackdropLayer(
                     if (model.page == Page.DETAIL) model.selected else model.focused ?: model.featured.firstOrNull()
                 ) { decodedArt = it }
-                savedPages.SaveableStateProvider(model.page.name) {
-                  key(model.page) {
+                savedPages.SaveableStateProvider(model.focusRoute) {
+                  key(model.focusRoute) {
                     when (model.page) {
                         Page.HOME -> HomeScreen(model)
                         Page.EXPLORE -> ExploreScreen(model)

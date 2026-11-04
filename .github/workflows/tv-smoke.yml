@@ -55,17 +55,8 @@ jobs:
           profile: pixel_2
           disable-animations: false
           emulator-options: '-no-window -no-audio -gpu swiftshader_indirect -no-snapshot -no-boot-anim -memory 3072'
-          script: |
-            adb shell wm size ${{ matrix.size }}
-            adb shell wm density ${{ matrix.density }}
-            set +e
-            gradle --no-daemon :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=${{ matrix.classes }}
-            CINEMA_TEST_STATUS=$?
-            set -e
-            mkdir -p qa
-            adb pull /sdcard/Android/data/dev.cinematv/files/ui-evidence qa/ || true
-            adb logcat -d -s AndroidRuntime:E > qa/android-crash.log
-            exit "$CINEMA_TEST_STATUS"
+          script: bash scripts/run-device-qa.sh '${{ matrix.size }}' '${{ matrix.density }}' '${{ matrix.classes }}'
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:

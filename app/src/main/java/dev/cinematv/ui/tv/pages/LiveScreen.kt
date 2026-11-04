@@ -77,7 +77,7 @@ fun LiveScreen(model: CinemaViewModel) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
                             if (channel.logo.isNotBlank()) AsyncImage(channel.logo, null, modifier = Modifier.size(30.dp))
                             GlassAction(channel.name, Modifier.weight(1f).height(47.dp).focusRequester(target), selected = channel.id == model.activeChannel?.id,
-                                onFocus = { model.focusCoordinator.remember(model.page.name, "channels", key); model.focusChannel(channel) }) { model.playChannel(channel) }
+                                onFocus = { model.focusCoordinator.remember(model.focusRoute, "channels", key); model.focusChannel(channel) }) { model.playChannel(channel) }
                         }
                     }
                 }

@@ -28,9 +28,9 @@ fun SearchScreen(model: CinemaViewModel) {
     val entry = LocalContentFocus.current
     val navigation = LocalNavigationFocus.current
     val keyboard = LocalSoftwareKeyboardController.current
-    val saved = remember { model.focusCoordinator.scroll(model.page.name, "results") }
+    val saved = remember { model.focusCoordinator.scroll(model.focusRoute, "results") }
     val grid = rememberLazyGridState(saved.index, saved.offset)
-    val route = model.page.name
+    val route = model.focusRoute
     DisposableEffect(grid) { onDispose { model.focusCoordinator.saveScroll(route, "results", grid.firstVisibleItemIndex, grid.firstVisibleItemScrollOffset) } }
     val input = rememberFocusTarget(model, "search", "input")
     val submit = { keyboard?.hide(); model.search() }
@@ -42,7 +42,7 @@ fun SearchScreen(model: CinemaViewModel) {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 TvInput(model.query, { model.query = it }, "输入片名或关键词",
                     Modifier.weight(1f).height(52.dp).focusRequester(entry).focusRequester(input)
-                        .onFocusChanged { if (it.hasFocus) model.focusCoordinator.remember(model.page.name, "search", "input") }
+                        .onFocusChanged { if (it.hasFocus) model.focusCoordinator.remember(model.focusRoute, "search", "input") }
                         .focusProperties { up = navigation },
                     onSubmit = submit)
                 GlassAction("搜索", Modifier.width(110.dp).height(52.dp), prominent = true, onClick = submit)

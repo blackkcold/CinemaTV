@@ -41,7 +41,7 @@ fun CinemaHero(item: MediaItem?, model: CinemaViewModel, eyebrow: String = "为�
                 GlassAction(if (item == null) "连接服务器" else "观看详情",
                     Modifier.focusRequester(entry).focusRequester(target).focusProperties { up = navigation }
                         .width(148.dp).height(45.dp), prominent = true,
-                    onFocus = { model.focusCoordinator.remember(model.page.name, "hero", "primary") }) {
+                    onFocus = { model.focusCoordinator.remember(model.focusRoute, "hero", "primary") }) {
                     if (item == null) model.navigate(Page.SETTINGS) else model.open(item)
                 }
                 GlassAction("搜索影片", Modifier.width(128.dp).height(45.dp)) { model.navigate(Page.SEARCH) }

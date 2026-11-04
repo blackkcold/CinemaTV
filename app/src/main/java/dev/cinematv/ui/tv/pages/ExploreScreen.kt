@@ -28,7 +28,7 @@ fun ExploreScreen(model: CinemaViewModel) {
     val items = (model.featured + model.tvShows).distinctBy { it.presentationKey }
     val layout = LocalTvLayout.current
     val effects = LocalTvEffects.current
-    val saved = remember { model.focusCoordinator.restore(model.page.name, "coverflow") }
+    val saved = remember { model.focusCoordinator.restore(model.focusRoute, "coverflow") }
     var active by remember { mutableIntStateOf(items.indexOfFirst { it.presentationKey == saved }.coerceAtLeast(0)) }
     val list = rememberTvListState(model, "coverflow")
     val cardWidth = (layout.height * .29f).coerceIn(130.dp, 220.dp)

@@ -8,7 +8,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalInputModeManager
+import androidx.compose.ui.input.InputMode
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.darkColorScheme
 import dev.cinematv.ui.LocalOpticalGlass
@@ -16,6 +19,8 @@ import dev.cinematv.ui.LocalOpticalGlass
 @Composable
 fun CinemaTvTheme(reducedMotion: Boolean, quality: GlassQuality, content: @Composable () -> Unit) {
     val context = LocalContext.current
+    val inputMode = LocalInputModeManager.current
+    LaunchedEffect(Unit) { inputMode.requestInputMode(InputMode.Keyboard) }
     val lowRam = remember(context) {
         context.getSystemService(ActivityManager::class.java)?.let {
             it.isLowRamDevice || it.memoryClass <= 128

@@ -14,6 +14,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -70,6 +71,7 @@ fun FocusMediaCard(
         .graphicsLayer { scaleX = scale; scaleY = scale; translationY = lift.dp.toPx() }
         .onFocusChanged { focused = it.isFocused; if (it.isFocused) onFocus() }
         .semantics(mergeDescendants = true) { contentDescription = item.title }
+        .focusProperties { canFocus = true }
         .clickable(interactionSource = interactions, indication = null, role = Role.Button, onClick = onClick),
         verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Box(Modifier.fillMaxWidth().aspectRatio(if (portrait) 2f / 3 else 16f / 9)
