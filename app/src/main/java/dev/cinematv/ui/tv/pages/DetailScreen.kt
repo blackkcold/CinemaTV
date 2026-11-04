@@ -34,7 +34,7 @@ fun DetailScreen(model: CinemaViewModel) {
     val entry = LocalContentFocus.current
     val primary = rememberFocusTarget(model, "actions", "play")
     val shelf = rememberFocusTarget(model, "actions", "shelf")
-    val state = rememberTvListState(model, "page:${item.title}")
+    val state = rememberTvListState(model, "detail-page")
     var picker by remember { mutableStateOf(false) }
     var pickerWasOpened by remember { mutableStateOf(false) }
     RestorePageFocus(model)
@@ -69,6 +69,11 @@ fun DetailScreen(model: CinemaViewModel) {
                         onFocus = { model.focusCoordinator.remember(model.focusRoute, "actions", "shelf") }) { pickerWasOpened = true; picker = true }
                 }
                 if (item.positionMs > 0) Text("上次观看至 第 ${item.lastEpisode + 1} 集 · ${item.positionMs / 60000} 分钟", color = TvColors.Secondary, fontSize = 12.sp)
+            }
+        }
+        if (model.workNavigation?.visible == true) item(key = "work-navigation") {
+            Box(Modifier.padding(horizontal = layout.gutter, vertical = 16.dp)) {
+                WorkNavigationPanel(model, tv = true)
             }
         }
         if (model.alternatives.isNotEmpty()) item(key = "sources") {
