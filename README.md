@@ -4,7 +4,7 @@
 
 **Release status: v0.2.0 Preview (debug-signed, when its CI finishes)**. Main branch is not hardware-certified. Stable release is blocked by [Release Gate #1](https://github.com/blackkcold/CinemaTV/issues/1).
 
-[Download preview APK from Releases](https://github.com/blackkcold/CinemaTV/releases/tag/v0.2.0-preview) · [CI builds](https://github.com/blackkcold/CinemaTV/actions/workflows/android.yml) · [中文安装与设备测试指南](docs/INSTALL.md) · [Release readiness tracker](https://github.com/blackkcold/CinemaTV/issues/1)
+[Download preview APK from Releases](https://github.com/blackkcold/CinemaTV/releases/tag/v0.2.1-preview) · [CI builds](https://github.com/blackkcold/CinemaTV/actions/workflows/android.yml) · [中文安装与设备测试指南](docs/INSTALL.md) · [Release readiness tracker](https://github.com/blackkcold/CinemaTV/issues/1)
 
 ## Features available in preview
 

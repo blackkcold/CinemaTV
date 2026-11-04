@@ -56,8 +56,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create v0.2.0-preview app/build/outputs/apk/debug/app-debug.apk \
+          gh release create v0.2.1-preview app/build/outputs/apk/debug/app-debug.apk \
             --target "$GITHUB_SHA" \
             --prerelease \
             --title "CinemaTV v0.2.0 Preview (debug-signed APK)" \
-            --notes "Developer Preview: new TV player track menus, perspective Cover Flow, NDJSON search, BFF metadata, EPG guide, five-state library and on-demand source probes. Android unit tests and APK verification pass in CI. Full reference-image fidelity, Liquid Glass refraction and physical TV compatibility are NOT certified. Debug-signed test APK; may require uninstalling a previous preview due to signing key mismatch. No streams included."
+            --notes "Developer Preview with D-pad focus hotfix: new TV player track menus, perspective Cover Flow, NDJSON search, BFF metadata, EPG guide, five-state library and on-demand source probes. Android unit tests and APK verification pass in CI. Full reference-image fidelity, Liquid Glass refraction and physical TV compatibility are NOT certified. Debug-signed test APK; may require uninstalling a previous preview due to signing key mismatch. No streams included."
