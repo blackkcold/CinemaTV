@@ -31,6 +31,12 @@ jobs:
         run: |
           gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug
           npm --prefix backend/tv-bff test
+      - name: Validate APK archive and signature
+        shell: bash
+        run: |
+          unzip -t app/build/outputs/apk/debug/app-debug.apk | tail -n 2
+          "${ANDROID_HOME}/build-tools/36.0.0/apksigner" verify --verbose app/build/outputs/apk/debug/app-debug.apk
+          sha256sum app/build/outputs/apk/debug/app-debug.apk
       - uses: actions/upload-artifact@v4
         with:
           name: CinemaTV-debug-apk
@@ -42,3 +48,13 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release create "${GITHUB_REF_NAME}" app/build/outputs/apk/debug/*.apk --prerelease --generate-notes --title "CinemaTV ${GITHUB_REF_NAME} (test APK)"
+      - name: Publish verified preview APK
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, '[preview-release]')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create v0.1.0-preview app/build/outputs/apk/debug/app-debug.apk \
+            --target "$GITHUB_SHA" \
+            --prerelease \
+            --title "CinemaTV v0.1.0 Preview (debug-signed APK)" \
+            --notes "Preview build for self-hosted LibreTV testing. CI-compiled, unit-tested, APK signature-verified. Requires server setup and TV device testing. Not a stable or production-signed release."
