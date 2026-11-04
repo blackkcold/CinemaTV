@@ -227,6 +227,44 @@ class LocalMediaLibraryTest {
         }.progress.positionMs)
     }
 
+    @Test fun staleFlagMutationsDoNotUndoPlaylistReconciliation() = runBlocking {
+        val store = library()
+        val original = first.copy(episodeNames = listOf("Pilot", "Return"))
+        listOf(
+            original.copy(episodes = listOf("new-b", "new-a"), episodeNames = listOf("Return", "Pilot")),
+            original.copy(episodes = emptyList(), episodeNames = emptyList(), playlistKnown = true)
+        ).forEachIndexed { index, template ->
+            val played = original.copy(id = "flag-stale-$index")
+            val current = template.copy(id = played.id)
+            store.saveProgress(played, 3456, 1, 9000)
+            store.cacheItem(current)
+            // Reproduce playerEnded: late playback checkpoint then WATCHED status.
+            store.saveProgress(played, 4567, 1, 9000)
+            val before = store.snapshot.history().single { it.id == played.id }
+            val heldBefore = store.snapshot.quarantinedProgress
+            store.setStatus(played, LibraryStatus.WATCHED)
+            store.toggleFavorite(played)
+            val after = store.snapshot.history().single { it.id == played.id }
+            assertEquals(current.episodes, after.episodes)
+            assertEquals(current.episodeNames, after.episodeNames)
+            assertEquals(before.lastEpisode, after.lastEpisode)
+            assertEquals(before.positionMs, after.positionMs)
+            assertEquals(heldBefore, store.snapshot.quarantinedProgress)
+            assertEquals(LibraryStatus.WATCHED, store.snapshot.status(played))
+            assertTrue(store.snapshot.isFavorite(played))
+            store.toggleFavorite(played)
+            assertEquals(current.episodes, store.snapshot.history().single { it.id == played.id }.episodes)
+            assertFalse(store.snapshot.isFavorite(played))
+        }
+        db.close()
+        openDatabase()
+        val reopened = library()
+        reopened.initialize()
+        assertTrue(reopened.snapshot.history().single { it.id == "flag-stale-1" }.episodes.isEmpty())
+        assertEquals(-1, reopened.snapshot.history().single { it.id == "flag-stale-1" }.lastEpisode)
+        assertEquals(1, reopened.snapshot.quarantinedProgress.size)
+    }
+
     @Test fun oldV1PositionCheckpointRemainsIntactAndQuarantinedAfterReopen() = runBlocking {
         val store = library()
         store.cacheItem(first)

@@ -32,7 +32,8 @@ favorites/status and the pre-existing original legacy-import backups.
 
 Playback/history writes derive identity and evidence strictly from their own item,
 never from a merged favorite/status/cache snapshot. Late callbacks cannot replace a
-newer cached playlist. Their last-watched index is mapped only by matching identity
+newer cached playlist. Status/favorite-only writes likewise keep the existing snapshot,
+bootstrapping it only when absent. Their last-watched index is mapped only by matching identity
 in that current snapshot; absent/ambiguous identity leaves it unresolved.
 
 Playlist arrays and their aligned names/IDs are replaced together. playlistKnown

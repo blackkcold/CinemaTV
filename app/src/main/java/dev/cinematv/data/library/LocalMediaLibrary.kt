@@ -93,7 +93,7 @@ class LocalMediaLibrary(
 
     suspend fun setStatus(item: MediaItem, status: LibraryStatus?) = mutate {
         require(item.id.isNotBlank()) { "A library item needs a provider ID" }
-        val saved = storeItemLocked(item)
+        val saved = currentItemOrBootstrapLocked(item)
         val current = entryLocked(saved)
         dao.upsertEntry(current.copy(
             status = if (status == LibraryStatus.FAVORITE) current.status else status?.name,
@@ -105,7 +105,7 @@ class LocalMediaLibrary(
     /** Favorite is independent of watching/watched status, so toggling it does not erase a status. */
     suspend fun toggleFavorite(item: MediaItem) = mutate {
         require(item.id.isNotBlank()) { "A favorite needs a provider ID" }
-        val saved = storeItemLocked(item)
+        val saved = currentItemOrBootstrapLocked(item)
         val current = entryLocked(saved)
         dao.upsertEntry(current.copy(favorite = !current.favorite, updatedAt = now()))
     }
@@ -139,8 +139,7 @@ class LocalMediaLibrary(
     private fun saveProgressLocked(item: MediaItem, position: Long, index: Int, duration: Long, timestamp: Long) {
         // A late player callback is not a catalog refresh. Keep the newer cached playlist,
         // and never manufacture identity by borrowing its URLs/names for a legacy record.
-        val current = dao.source(MediaDomainMapper.entryId(item))?.itemJson?.let(MediaItemCodec::decode)
-            ?: storeItemLocked(item)
+        val current = currentItemOrBootstrapLocked(item)
         val safeIndex = index.coerceAtLeast(0)
         val entry = entryLocked(current)
         val identity = CheckpointIdentity.resolve(item, index, current)
@@ -161,6 +160,11 @@ class LocalMediaLibrary(
         dao.upsertEntry(entry.copy(historyAt = timestamp, lastEpisodeIndex = identity.currentIndex ?: -1,
             updatedAt = maxOf(entry.updatedAt, timestamp)))
     }
+
+    /** Flag/progress writes do not carry catalog authority, including delayed player callbacks. */
+    private fun currentItemOrBootstrapLocked(item: MediaItem): MediaItem =
+        dao.source(MediaDomainMapper.entryId(item))?.itemJson?.let(MediaItemCodec::decode)
+            ?: storeItemLocked(item)
 
     private fun entryLocked(item: MediaItem): LibraryEntryEntity {
         val key = MediaDomainMapper.entryId(item)
