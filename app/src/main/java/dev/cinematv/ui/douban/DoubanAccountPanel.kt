@@ -50,7 +50,7 @@ private fun DoubanAccountPanel(model: CinemaViewModel, tv: Boolean, dismiss: () 
     var disconnectConfirm by remember { mutableStateOf(false) }
     val initial = remember { FocusRequester() }
     val login = { context.startActivity(Intent(context, DoubanLoginActivity::class.java)) }
-    LaunchedEffect(Unit) { service.initialize(); runCatching { initial.requestFocus() } }
+    LaunchedEffect(Unit) { service.initialize() }
     DisposableEffect(Unit) { onDispose { syncJob?.cancel(); lan?.stop() } }
     Dialog(onDismissRequest = dismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(shape = MaterialTheme.shapes.extraLarge, modifier = Modifier.fillMaxWidth(if(tv) .84f else .96f).fillMaxHeight(.9f)) {
@@ -98,6 +98,7 @@ private fun DoubanAccountPanel(model: CinemaViewModel, tv: Boolean, dismiss: () 
                 if(state.owner != null || state.phase == DoubanPhase.ERROR) item { AccountButton(tv, outlined = true, onClick = { disconnectConfirm = true }, enabled = state.phase != DoubanPhase.SYNCING) { Text("断开账号并删除本机会话") } }
             }
         }
+        if(tv) LaunchedEffect(Unit) { withFrameNanos { }; initial.requestFocus() }
     }
     if(importConfirm) AlertDialog(onDismissRequest = { importConfirm = false }, title = { Text("导入本机片库？") },
         text = { Text("按豆瓣作品 ID 匹配。只添加尚未设置的本机观看状态；冲突、播放进度和收藏保持原样。不会写回豆瓣，也不会把个人星级当作社区评分。") },
