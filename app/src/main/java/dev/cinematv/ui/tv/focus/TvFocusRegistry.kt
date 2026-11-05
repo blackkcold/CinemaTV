@@ -3,7 +3,9 @@ package dev.cinematv.ui.tv.focus
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import dev.cinematv.CinemaViewModel
 import dev.cinematv.FocusCoordinator
 import kotlinx.coroutines.withTimeoutOrNull
@@ -39,7 +41,16 @@ val LocalNavigationFocus = staticCompositionLocalOf { FocusRequester() }
 val LocalContentFocus = staticCompositionLocalOf { FocusRequester() }
 val LocalNavigationHasFocus = compositionLocalOf { false }
 val LocalNavigationFocusOwner = staticCompositionLocalOf<TvNavigationFocusOwner?> { null }
+val LocalTvContentFocusOwner = staticCompositionLocalOf<TvNavigationFocusOwner?> { null }
 val LocalTvFocusOwnerObserver = staticCompositionLocalOf<((TvNavigationFocusOwner) -> Unit)?> { null }
+
+/** Passive, synchronous focus ownership. It neither consumes keys nor saves bookmarks. */
+@Composable
+fun Modifier.trackTvContentFocus(): Modifier {
+    val owner = LocalTvContentFocusOwner.current ?: return this
+    val acquisition = remember(owner) { ContentFocusAcquisition(owner::acquireContentFocus) }
+    return onFocusChanged { acquisition.update(it.isFocused) }
+}
 
 @Composable
 fun rememberFocusTarget(model: CinemaViewModel, region: String, key: String): FocusRequester {

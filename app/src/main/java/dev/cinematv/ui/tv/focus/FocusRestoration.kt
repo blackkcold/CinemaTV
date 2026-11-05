@@ -7,6 +7,7 @@ import kotlin.coroutines.coroutineContext
 data class TvFocusSnapshot(
     val navigationHasFocus: Boolean,
     val navigationAcquisition: Long,
+    val contentAcquisition: Long,
     val restoreRoute: String?,
     val restoreState: String,
     val restoreGeneration: Long,
@@ -15,10 +16,12 @@ data class TvFocusSnapshot(
     val restoreFinishedAtNanos: Long?,
 )
 
-/** Updated by the root's focus callback, without waiting for recomposition. */
+/** Updated by navigation/content focus callbacks, without waiting for recomposition. */
 class TvNavigationFocusOwner(private val isAvailable: () -> Boolean = { true }) {
     private var focused = false
     internal var acquisition: Long = 0
+        private set
+    internal var contentAcquisition: Long = 0
         private set
     val available: Boolean get() = isAvailable()
     val hasFocus: Boolean get() = available && focused
@@ -34,8 +37,10 @@ class TvNavigationFocusOwner(private val isAvailable: () -> Boolean = { true }) 
         focused = hasFocus
     }
 
+    internal fun acquireContentFocus() { contentAcquisition++ }
+
     /** Passive UI-thread diagnostics. No snapshot state or per-frame callbacks. */
-    fun snapshot() = TvFocusSnapshot(hasFocus, acquisition, restoreRoute, restoreState,
+    fun snapshot() = TvFocusSnapshot(hasFocus, acquisition, contentAcquisition, restoreRoute, restoreState,
         restoreGeneration, restoreStartedAtNanos, restoreRequestedAtNanos, restoreFinishedAtNanos)
 
     internal fun beginRestore(route: String): Long {
@@ -60,6 +65,16 @@ class TvNavigationFocusOwner(private val isAvailable: () -> Boolean = { true }) 
     }
 }
 
+/** Per-target edge detection; repeated callbacks/recomposition are not new focus. */
+internal class ContentFocusAcquisition(private val onAcquired: () -> Unit) {
+    private var focused = false
+
+    fun update(isFocused: Boolean) {
+        if (isFocused && !focused) onAcquired()
+        focused = isFocused
+    }
+}
+
 /** An entry restoration loses ownership as soon as the user chooses a target. */
 internal class FocusRestorationGuard(
     val route: String,
@@ -68,12 +83,14 @@ internal class FocusRestorationGuard(
     private val navigationAtEntry: Boolean,
 ) {
     private val navigationAcquisition = navigation?.acquisition
+    private val contentAcquisition = navigation?.contentAcquisition
 
     fun isCurrent(route: String, bookmark: FocusCoordinator.Bookmark?, navigationHasFocus: Boolean): Boolean =
         !navigationAtEntry && !navigationHasFocus && this.route == route &&
             // remember() creates a new bookmark even when the user returns to
             // the same item. Value equality would miss that newer focus choice.
-            this.bookmark === bookmark && navigation?.acquisition == navigationAcquisition
+            this.bookmark === bookmark && navigation?.acquisition == navigationAcquisition &&
+            navigation?.contentAcquisition == contentAcquisition
 }
 
 internal enum class FocusRestoreResult { Restored, Missing, Aborted, Fallback }

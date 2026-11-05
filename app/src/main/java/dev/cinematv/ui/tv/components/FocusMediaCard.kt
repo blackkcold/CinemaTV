@@ -30,6 +30,7 @@ import dev.cinematv.data.MediaItem
 import dev.cinematv.ui.shared.*
 import dev.cinematv.ui.tv.design.*
 import dev.cinematv.ui.tv.motion.*
+import dev.cinematv.ui.tv.focus.trackTvContentFocus
 
 enum class CardVisualState { DEFAULT, FOCUSED, PRESSED, SELECTED, LOADING, ERROR }
 
@@ -63,6 +64,7 @@ fun FocusMediaCard(
                 motion.depthX * PosterMotionTokens.ARTWORK_PARALLAX_DP,
                 motion.depthY * PosterMotionTokens.ARTWORK_PARALLAX_DP))
         }
+        .trackTvContentFocus()
         .onFocusChanged { focused = it.isFocused; if (it.isFocused) onFocus() }
         .semantics(mergeDescendants = true) { contentDescription = item.title }
         .focusProperties { canFocus = true }

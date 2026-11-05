@@ -20,6 +20,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import dev.cinematv.ui.typography.CinemaTvText as Text
 import dev.cinematv.ui.typography.cinemaUiFontFamily
 import dev.cinematv.ui.tv.design.LocalTvEffects
+import dev.cinematv.ui.tv.focus.trackTvContentFocus
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -103,6 +104,7 @@ fun GlassAction(
     Box(
         modifier = modifier
             .heightIn(min = 40.dp)
+            .trackTvContentFocus()
             .onFocusChanged { focused = it.isFocused; if (it.isFocused) onFocus() }
             .focusProperties { canFocus = true }
             .clickable(interactionSource = interactions, indication = null, role = Role.Button, onClick = onClick),
@@ -159,7 +161,7 @@ fun TvInput(
                 if (value.isEmpty()) Text(hint, color = Muted, fontSize = 17.sp)
                 inner()
             },
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth().trackTvContentFocus()
         )
     }
 }

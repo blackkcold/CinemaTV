@@ -37,6 +37,9 @@ FOCUS_RESTORE = [("dev.cinematv.InterruptedFocusRestorationTest", method) for me
     "routeChangeDuringPrepareRejectsOldRequestBeforeRecomposition",
     "uninterruptedLazyRestorationKeepsExactSavedTarget",
     "missingBookmarkStillUsesNormalEntryFallback",
+    "defaultGlassActionNativeFocusInterruptsLazyRestoreWithoutChangingBookmark",
+    "defaultGlassActionRoundTripInvalidatesRestoreEvenWithSameFinalFocusAndBookmark",
+    "defaultGlassActionRecompositionDoesNotCancelUninterruptedExactRestore",
 )]
 
 ACTION_LAYOUT = [("dev.cinematv.GlassActionLayoutTest", method) for method in (

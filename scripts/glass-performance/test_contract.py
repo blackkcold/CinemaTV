@@ -480,7 +480,7 @@ class PosterProfileTest(unittest.TestCase):
                                   "powerSave": False, "thermal": "CRITICAL",
                                   "userReducedMotion": False, "systemAnimationsEnabled": True})
         focus = dict(observed=True, navigationHasFocus=True,
-                     navigationAcquisition=9223372036854775807,
+                     navigationAcquisition=9223372036854775807, contentAcquisition=9223372036854775807,
                      restoreRoute="DETAIL:entry:" + "f" * 64,
                      restoreState="Cancelled", restoreGeneration=9223372036854775807,
                      restoreStartedAtNanos=9223372036854775807,
@@ -500,7 +500,7 @@ class PosterProfileTest(unittest.TestCase):
                        'model.selected?.presentationKey', 'model.history().size', 'if (!posterOrigin || !ready()',
                        'startStatus.optString("bookmarkItem") == "primary"'):
             self.assertIn(source, activity)
-        for field in ("observed", "navigationHasFocus", "navigationAcquisition", "restoreRoute", "restoreState",
+        for field in ("observed", "navigationHasFocus", "navigationAcquisition", "contentAcquisition", "restoreRoute", "restoreState",
                       "restoreGeneration", "restoreStartedAtNanos", "restoreRequestedAtNanos", "restoreFinishedAtNanos"):
             self.assertIn(f'.put("{field}",', activity)
         self.assertIn('.put("focusOwnerBefore", focusJson())', activity)

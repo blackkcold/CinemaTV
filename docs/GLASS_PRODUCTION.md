@@ -81,7 +81,8 @@ overlays remain a separate verification requirement.
   not the independent lab. A conservative downgrade is reported, not overridden
   to manufacture Full coverage. Exact run results belong in the delivery report.
 - Deferred page restoration captures route/bookmark ownership at entry, observes
-  navigation focus synchronously, and checks ownership after every suspension and
+  navigation and per-control content focus acquisition synchronously, and checks
+  ownership after every suspension and
   immediately before target/fallback requests. New user navigation/content and
   cancelled work cannot be overwritten by a stale restoration. Dedicated native
   regression tests cover interrupted entry frames, lazy preparation/attachment,

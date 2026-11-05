@@ -165,7 +165,7 @@ matrix produces a structured incomplete report, not an invented successful tier 
 
 Each native input includes `focusOwnerBefore`; its after-window status includes
 `focusOwner`. These UI-thread snapshots expose synchronous navigation ownership,
-an acquisition counter, and the latest restoration's route/state/generation and
+independent navigation/content acquisition counters, and the latest restoration's route/state/generation and
 monotonic start/request/finish timestamps. They allocate only per input/status,
 not per rendering frame, and never request or redirect focus. An increased
 acquisition proves the navigation received focus since the earlier snapshot; a

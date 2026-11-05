@@ -25,6 +25,9 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import dev.cinematv.ui.GlassAction
+import dev.cinematv.ui.tv.design.LocalTvEffects
+import dev.cinematv.ui.tv.design.TvEffects
 import dev.cinematv.ui.tv.focus.*
 import kotlinx.coroutines.CompletableDeferred
 import org.junit.After
@@ -46,6 +49,9 @@ class InterruptedFocusRestorationTest {
     private val movies = FocusRequester()
     private val first = FocusRequester()
     private val newer = FocusRequester()
+    private val otherDefault = FocusRequester()
+    private val defaultActionLabel = mutableStateOf("Search")
+    private var defaultActionClicks = 0
     private val mountedRestore = mutableStateOf(false)
     @Volatile private var windowFocused = false
     @Volatile private var prepareStarted = false
@@ -55,7 +61,7 @@ class InterruptedFocusRestorationTest {
         rule.runOnUiThread { store.clear() }
     }
 
-    private fun mount() {
+    private fun mount(defaultActions: Boolean = false) {
         val application = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as Application
         application.getSharedPreferences("cinema_settings", 0).edit().clear().commit()
         rule.runOnUiThread {
@@ -72,7 +78,9 @@ class InterruptedFocusRestorationTest {
             CompositionLocalProvider(LocalTvFocusRegistry provides registry,
                 LocalContentFocus provides first, LocalNavigationFocus provides navigation,
                 LocalNavigationHasFocus provides navigationHasFocus,
-                LocalNavigationFocusOwner provides owner) {
+                LocalNavigationFocusOwner provides owner,
+                LocalTvContentFocusOwner provides owner,
+                LocalTvEffects provides TvEffects(reducedMotion = true)) {
                 Column(Modifier.fillMaxSize().padding(24.dp)) {
                     Row(Modifier.onFocusChanged {
                         owner.update(it.hasFocus)
@@ -88,7 +96,15 @@ class InterruptedFocusRestorationTest {
                     Spacer(Modifier.height(32.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                         Target("saved", first, newer)
-                        Target("newer", newer, first)
+                        if (defaultActions) {
+                            // Intentionally no onFocus callback or bookmark writes:
+                            // this is the production control used by filters/search.
+                            GlassAction(defaultActionLabel.value, Modifier.size(100.dp).testTag("default-action")
+                                .focusRequester(newer).focusProperties { up = navigation; left = first; right = otherDefault },
+                                onClick = { defaultActionClicks++ })
+                            GlassAction("Other", Modifier.size(100.dp).testTag("other-default")
+                                .focusRequester(otherDefault).focusProperties { up = navigation; left = newer }, onClick = {})
+                        } else Target("newer", newer, first)
                     }
                 }
                 if (mountedRestore.value) RestorePageFocus(model)
@@ -104,6 +120,7 @@ class InterruptedFocusRestorationTest {
     @Composable private fun Target(key: String, entry: FocusRequester, other: FocusRequester) {
         val target = rememberFocusTarget(model, "rail", key)
         Box(Modifier.size(100.dp).testTag(key).focusRequester(entry).focusRequester(target)
+            .trackTvContentFocus()
             .focusProperties { canFocus = true; up = navigation; right = other; left = other }
             .onFocusChanged { if (it.isFocused) model.focusCoordinator.remember(model.focusRoute, "rail", key) }
             .focusable())
@@ -244,5 +261,66 @@ class InterruptedFocusRestorationTest {
         settle()
         rule.onNodeWithTag("saved").assertIsFocused()
         assertEquals("Fallback", rule.runOnUiThread { owner.snapshot().restoreState })
+    }
+
+    @Test fun defaultGlassActionNativeFocusInterruptsLazyRestoreWithoutChangingBookmark() {
+        mount(defaultActions = true)
+        val release = suspendLazyRestore()
+        val savedBookmark = rule.runOnUiThread { model.focusCoordinator.last("HOME") }
+        val generation = rule.runOnUiThread { owner.snapshot().contentAcquisition }
+        nativeKey(KeyEvent.KEYCODE_DPAD_RIGHT)
+        rule.onNodeWithTag("default-action").assertIsFocused()
+        rule.runOnUiThread {
+            assertSame(savedBookmark, model.focusCoordinator.last("HOME"))
+            assertEquals(generation + 1, owner.snapshot().contentAcquisition)
+            release.complete("saved")
+        }
+        settle()
+        rule.onNodeWithTag("default-action").assertIsFocused()
+        assertAbortedWithoutRequest()
+        nativeKey(KeyEvent.KEYCODE_DPAD_CENTER)
+        assertEquals("The passive hook must not consume activation", 1, rule.runOnUiThread { defaultActionClicks })
+    }
+
+    @Test fun defaultGlassActionRoundTripInvalidatesRestoreEvenWithSameFinalFocusAndBookmark() {
+        mount(defaultActions = true)
+        nativeKey(KeyEvent.KEYCODE_DPAD_RIGHT)
+        rule.onNodeWithTag("default-action").assertIsFocused()
+        val release = suspendLazyRestore()
+        val savedBookmark = rule.runOnUiThread { model.focusCoordinator.last("HOME") }
+        val generation = rule.runOnUiThread { owner.snapshot().contentAcquisition }
+        nativeKey(KeyEvent.KEYCODE_DPAD_RIGHT)
+        rule.onNodeWithTag("other-default").assertIsFocused()
+        nativeKey(KeyEvent.KEYCODE_DPAD_LEFT)
+        rule.onNodeWithTag("default-action").assertIsFocused()
+        rule.runOnUiThread {
+            assertSame(savedBookmark, model.focusCoordinator.last("HOME"))
+            assertEquals(generation + 2, owner.snapshot().contentAcquisition)
+            release.complete("saved")
+        }
+        settle()
+        rule.onNodeWithTag("default-action").assertIsFocused()
+        assertAbortedWithoutRequest()
+    }
+
+    @Test fun defaultGlassActionRecompositionDoesNotCancelUninterruptedExactRestore() {
+        mount(defaultActions = true)
+        nativeKey(KeyEvent.KEYCODE_DPAD_RIGHT)
+        rule.onNodeWithTag("default-action").assertIsFocused()
+        val release = suspendLazyRestore()
+        val generation = rule.runOnUiThread { owner.snapshot().contentAcquisition }
+        rule.runOnUiThread { defaultActionLabel.value = "Updated" }
+        rule.mainClock.advanceTimeByFrame()
+        rule.onNodeWithTag("default-action").assertIsFocused().assertTextEquals("Updated")
+        rule.runOnUiThread {
+            assertEquals("Recomposition is not a focus acquisition", generation, owner.snapshot().contentAcquisition)
+            release.complete("saved")
+        }
+        settle()
+        rule.onNodeWithTag("saved").assertIsFocused()
+        rule.runOnUiThread {
+            assertEquals("Restored", owner.snapshot().restoreState)
+            assertEquals(generation + 1, owner.snapshot().contentAcquisition)
+        }
     }
 }

@@ -11,7 +11,7 @@ class MotionInstrumentationContract(unittest.TestCase):
         methods = re.findall(r"@Test\s+fun\s+(\w+)\(", source)
         self.assertEqual(9, len(methods))
         self.assertEqual(set(methods), {method for _, method in MOTION})
-        self.assertEqual(24, len(expected_for("tv")))
+        self.assertEqual(27, len(expected_for("tv")))
         for pair in [PRODUCTION, BUTTON, BUTTON_EDGE, MATERIAL, *MOTION, *FOCUS_RESTORE, *ACTION_LAYOUT]:
             self.assertEqual(1, expected_for("tv").count(pair))
 
@@ -19,7 +19,7 @@ class MotionInstrumentationContract(unittest.TestCase):
         root = Path(__file__).resolve().parents[2]
         source = (root / "app/src/androidTest/java/dev/cinematv/InterruptedFocusRestorationTest.kt").read_text()
         methods = re.findall(r"@Test\s+fun\s+(\w+)\(", source)
-        self.assertEqual(8, len(methods))
+        self.assertEqual(11, len(methods))
         self.assertEqual(set(methods), {method for _, method in FOCUS_RESTORE})
 
     def test_glass_action_layout_methods_run_on_each_tv_api(self):

@@ -144,7 +144,7 @@ class GlassBenchmarkActivity : ComponentActivity() {
     private fun focusJson(): JSONObject {
         val value = focusOwner?.snapshot() ?: return JSONObject().put("observed", false)
         return JSONObject().put("observed", true).put("navigationHasFocus", value.navigationHasFocus)
-            .put("navigationAcquisition", value.navigationAcquisition)
+            .put("navigationAcquisition", value.navigationAcquisition).put("contentAcquisition", value.contentAcquisition)
             .put("restoreRoute", value.restoreRoute ?: JSONObject.NULL).put("restoreState", value.restoreState)
             .put("restoreGeneration", value.restoreGeneration)
             .put("restoreStartedAtNanos", value.restoreStartedAtNanos ?: JSONObject.NULL)

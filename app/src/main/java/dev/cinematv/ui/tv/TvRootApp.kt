@@ -51,6 +51,7 @@ fun TvRootApp(model: CinemaViewModel, onSceneDecoded: (String?) -> Unit = {}) {
         CompositionLocalProvider(LocalTvFocusRegistry provides registry, LocalNavigationFocus provides navigation,
             LocalContentFocus provides content, LocalNavigationHasFocus provides (navigationHasFocus && showNav),
             LocalNavigationFocusOwner provides navigationFocusOwner,
+            LocalTvContentFocusOwner provides navigationFocusOwner,
             LocalBackdropArt provides decodedArt,
             LocalProductionGlassScene provides glassScene) {
             val layout = LocalTvLayout.current
@@ -76,7 +77,9 @@ fun TvRootApp(model: CinemaViewModel, onSceneDecoded: (String?) -> Unit = {}) {
                     }
                 }
                 }
-                if (showNav) FloatingNavigation(model, { navigationFocusOwner.update(it); navigationHasFocus = it }, Modifier.align(Alignment.TopCenter).padding(top = layout.navigationTop))
+                if (showNav) CompositionLocalProvider(LocalTvContentFocusOwner provides null) {
+                    FloatingNavigation(model, { navigationFocusOwner.update(it); navigationHasFocus = it }, Modifier.align(Alignment.TopCenter).padding(top = layout.navigationTop))
+                }
                 if (model.message.isNotBlank() && model.page != Page.PLAYER) {
                     Text(model.message, color = TvColors.Text, fontSize = 14.sp, maxLines = 3,
                         modifier = Modifier.align(Alignment.BottomCenter).padding(horizontal = layout.gutter, vertical = 12.dp)

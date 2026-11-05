@@ -212,4 +212,68 @@ class FocusRestorationTest {
         assertEquals(0, requests)
         assertEquals(0, fallbacks)
     }
+
+    @Test fun contentAcquisitionWithoutBookmarkChangeCancelsEntryRestoration() {
+        val h = Harness().apply { start() }
+        val saved = h.memory.last("HOME")
+        h.owner.acquireContentFocus()
+        assertSame(saved, h.memory.last("HOME"))
+        h.frames.advance()
+        h.assertAborted()
+    }
+
+    @Test fun unbookmarkedContentDuringLazyPreparePreventsRequestAndFallback() {
+        for (preparedKey in listOf("movie-9", null)) {
+            val h = Harness()
+            h.prepare = { h.lazy.await(); preparedKey }
+            h.start()
+            repeat(2) { h.frames.advance() }
+            val saved = h.memory.last("HOME")
+            h.owner.acquireContentFocus()
+            h.lazy.advance()
+            assertSame(saved, h.memory.last("HOME"))
+            h.assertAborted()
+        }
+    }
+
+    @Test fun contentFocusEdgesCountABAButRepeatedStateDoesNotInvalidateGuard() {
+        val owner = TvNavigationFocusOwner()
+        val first = ContentFocusAcquisition(owner::acquireContentFocus)
+        val second = ContentFocusAcquisition(owner::acquireContentFocus)
+        first.update(true)
+        val guard = FocusRestorationGuard("HOME", null, owner, false)
+        repeat(3) { first.update(true); second.update(false) }
+        assertEquals(1L, owner.snapshot().contentAcquisition)
+        assertTrue(guard.isCurrent("HOME", null, false))
+        first.update(false)
+        second.update(true)
+        second.update(false)
+        first.update(true)
+        assertEquals(3L, owner.snapshot().contentAcquisition)
+        assertFalse(guard.isCurrent("HOME", null, false))
+    }
+
+    @Test fun successfulRestoreMayAcquireContentWithoutAbortingItself() = runBlocking {
+        val owner = TvNavigationFocusOwner()
+        val old = ContentFocusAcquisition(owner::acquireContentFocus)
+        val saved = ContentFocusAcquisition(owner::acquireContentFocus)
+        old.update(true)
+        val bookmark = FocusCoordinator.Bookmark("rail", "saved")
+        val guard = FocusRestorationGuard("HOME", bookmark, owner, false)
+        val current = { guard.isCurrent("HOME", bookmark, false) }
+        var fallbacks = 0
+        val result = restorePageFocusWhenCurrent(awaitFrame = {}, isCurrent = current, restore = {
+            restoreFocusTarget(bookmark, prepare = { it }, awaitFrame = {}, isCurrent = current,
+                request = { region, key ->
+                    assertEquals("rail", region)
+                    assertEquals("saved", key)
+                    old.update(false)
+                    saved.update(true)
+                    true
+                })
+        }, fallback = { fallbacks++; true })
+        assertEquals(FocusRestoreResult.Restored, result)
+        assertEquals(2L, owner.snapshot().contentAcquisition)
+        assertEquals(0, fallbacks)
+    }
 }
