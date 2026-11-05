@@ -1,15 +1,19 @@
 package dev.cinematv
 
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.junit4.ComposeContentTestRule
 import androidx.lifecycle.ViewModelProvider
 import dev.cinematv.data.update.UpdateChannel
 import dev.cinematv.ui.update.UpdateViewModel
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
+import java.io.File
+import android.content.Context
 
 class MobileUpdateSettingsTest {
     @get:Rule val rule = createAndroidComposeRule<MainActivity>()
@@ -21,16 +25,21 @@ class MobileUpdateSettingsTest {
         rule.onNodeWithTag("update-status").assertTextContains("不会降级", substring = true)
         rule.onNodeWithTag("update-check").assertDoesNotExist()
         rule.onNodeWithTag("update-install").assertDoesNotExist()
-        rule.runOnIdle { navigation.navigate(Page.HOME); navigation.navigate(Page.SETTINGS) }
-        rule.onNodeWithTag("update-channel-stable").assertTextContains("✓ 稳定版")
+        rule.runOnIdle { navigation.navigate(Page.HOME) }
+        rule.onNodeWithTag("update-settings").assertDoesNotExist()
+        rule.runOnIdle { navigation.navigate(Page.SETTINGS) }
+        // The mobile glass wrapper owns the test tag; its child button owns text semantics.
+        rule.onNodeWithText("✓ 稳定版", useUnmergedTree = true).assertIsDisplayed()
         rule.runOnIdle {
             assertEquals("stable", rule.activity.getSharedPreferences("cinematv_updates", 0).getString("channel", null))
             assertFalse(updates.enabled)
             assertFalse(updates.ready)
+            assertEquals(UpdateChannel.STABLE, UpdateViewModel(rule.activity.application).channel)
         }
         rule.onNodeWithTag("update-channel-dev").performClick()
         rule.onNodeWithTag("update-channel-dev").performClick()
         rule.runOnIdle { assertEquals(UpdateChannel.DEV, updates.channel); assertFalse(updates.busy) }
+        captureUpdateSettings(rule, rule.activity, "phone")
     }
 }
 
@@ -51,5 +60,15 @@ class TvUpdateSettingsTest {
         rule.onNodeWithTag("update-channel-dev").assertIsFocused()
         rule.runOnIdle { assertEquals(UpdateChannel.DEV, updates.channel) }
         rule.onNodeWithTag("update-install").assertDoesNotExist()
+        captureUpdateSettings(rule, rule.activity, "tv")
+    }
+}
+
+private fun captureUpdateSettings(rule: ComposeContentTestRule, context: Context, name: String) {
+    rule.waitForIdle()
+    val image = rule.onRoot().captureToImage().asAndroidBitmap()
+    val directory = File(context.getExternalFilesDir(null), "update-evidence").apply { mkdirs() }
+    File(directory, "$name.png").outputStream().use {
+        check(image.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it))
     }
 }
