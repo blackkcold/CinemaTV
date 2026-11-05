@@ -63,6 +63,7 @@ fun SettingsScreen(model: CinemaViewModel) {
                     LazyColumn(state = state, contentPadding = PaddingValues(25.dp), verticalArrangement = Arrangement.spacedBy(15.dp), modifier = Modifier.fillMaxSize()) {
                         when (section) {
                             0 -> {
+                                item { dev.cinematv.ui.douban.DoubanDeveloperOptionsEntry(model, tv = true) }
                                 item { SettingTitle("LibreTV 服务器", "连接你的媒体服务，登录后开始浏览。") }
                                 item { TvInput(model.serverAddress, { model.serverAddress = it }, "https://your-libretv.example", Modifier.fillMaxWidth().height(52.dp), onSubmit = model::connect) }
                                 item { GlassAction("连接 / 刷新", Modifier.width(150.dp).height(43.dp), prominent = true) { model.connect() } }
