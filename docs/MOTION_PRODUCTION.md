@@ -25,7 +25,7 @@ The helper supports `FOCUS_ONLY` and `LAYERED` separately from glass quality. Pr
 
 ## Verification and performance boundaries
 
-The pure policy suite has 28 tests. The ten component instrumentation tests cover actual `FocusMediaCard` instances, interrupted focus/press, D-pad reversal and expiry, Back/route reset, reduced motion, stable media identity, loading/error behavior and retained labels/progress, including narrow production-Noto rating captions. Four additional real-rail tests exercise visibility during Reduced Motion changes, native cancellation, route return and oversized font scaling. Four relocation instrumentation cases cover cancellation scope, Back disposal, non-focused request forwarding and Android accessibility ShowOnScreen; eight pure lifecycle tests check request ownership. A test-only monotonic-clock injection makes component timing deterministic; the production-root performance host must keep the real system clock.
+The pure policy suite has 28 tests. The ten component instrumentation tests cover actual `FocusMediaCard` instances, interrupted focus/press, D-pad reversal and expiry, Back/route reset, reduced motion, stable media identity, loading/error behavior and retained labels/progress, including narrow production-Noto rating captions. Four additional real-rail tests exercise visibility during Reduced Motion changes, native cancellation, route return and oversized font scaling. Six relocation instrumentation cases cover cancellation scope, Back disposal, non-focused request forwarding and Android accessibility ShowOnScreen and ungated proxy-on/off observation controls; eight pure lifecycle tests check request ownership. A test-only monotonic-clock injection makes component timing deterministic; the production-root performance host must keep the real system clock.
 
 Compilation and API 26/31/35 functional results must be recorded for the exact integration SHA before release. Do not treat this description or a local policy-test pass as an Android build or device-test pass.
 
@@ -59,6 +59,21 @@ The exact Compose 1.10.6 Focusable implementation launches its default request
 with DEFAULT scheduling. A request which starts only after blur cannot be
 identified as stale by the public coordinates/bounds API and is deliberately
 forwarded. A pure late-launch test documents this limitation; this modifier is
-not a general guarantee against all delayed framework requests. The original
-native no-residual-scroll assertion remains unchanged. New tests must actually
-pass on the candidate APK before describing this targeted fix as verified.
+not a general guarantee against all delayed framework requests. The native cancellation regression records
+one committed tail frame, then
+strictly requires no continued downward movement and subsequent exact stability.
+Same-APK ungated component controls must distinguish the original unguarded
+request from the guarded path. This reflects the exact 1.10.6 animation order
+(beforeFrame consumes its cached value, afterFrame recalculates the request
+queue), without a pixel tolerance or arbitrary delay. The observed 4px tail in
+the diagnostic is not represented as zero total movement. New tests must
+actually pass before describing this targeted fix as verified.
+
+
+The extreme-font rail test keeps the same root and first enters the initial card
+with native Down at normal density, then changes its test-only fontScale to 12.
+It still requires an oversized row, preserved focus/bookmark, settling, horizontal
+traversal and native exit. The former fresh-root requirement that an extreme,
+clipped Hero already own focus failed before reaching the rail on API33; that
+failure did not isolate root-startup behavior from extreme Hero geometry. No
+production font scale, Hero layout or normal entry-focus requirement is changed.

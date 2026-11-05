@@ -11,7 +11,7 @@ class MotionInstrumentationContract(unittest.TestCase):
         methods = re.findall(r"@Test\s+fun\s+(\w+)\(", source)
         self.assertEqual(10, len(methods))
         self.assertEqual(set(methods), {method for _, method in MOTION})
-        self.assertEqual(46, len(expected_for("tv")))
+        self.assertEqual(48, len(expected_for("tv")))
         for pair in [PRODUCTION, BUTTON, BUTTON_EDGE, MATERIAL, *MOTION, *FOCUS_RESTORE, *ACTION_LAYOUT, *RAIL_TRAVERSAL, *RAIL_VISIBILITY, *FOCUS_RELOCATION]:
             self.assertEqual(1, expected_for("tv").count(pair))
 
@@ -47,7 +47,7 @@ class MotionInstrumentationContract(unittest.TestCase):
         root = Path(__file__).resolve().parents[2]
         source = (root / "app/src/androidTest/java/dev/cinematv/FocusBoundRelocationTest.kt").read_text()
         methods = re.findall(r"@Test\s+fun\s+(\w+)\(", source)
-        self.assertEqual(4, len(methods))
+        self.assertEqual(6, len(methods))
         self.assertEqual(set(methods), {method for _, method in FOCUS_RELOCATION})
 
     def test_phone_keeps_only_its_actual_root_and_touch_checks(self):

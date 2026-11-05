@@ -77,6 +77,8 @@ FOCUS_RELOCATION = [("dev.cinematv.FocusBoundRelocationTest", method) for method
     "nativeBackDisposalKeepsDestinationRelocationIndependent",
     "unfocusedInnerAndOuterRequestersStillReachParent",
     "nativeAccessibilityShowOnScreenRevealsUnfocusedCard",
+    "withoutProxyNativeBlurKeepsOldRelocationMoving",
+    "withProxyNativeBlurStopsAfterOneCommittedFrame",
 )]
 
 

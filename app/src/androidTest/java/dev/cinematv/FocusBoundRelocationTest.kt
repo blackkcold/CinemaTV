@@ -79,7 +79,8 @@ class FocusBoundRelocationTest {
         rule.runOnUiThread { probe.requests.forEach { it.release.complete(Unit) } }
     }
 
-    private fun mount() {
+    private fun mount(useProxy: Boolean = true, holdRequests: Boolean = true) {
+        probe.holdRequests = holdRequests
         rule.setContent {
             val nativeView = LocalView.current
             val hasWindowFocus = LocalWindowInfo.current.isWindowFocused
@@ -131,7 +132,7 @@ class FocusBoundRelocationTest {
                                                     .recordRelocation(probe, "card-$index")
                                                     .bringIntoViewRequester(outerRequesters[index])
                                                     .focusRequester(cards[index])
-                                                    .cancelRelocationOnFocusLoss()
+                                                    .then(if (useProxy) Modifier.cancelRelocationOnFocusLoss() else Modifier)
                                                     .bringIntoViewRequester(innerRequesters[index])
                                                     .focusProperties {
                                                         up = hero
@@ -359,6 +360,85 @@ class FocusBoundRelocationTest {
         rule.runOnUiThread { assertTrue("Accessibility ScrollBy must not be mistaken for focus relocation", probe.requests.isEmpty()) }
     }
 
+    @Test fun withoutProxyNativeBlurKeepsOldRelocationMoving() {
+        assertNativeBlurTail(useProxy = false)
+    }
+
+    @Test fun withProxyNativeBlurStopsAfterOneCommittedFrame() {
+        assertNativeBlurTail(useProxy = true)
+    }
+
+    private fun assertNativeBlurTail(useProxy: Boolean) {
+        // This pair observes the real scroller. Unlike the lifetime tests above,
+        // the parent probe must never await a latch or delay a request.
+        mount(useProxy = useProxy, holdRequests = false)
+        rule.onNodeWithText("Hero").assertIsFocused()
+        assertTrue("The starting card must need real vertical scrolling",
+            bounds(card(0)).bottom > bounds(rule.onNodeWithTag("relocation-viewport")).bottom)
+        val observations = mutableListOf<String>()
+        fun sample(stage: String): Int {
+            val value = rule.runOnUiThread { homeScroll.value }
+            val requests = rule.runOnUiThread {
+                probe.requests.joinToString { "${it.owner}:finished=${it.finished},cancelled=${it.cancelled}" }
+            }
+            val observation = "proxy=$useProxy stage=$stage clock=${rule.mainClock.currentTime} " +
+                "uptime=${android.os.SystemClock.uptimeMillis()} scrollPx=$value requests=[$requests]"
+            observations += observation
+            android.util.Log.i("CinemaTVRelocationPair", observation)
+            return value
+        }
+        rule.mainClock.autoAdvance = false
+        sample("initial")
+        nativeKey(AndroidKeyEvent.KEYCODE_DPAD_DOWN)
+        card(0).assertIsFocused()
+        rule.mainClock.advanceTimeByFrame()
+        rule.waitForIdle()
+        card(0).assertIsFocused()
+        // Verify a real, still-pending default request before blur. Waiting for
+        // coroutine entry does not advance the frozen clock or add a frame.
+        rule.waitUntil(5_000) {
+            rule.runOnUiThread { probe.requests.any { it.owner == "card-0" && !it.finished } }
+        }
+        val enteredCardRequests = rule.runOnUiThread {
+            probe.requests.filter { it.owner == "card-0" && !it.finished }.also {
+                assertTrue("The old card must have an entered request before native blur", it.isNotEmpty())
+            }
+        }
+        val start = sample("start-after-down-frame")
+        nativeKey(AndroidKeyEvent.KEYCODE_DPAD_UP)
+        rule.onNodeWithText("Hero").assertIsFocused()
+        if (useProxy) {
+            rule.waitUntil(5_000) {
+                rule.runOnUiThread { enteredCardRequests.all { it.cancelled && it.finished } }
+            }
+            rule.runOnUiThread {
+                assertTrue("Native blur must cancel the exact previously entered card requests",
+                    enteredCardRequests.all { it.cancelled && it.finished && !it.completed })
+            }
+        }
+        // Exactly one commit frame for native blur/cancellation. No second
+        // buffer frame, arbitrary sleep, forced focus, or semantics scrolling.
+        rule.mainClock.advanceTimeByFrame()
+        rule.waitForIdle()
+        rule.onNodeWithText("Hero").assertIsFocused()
+        val tail = sample("tail-after-up-frame")
+        rule.mainClock.advanceTimeBy(2_400)
+        rule.waitForIdle()
+        rule.onNodeWithText("Hero").assertIsFocused()
+        val end = sample("end-after-2400ms")
+        val diagnostic = "start=$start tail=$tail end=$end observations=${observations.joinToString("; ")}"
+        if (!useProxy) {
+            assertTrue("Negative control must detect continued old-card downward scrolling: $diagnostic", end > tail)
+        } else {
+            assertTrue("The cancelled old request must not keep pulling downward after one commit frame: $diagnostic", end <= tail)
+            rule.mainClock.advanceTimeBy(2_400)
+            rule.waitForIdle()
+            rule.onNodeWithText("Hero").assertIsFocused()
+            val settled = sample("settled-after-next-2400ms")
+            assertEquals("The proxy-on route must remain exactly stable: ${observations.joinToString("; ")}", end, settled)
+        }
+    }
+
     @Suppress("DEPRECATION")
     private fun findAccessibilityCard(root: AccessibilityNodeInfo?, title: String): AccessibilityNodeInfo? {
         if (root == null) return null
@@ -396,6 +476,7 @@ private class PendingRelocation(
 
 private class RelocationProbe {
     var enabled = false
+    var holdRequests = true
     val initialization = mutableListOf<PendingRelocation>()
     val requests = mutableListOf<PendingRelocation>()
 }
@@ -417,7 +498,7 @@ private class RelocationProbeNode(var probe: RelocationProbe, var owner: String)
             if (measured) probe.requests += it else probe.initialization += it
         }
         try {
-            if (measured) request.release.await()
+            if (measured && probe.holdRequests) request.release.await()
             if (isAttached && childCoordinates.isAttached) {
                 val coordinates = requireLayoutCoordinates()
                 this@RelocationProbeNode.bringIntoView {

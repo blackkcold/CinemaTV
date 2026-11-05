@@ -29,9 +29,10 @@ supplies immersive window chrome and passive observers. It is not in release.
   viewport crossings, rapid reversal and interrupted/reordered lazy moves.
   Four `ContentRailVisibilityTest` cases cover focused caption safety across
   Reduced Motion changes, native cancellation, route return and oversized rows.
-  Four `FocusBoundRelocationTest` cases verify per-card in-flight cancellation,
+  Six `FocusBoundRelocationTest` cases verify per-card in-flight cancellation,
   native Back disposal, non-focused request forwarding and actual accessibility
-  ShowOnScreen. Exact execution is required: 46 tests per TV SDK and three on phone.
+  ShowOnScreen, plus ungated same-APK proxy-on/off protocol controls. Exact
+  execution is required: 48 tests per TV SDK and three on phone.
   Interrupted restoration tests pause entry/lazy frame work and inject native
   D-pad events; newer navigation/content wins, cancellation never falls back,
   and ordinary saved-target/fallback behavior remains covered. Native default
@@ -111,3 +112,13 @@ pass already took 875.82s while four new visibility tests stopped in setup.
 The bounded allowance covers their full paths plus the new focus-ring pixel
 checks; individual assertions, inputs, image thresholds and release gates are
 unchanged. It is not a performance-test window or frame-rate criterion.
+
+
+The rail cancellation regression records the value before navigation, advances
+exactly one Compose frame, then requires no further downward movement for 2,400ms
+and exact stability for a second 2,400ms. Compose 1.10.6 can consume a cached
+pre-cancellation delta in that single frame; the raw value is retained, not hidden
+behind a pixel tolerance. Paired native component controls use the same APK and
+real scroller: the original unguarded request must keep moving after that frame,
+while guarded requests must stop. These are protocol controls, not a claim that
+an old production APK was retested with a new test binary.

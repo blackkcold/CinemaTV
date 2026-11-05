@@ -5,6 +5,7 @@ import android.view.ViewTreeObserver
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsNode
@@ -292,17 +293,28 @@ class ContentRailVisibilityTest {
             rule.onNodeWithText("精选").assertIsFocused()
             observe("navigation-focused")
             val atNavigation = pageScroll()
+            // Foundation 1.10.6 removes cancelled requests immediately, but its
+            // shared animator checks the queue in afterFrame, after consuming
+            // the already-cached beforeFrame delta. Observe exactly that one
+            // commit boundary, then reject all further downward movement.
+            rule.mainClock.advanceTimeByFrame()
+            rule.waitForIdle()
+            rule.onNodeWithText("精选").assertIsFocused()
+            val afterCommitFrame = pageScroll()
+            observe("navigation-after-one-commit-frame")
             rule.mainClock.advanceTimeBy(2_400)
             rule.waitForIdle()
             rule.onNodeWithText("精选").assertIsFocused()
             val settledNavigation = pageScroll()
             observe("navigation-settled")
-            assertEquals(atNavigation.nodeId, settledNavigation.nodeId)
+            assertEquals(atNavigation.nodeId, afterCommitFrame.nodeId)
+            assertEquals(afterCommitFrame.nodeId, settledNavigation.nodeId)
             // Passing through the hero may legitimately finish its own upward
             // relocation. The blurred rail must never pull the page back downward.
             assertTrue("A blurred rail must not keep pulling the Home viewport toward the rail: " +
-                "before=$atNavigation after=$settledNavigation observations=${observations.joinToString("; ")}",
-                settledNavigation.value <= atNavigation.value)
+                "before=$atNavigation afterOneCommitFrame=$afterCommitFrame after=$settledNavigation " +
+                "observations=${observations.joinToString("; ")}",
+                settledNavigation.value <= afterCommitFrame.value)
             rule.mainClock.advanceTimeBy(2_400)
             rule.waitForIdle()
             rule.onNodeWithText("精选").assertIsFocused()
@@ -350,12 +362,16 @@ class ContentRailVisibilityTest {
     }
 
     @Test fun oversizedFontScaleRailSettlesWithoutRepeatedVerticalScroll() {
-        // Replace only the test Activity's composition so the real root receives
-        // an extreme density configuration. No fake rail, viewport, or focus path.
+        // Enter through the normal real root first, then change configuration
+        // without replacing its composition/focus. Remounting the entire root
+        // at 12x failed its initial Hero-focus precondition in one cloud run,
+        // before the rail was exercised; that did not establish a rail loop or
+        // distinguish root-startup timing from extreme Hero layout constraints.
         val density = rule.activity.resources.displayMetrics.density
+        val fontScale = mutableFloatStateOf(1f)
         rule.runOnUiThread {
             rule.activity.setContent {
-                CompositionLocalProvider(LocalDensity provides Density(density, fontScale = 12f)) {
+                CompositionLocalProvider(LocalDensity provides Density(density, fontScale = fontScale.floatValue)) {
                     CinemaNotoProvider {
                         BackHandler(enabled = model.page != Page.HOME) { model.back() }
                         TvRootApp(model)
@@ -367,6 +383,14 @@ class ContentRailVisibilityTest {
         rule.onNodeWithText("观看详情").assertIsFocused()
         nativeKey(KeyEvent.KEYCODE_DPAD_DOWN)
         assertFeaturedFocus(0)
+        val bookmarkBeforeResize = rule.runOnIdle { model.focusCoordinator.last("HOME") }
+        rule.runOnIdle { fontScale.floatValue = 12f }
+        rule.waitForIdle()
+        assertFeaturedFocus(0)
+        rule.runOnIdle {
+            assertSame("Changing font scale must retain the same focus acquisition",
+                bookmarkBeforeResize, model.focusCoordinator.last("HOME"))
+        }
         val card = focusedCard(0).fetchSemanticsNode()
         val row = scrollAncestor(card, horizontal)
         assertTrue("Exercise the oversized-row fallback, not the normal fit path",
