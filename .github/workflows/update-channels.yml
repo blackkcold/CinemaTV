@@ -11,6 +11,9 @@ on:
       - 'scripts/updates/**'
       - 'scripts/tests/test_update_channels.py'
       - 'scripts/tests/test_update_pipeline.py'
+      - 'scripts/tests/test_unsigned_candidates.py'
+      - 'release/signing-identity.json'
+      - 'docs/UPDATE_CHANNELS.md'
       - '.github/workflows/update-channels.yml'
       - '.github/workflows/release.yml'
   workflow_dispatch:
@@ -273,4 +276,36 @@ jobs:
         with:
           name: UNSIGNED-stable-candidate-NOT-FOR-INSTALLATION
           path: candidate/
+          if-no-files-found: error
+
+  unsigned-dev-candidate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+      - name: Install Android SDK
+        run: |
+          SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -1)
+          "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0"
+      - uses: actions/cache@v4
+        with:
+          path: .cache/cinematv-noto-fonts
+          key: noto-fonts-v2-${{ hashFiles('scripts/fonts/noto-fonts.lock.json') }}
+      - name: Prepare unsigned dev candidate without credentials
+        env:
+          CANDIDATE_SOURCE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: bash scripts/updates/build-unsigned-candidate.sh dev
+      - uses: actions/upload-artifact@v4
+        with:
+          name: UNSIGNED-dev-candidate-NOT-FOR-INSTALLATION
+          path: candidate-dev/
           if-no-files-found: error
