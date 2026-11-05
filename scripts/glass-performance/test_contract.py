@@ -141,9 +141,23 @@ class ProtocolTest(unittest.TestCase):
         data["inputs"][0]["after"]["ready"] = False
         self.assertFalse(frame_summary(data)["validForComparison"])
 
-    def test_input_with_no_requested_material_draw_blocks_comparison(self):
+    def test_zero_input_recording_delta_does_not_reject_rendernode_animation(self):
         data = fixture()
         data["inputs"][0]["after"]["draws"]["basic"] = 0
+        result = frame_summary(data)
+        self.assertTrue(result["validForComparison"])
+        self.assertEqual(0, result["perWindow"][0]["materialRecordingTraversalDeltaTo520msSnapshot"]["basic"])
+        self.assertEqual(9, result["perWindow"][0]["renderedSamples"])
+
+    def test_initial_and_whole_run_material_recording_remain_required(self):
+        for phase in ("start", "end"):
+            data = copy.deepcopy(fixture())
+            data[phase]["draws"]["basic"] = 0
+            self.assertFalse(frame_summary(data)["validForComparison"])
+
+    def test_negative_recording_delta_still_blocks_comparison(self):
+        data = fixture()
+        data["inputs"][0]["drawsBefore"]["basic"] = 11
         self.assertFalse(frame_summary(data)["validForComparison"])
 
     def test_complete_matrix_and_repeated_trial_rejection(self):

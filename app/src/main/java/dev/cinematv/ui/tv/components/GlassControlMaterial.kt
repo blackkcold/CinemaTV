@@ -41,20 +41,24 @@ fun Modifier.cinemaGlassMaterial(
     val source = currentProductionGlassScene()
     val failure = LocalProductionGlassFailure.current
     val diagnostics = LocalGlassDrawDiagnostics.current
+    val diagnosticScope = LocalGlassDrawScope.current
     val emphasis = maxOf(focus, if (selected) .4f else 0f)
     val live = source != null && failure?.failed != true && effects.glass != GlassQuality.BASIC
     val full = live && effects.glass == GlassQuality.ENHANCED && Build.VERSION.SDK_INT >= 33
     val safe: DrawScope.() -> Unit = { drawSafeGlass(radius, emphasis, press, prominent) }
     if (!live) return then(if (layerBlock == null) Modifier else Modifier.graphicsLayer(layerBlock))
-        .drawWithContent { safe(); drawContent(); diagnostics?.let { it.basicDraws++ } }
+        .drawWithContent {
+            safe(); drawContent()
+            diagnostics?.record(GlassRenderMode.BASIC, diagnosticScope, sourcePresent = source != null)
+        }
     // Observe outside the entire optical/highlight/shadow chain: an outer pass can
     // still fail after the core backdrop has drawn and repaint Basic for this frame.
     return drawWithContent {
         drawContent()
-        diagnostics?.let {
-            if (failure?.failed == true) it.basicDraws++
-            else if (full) it.successfulLensDraws++ else it.blurDraws++
-        }
+        diagnostics?.record(
+            if (failure?.failed == true) GlassRenderMode.BASIC else if (full) GlassRenderMode.FULL else GlassRenderMode.BLUR,
+            diagnosticScope, sourcePresent = source != null,
+        )
     }.drawBackdrop(
         backdrop = backdropOverride ?: source!!.backdrop,
         shape = { RoundedCornerShape(radius) },

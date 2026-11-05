@@ -55,9 +55,11 @@ def frame_summary(data):
             issues.append("A native input snapshot has an unready font, decoded scene, catalog or route")
         if state["actualMode"] != expected_mode or state["failed"] or not state["foreground"] or not state["animationsEnabled"]:
             issues.append("A native input snapshot did not preserve the admitted tier, animations and foreground")
+    if data["start"]["draws"][expected_mode.lower()] <= 0:
+        issues.append("No initial successful recording traversal of requested material")
     draws = data["end"]["draws"]
     if draws[expected_mode.lower()] <= 0:
-        issues.append("No successful draw of requested material")
+        issues.append("No successful requested-material recording traversal during the complete run")
     if (expected_mode != "FULL" and draws["full"]) or (expected_mode == "BASIC" and draws["blur"]):
         issues.append("Unexpected higher-cost material draws")
     if data["metricCallbackDrops"]:
@@ -83,14 +85,17 @@ def frame_summary(data):
         intervals.extend((b["vsyncNs"] - a["vsyncNs"]) / 1e6 for a, b in zip(values, values[1:]))
         native = inputs[window["index"]]
         deltas = {tier: native["after"]["draws"][tier] - native["drawsBefore"][tier] for tier in ("full", "blur", "basic")}
-        if deltas[expected_mode.lower()] <= 0:
-            issues.append(f"Input {window['index']} has no successful requested-material draw before its post-window snapshot")
+        # This observer is outside drawBackdrop's graphicsLayer. Inner RenderNode
+        # focus/press changes need not re-enter it; zero is valid, not a missed frame.
         if any(value < 0 for value in deltas.values()):
             issues.append("Material draw counters decreased within an input phase")
         per_window.append({"index": window["index"], "key": window["key"], "routeBefore": window["routeBefore"],
-                           "materialDrawDeltaTo520msSnapshot": deltas, "renderedSamples": len(values), "totalMs": describe([f["totalNs"] / 1e6 for f in values])})
+                           "materialRecordingTraversalDeltaTo520msSnapshot": deltas, "renderedSamples": len(values), "totalMs": describe([f["totalNs"] / 1e6 for f in values])})
         if not values:
             issues.append(f"Input {window['index']} has no rendered-frame samples")
+    detail_recordings = {tier: sum(value["materialRecordingTraversalDeltaTo520msSnapshot"][tier]
+                                  for value in per_window if inputs[value["index"]]["after"]["route"] == "DETAIL")
+                         for tier in ("full", "blur", "basic")}
     total = [frame["totalNs"] / 1e6 for frame in frames if frame["totalNs"] >= 0]
     gpu = [frame["gpuNs"] / 1e6 for frame in frames if frame.get("gpuNs", -1) >= 0]
     deadlines = [frame for frame in frames if frame.get("deadlineNs", -1) > 0]
@@ -103,7 +108,8 @@ def frame_summary(data):
               "validForComparison": not issues, "issues": sorted(set(issues)), "nativeInputWindows": len(windows),
               "activeWindowSeconds": sum(w["endNs"] - w["startNs"] for w in windows) / 1e9,
               "renderedFrameSamples": len(frames), "excludedStartupIdleOrFirstDrawSamples": len(data["frames"]) - len(frames),
-              "metricCallbackDrops": data["metricCallbackDrops"], "draws": draws,
+              "metricCallbackDrops": data["metricCallbackDrops"], "materialRecordingTraversals": draws,
+              "detailEntryRecordingTraversalDiagnostic": detail_recordings,
               "viewport": {"widthPx": data["width"], "heightPx": data["height"], "densityDpi": data["densityDpi"]},
               "windowRenderTotalMs": describe(total), "gpuDurationMs": describe(gpu),
               "precedingBoundarySamples": len(boundary),
@@ -191,7 +197,7 @@ def analyze(directory):
                                "SurfaceFlinger GLES identifies the compositor; app HWUI pipeline is recorded separately from gfxinfo. Requested GPU flags are not proof of either renderer.",
                                "Three interleaved runs per tier describe this environment; not statistical device-population certification.",
                                "Fixture is original generated local imagery and metadata. No video surfaces or cross-window dialogs.",
-                               "Aggregate material draw counters cover the measurement phase including gaps. Per-input counter deltas are passive phase evidence, not precise per-frame GPU attribution."]}
+                               "Material counters observe outer recording traversals, not GPU passes, displayed frames or FPS. Inner RenderNode animation can produce zero per-input counter delta. Initial and whole-run recording evidence is required; per-input and Detail-entry deltas are diagnostics only."]}
     (directory / "summary.json").write_text(json.dumps(summary, indent=2))
     lines = ["# Production glass performance", "", "Complete comparable matrix: " + str(complete),
              "Source: " + build["sourceSha"], "APK SHA-256: " + build["apkSha256"],

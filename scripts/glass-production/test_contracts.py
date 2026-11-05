@@ -75,6 +75,26 @@ class InstrumentationContract(unittest.TestCase):
         self.assertIn('tab("电影").assertIsFocused().assertIsNotSelected()', source)
         self.assertIn('key(Key.DirectionDown)', source)
 
+    def test_draw_scope_is_passive_and_captured_before_material_draw(self):
+        diagnostics = (ROOT / "app/src/main/java/dev/cinematv/ui/tv/components/GlassBackdropFrame.kt").read_text()
+        material = (ROOT / "app/src/main/java/dev/cinematv/ui/tv/components/GlassControlMaterial.kt").read_text()
+        host = (ROOT / "app/src/debug/java/dev/cinematv/ProductionGlassTestActivity.kt").read_text()
+        test = (ROOT / "app/src/androidTest/java/dev/cinematv/ProductionGlassUiTest.kt").read_text()
+        self.assertIn("staticCompositionLocalOf<String?> { null }", diagnostics)
+        self.assertIn("if (scope != null)", diagnostics)
+        for forbidden in ("mutableStateOf", "mutableIntStateOf", "invalidate", "SnapshotStateMap"):
+            self.assertNotIn(forbidden, diagnostics.replace("never invalidate", ""))
+        body = material.split("fun Modifier.cinemaGlassMaterial(", 1)[1]
+        self.assertLess(body.index("val diagnosticScope = LocalGlassDrawScope.current"), body.index(".drawWithContent"))
+        self.assertIn("diagnosticScope, sourcePresent = source != null", material)
+        self.assertNotIn("model.page", material)
+        self.assertIn("LocalGlassDrawScope provides model.page.name", host)
+        phone = test.split("private fun phoneRoutes", 1)[1].split("private fun capture", 1)[0]
+        self.assertLess(phone.index("clearScope(Page.DETAIL.name)"), phone.index("performTouchInput { click() }"))
+        self.assertIn("scopedCounts(Page.DETAIL.name).basicDraws > 0", phone)
+        self.assertIn("detail.sourcePresentDraws", phone)
+        self.assertNotIn("assertEquals(0, counts()[", phone)
+
     def test_ci_reuses_apks_without_rebuilding_or_media_suite(self):
         workflow = (ROOT / ".github/workflows/production-glass.yml").read_text()
         self.assertIn("branches: [feature/production-glass-v2]", workflow)
@@ -113,6 +133,36 @@ class EvidenceContract(unittest.TestCase):
         (directory / "focus-trace.txt").write_text("route=MOVIES\nroute=DETAIL\nBack\n")
         return {"completed": True, "sourceSha": SHA, "sdk": 35, "layout": "tv",
                 "host": "dev.cinematv.ProductionGlassTestActivity", "root": "TvRootApp", "captures": captures}
+
+    def test_phone_detail_requires_scoped_draws_and_no_inherited_scene(self):
+        from PIL import Image, ImageDraw
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            manifest = self.fixture(directory)
+            manifest.update(layout="phone", root="MobileRootApp")
+            for index, capture in enumerate(manifest["captures"]):
+                image = Image.new("RGB", (1080, 2400), "#102030")
+                ImageDraw.Draw(image).rectangle((100, 100, 900, 2000), fill=(80 + index * 10, 170, 220))
+                image.save(directory / capture["file"])
+                capture.update(widthPx=1080, heightPx=2400, densityDpi=420, sha256=digest(directory / capture["file"]))
+                if capture["file"].endswith("-detail.png"):
+                    capture["globalDraws"] = dict(capture["draws"], basic=3)
+                    capture.update(renderer="BASIC", drawScope="DETAIL", sourcePresentDraws=0,
+                                   draws={"full": 0, "blur": 0, "basic": 3})
+            def check(value):
+                (directory / "captures.json").write_text(json.dumps(value))
+                return verify_captures(directory, SHA, 35, "phone")
+            # Legitimate old Home Full/Blur remains visible in globalDraws and
+            # does not contaminate the new Detail's independently recorded scope.
+            self.assertGreater(manifest["captures"][2]["globalDraws"]["full"], 0)
+            self.assertEqual("passed", check(manifest)["result"])
+            for key, value in (("drawScope", "HOME"), ("sourcePresentDraws", 1),
+                               ("draws", {"full": 1, "blur": 0, "basic": 3}),
+                               ("draws", {"full": 0, "blur": 0, "basic": 0})):
+                broken = copy.deepcopy(manifest)
+                broken["captures"][2][key] = value
+                with self.subTest(field=key), self.assertRaises(AssertionError):
+                    check(broken)
 
     def test_native_contract_and_invalid_receipts(self):
         with tempfile.TemporaryDirectory() as temp:

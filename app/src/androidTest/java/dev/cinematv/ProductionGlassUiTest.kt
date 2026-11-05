@@ -71,9 +71,12 @@ class ProductionGlassUiTest {
     private fun counts(): IntArray = rule.runOnUiThread {
         rule.activity.glassDraws.let { intArrayOf(it.successfulLensDraws, it.blurDraws, it.basicDraws) }
     }
-    private fun resetCounts() = rule.runOnUiThread {
+    private fun scopedCounts(scope: String) = rule.runOnUiThread { rule.activity.glassDraws.scopedSnapshot(scope) }
+    /** Call on the UI thread, atomically before the mutation whose drawing is measured. */
+    private fun clearDrawCountsOnUiThread() {
         rule.activity.glassDraws.let { it.successfulLensDraws = 0; it.blurDraws = 0; it.basicDraws = 0 }
     }
+    private fun resetCounts() = rule.runOnUiThread { clearDrawCountsOnUiThread() }
     private fun counter(mode: GlassRenderMode) = when (mode) {
         GlassRenderMode.FULL -> 0
         GlassRenderMode.BLUR -> 1
@@ -124,9 +127,11 @@ class ProductionGlassUiTest {
         File(directory, "focus-trace.txt").appendText("$action route=${model.page}\n$focused\n")
     }
 
-    private fun recordRenderer(stage: String, expected: GlassRenderMode) {
+    private fun recordRenderer(stage: String, expected: GlassRenderMode, drawScope: String? = null) {
         val actual = observation()
-        val draws = counts()
+        val global = counts()
+        val scoped = drawScope?.let { scopedCounts(it) }
+        val draws = scoped?.let { intArrayOf(it.fullDraws, it.blurDraws, it.basicDraws) } ?: global
         val snapshot = JSONObject().put("stage", stage).put("route", model.page.name)
             .put("expected", expected.name).put("requested", actual.requested.name)
             .put("policyMode", actual.actualMode.name).put("reason", actual.decision.reason.name)
@@ -134,53 +139,42 @@ class ProductionGlassUiTest {
             .put("hardwareAccelerated", actual.environment.hardwareAccelerated)
             .put("decodedScene", rule.activity.decodedScene ?: JSONObject.NULL)
             .put("draws", JSONObject().put("full", draws[0]).put("blur", draws[1]).put("basic", draws[2]))
+            .put("drawScope", drawScope ?: "stage-global")
+            .put("sourcePresentDraws", scoped?.sourcePresentDraws ?: JSONObject.NULL)
+            .put("globalDraws", JSONObject().put("full", global[0]).put("blur", global[1]).put("basic", global[2]))
         File(directory, "renderer-trace.jsonl").appendText(snapshot.toString() + "\n")
         android.util.Log.i("CinemaTVGlassQa", snapshot.toString())
-    }
-
-    private fun phonePressUntilMaterialDraw(label: String, expected: GlassRenderMode) {
-        val button = rule.onNodeWithText(label).assertIsDisplayed().assertHasClickAction()
-        val before = counts()[counter(expected)]
-        recordRenderer("$label before-down", expected)
-        button.performTouchInput { down(center) }
-        var drawn = false
-        try {
-            // Scrollable parents delay PressInteraction while deciding whether this is
-            // a scroll. waitForIdle alone does not guarantee that delayed press fired;
-            // cancelling then can produce no material change at all. Keep the genuine
-            // pointer down until its production material actually draws, then cancel.
-            // No fixed sleep, source remount, forced redraw or policy override is used.
-            rule.waitUntil(10_000) { counts()[counter(expected)] > before }
-            drawn = true
-        } finally {
-            recordRenderer("$label held-draw=$drawn", expected)
-            button.performTouchInput { cancel() }
-        }
-        rule.waitForIdle()
-        recordRenderer("$label cancelled", expected)
     }
 
     @Test fun actualProductionRootsRenderRequestedTiersAndKeepNativeInput() {
         writeManifest(false)
         for (requested in modes) {
-            rule.runOnIdle { model.updateGlassQuality(requested) }
+            rule.runOnIdle {
+                // A material traversal is not a presentation/interaction frame counter:
+                // mobile press effects can update an inner graphicsLayer while reusing
+                // the outer diagnostic display list. Preserve the actual tier-switch
+                // traversal instead of erasing it and requiring a press to replay it.
+                if (!rule.activity.isTv) clearDrawCountsOnUiThread()
+                model.updateGlassQuality(requested)
+            }
             awaitPolicy(requested)
             awaitScene()
-            if (!rule.activity.isTv) recordRenderer("home-${requested.name} before-reset", observation().actualMode)
-            resetCounts()
-            // Real focus/press changes repaint existing production controls, even when API26
-            // correctly resolves all three preferences to BASIC. No remount/forceRedraw hook.
+            // TV focus changes its outer material, including on API26 where all
+            // preferences intentionally resolve to Basic. Keep that proven path.
             if (rule.activity.isTv) {
+                resetCounts()
                 key(Key.DirectionUp)
                 tab("精选").assertIsFocused().assertIsSelected()
                 key(Key.DirectionDown)
                 assertHomeControl()
-            } else {
-                phonePressUntilMaterialDraw("查看影片", observation().actualMode)
             }
             awaitPolicy(requested)
             val effective = observation().actualMode
-            rule.waitUntil(10_000) { counts()[counter(effective)] > 0 }
+            try {
+                rule.waitUntil(10_000) { counts()[counter(effective)] > 0 }
+            } finally {
+                recordRenderer("home-${requested.name} tier-traversal", effective)
+            }
             val draws = counts()
             if (effective != GlassRenderMode.FULL) assertEquals("No lens draw in this tier", 0, draws[0])
             if (effective == GlassRenderMode.BASIC) assertEquals("No blur draw in safe tier", 0, draws[1])
@@ -228,17 +222,26 @@ class ProductionGlassUiTest {
     }
 
     private fun phoneRoutes(requested: GlassQuality) {
+        // A last legitimate Home draw may occur during this touch. Measure the
+        // composition-captured DETAIL scope, never label global transition counts
+        // as Detail-only or read model.page from a material draw callback.
+        rule.runOnUiThread { rule.activity.glassDraws.clearScope(Page.DETAIL.name) }
         rule.onNodeWithText("查看影片").performTouchInput { click() }
         rule.waitUntil(15_000) { model.page == Page.DETAIL && !model.busy && model.selected?.episodes?.size == 36 }
         awaitScene()
         rule.onNodeWithText("播放 / 续播").assertIsDisplayed().assertHasClickAction()
-        resetCounts()
-        phonePressUntilMaterialDraw("播放 / 续播", GlassRenderMode.BASIC)
-        // Detail has no local glass recording. It must not inherit the disposed Home hero.
-        rule.waitUntil(10_000) { counts()[2] > 0 }
-        assertEquals(0, counts()[0])
-        assertEquals(0, counts()[1])
-        capture("${requested.name.lowercase()}-detail", requested, GlassRenderMode.BASIC)
+        // Detail has no local glass recording. Its first real traversal must be
+        // Basic, without reusing the disposed Home hero's Full/Blur recording.
+        try {
+            rule.waitUntil(10_000) { scopedCounts(Page.DETAIL.name).basicDraws > 0 }
+        } finally {
+            recordRenderer("detail-${requested.name} initial-traversal", GlassRenderMode.BASIC, Page.DETAIL.name)
+        }
+        val detail = scopedCounts(Page.DETAIL.name)
+        assertEquals("Detail must not render Full", 0, detail.fullDraws)
+        assertEquals("Detail must not render Blur", 0, detail.blurDraws)
+        assertEquals("Detail must not inherit Home's live scene", 0, detail.sourcePresentDraws)
+        capture("${requested.name.lowercase()}-detail", requested, GlassRenderMode.BASIC, Page.DETAIL.name)
         back()
         rule.waitUntil(10_000) { model.page == Page.HOME }
         assertHomeControl()
@@ -253,7 +256,7 @@ class ProductionGlassUiTest {
         awaitScene()
     }
 
-    private fun capture(name: String, requested: GlassQuality, renderer: GlassRenderMode?) {
+    private fun capture(name: String, requested: GlassQuality, renderer: GlassRenderMode?, drawScope: String? = null) {
         assertNotEquals("No video/surface sampling in this suite", Page.PLAYER, model.page)
         assertTrue("No cross-window Dialog capture", rule.onAllNodes(isDialog()).fetchSemanticsNodes().isEmpty())
         awaitPolicy(requested)
@@ -266,6 +269,9 @@ class ProductionGlassUiTest {
             check(file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) })
             val observed = observation()
             val env = observed.environment
+            val global = counts()
+            val scoped = drawScope?.let { scopedCounts(it) }
+            val draws = scoped?.let { intArrayOf(it.fullDraws, it.blurDraws, it.basicDraws) } ?: global
             captures.put(JSONObject().put("file", file.name).put("sha256", sha256(file))
                 .put("sourceSha", sourceSha).put("sdk", Build.VERSION.SDK_INT)
                 .put("widthPx", bitmap.width).put("heightPx", bitmap.height)
@@ -273,7 +279,10 @@ class ProductionGlassUiTest {
                 .put("route", model.page.name).put("requested", requested.name)
                 .put("policyMode", observed.actualMode.name).put("renderer", renderer?.name ?: "NOT_ASSERTED")
                 .put("reason", observed.decision.reason.name).put("failed", observed.failed)
-                .put("draws", JSONObject().put("full", counts()[0]).put("blur", counts()[1]).put("basic", counts()[2]))
+                .put("draws", JSONObject().put("full", draws[0]).put("blur", draws[1]).put("basic", draws[2]))
+                .put("drawScope", drawScope ?: "stage-global")
+                .put("sourcePresentDraws", scoped?.sourcePresentDraws ?: JSONObject.NULL)
+                .put("globalDraws", JSONObject().put("full", global[0]).put("blur", global[1]).put("basic", global[2]))
                 .put("decodedScene", activity.decodedScene ?: JSONObject.NULL)
                 .put("environment", JSONObject().put("api", env.api).put("lowRam", env.lowRam)
                     .put("memoryClassMb", env.memoryClassMb).put("hardwareAccelerated", env.hardwareAccelerated)
@@ -292,6 +301,7 @@ class ProductionGlassUiTest {
             .put("scope", "Actual production UI in an offline debug host; original generated local artwork; native compositor pixels")
             .put("excludes", JSONArray(listOf("video surfaces", "cross-window dialogs", "physical-device performance certification")))
             .put("captureMethod", "TvWindowCapture: hardware frame metrics fence and UiAutomation native display screenshot; no crop or resize")
+            .put("drawCounterMeaning", "Successful material traversal within the test stage; not a presented-frame or press-frame count")
             .put("captures", captures).toString(2))
     }
     private fun sha256(file: File): String = MessageDigest.getInstance("SHA-256")

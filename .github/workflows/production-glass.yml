@@ -2,6 +2,12 @@ name: Production glass native QA
 on:
   push:
     branches: [feature/production-glass-v2]
+    # Isolated nondebuggable timing harness changes do not modify the shipped UI
+    # or either native-QA APK. Its own workflow builds/lints and verifies that host.
+    paths-ignore:
+      - 'app/src/glassBenchmark/**'
+      - 'scripts/glass-performance/**'
+      - '.github/workflows/production-glass-performance.yml'
   workflow_dispatch:
 permissions:
   contents: read

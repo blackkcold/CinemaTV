@@ -15,8 +15,10 @@ supplies immersive window chrome and passive observers. It is not in release.
 - API31: TV narrow Home captures for all preferences; requested Full genuinely
   resolves to Blur. Basic additionally checks Detail and navigation.
 - API26: the same narrow safe path; all preferences genuinely resolve to Basic.
-- Phone Home alone owns its local glass scene. Phone Detail verifies Basic and
-  zero Full/Blur draws, rather than inheriting the disposed Home recording.
+- Phone Home alone owns its local glass scene. The debug host supplies a passive
+  page scope captured during composition. Phone Detail requires new Basic draws,
+  zero Full/Blur draws, and zero live-source draws in the DETAIL scope. Legitimate
+  outgoing Home draws remain in global diagnostics, never mislabelled as Detail.
   Phone catalog navigation is captured for state/input, not claimed glass coverage.
 - `MobileGlassButtonTest` preserves native target/role/disabled behavior.
   The TV pass on each SDK additionally runs the small `GlassMaterialSmokeTest`.

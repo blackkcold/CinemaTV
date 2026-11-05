@@ -54,10 +54,13 @@ emulator. The benchmark does not run on the user's Mac.
   gaps, startup, warmup and `FIRST_DRAW_FRAME` samples are excluded.
 - Real policy, hardware acceleration, thermal/power/reduced-motion guards and failure latch
   remain intact. A fallback blocks that tier; nothing forces a higher renderer.
-- Actual material draw counters, font/art readiness, exact native key and route sequence,
-  stable PID/foreground, run order and both host/native receipts are verified. Counters
-  sampled after each input cover through 520 ms, so they prove the input phase exercised
-  the material but are not precise per-frame GPU attribution.
+- Initial and whole-run successful material recording traversals, font/art readiness,
+  exact native key and route sequence, stable PID/foreground, run order and both
+  host/native receipts are verified. The material observer is outside drawBackdrop's
+  graphicsLayer: focus/press updates to its inner RenderNode need not increment it.
+  Per-input deltas through 520 ms may legitimately be zero. They and new Detail-entry
+  deltas are recording-traversal diagnostics, not per-frame GPU passes, displayed
+  frames or FPS. FrameMetrics, not this counter, provides renderer-timing samples.
 - A key may be received after its response frame's VSYNC. The preceding one-refresh-period
   candidate is retained separately as boundary sensitivity, not assumed input-caused.
   The fixed active window may also truncate a long animation tail.
@@ -74,7 +77,7 @@ python3 -m py_compile scripts/glass-performance/*.py
 
 Artifacts contain the exact APK/build receipt, requested emulator options, actual
 SurfaceFlinger GLES line, app `gfxinfo` HWUI pipeline, properties, viewport/density,
-per-input receipt and material deltas, raw FrameMetrics, and partial failure evidence.
+per-input receipt and material recording-traversal diagnostics, raw FrameMetrics, and partial failure evidence.
 SurfaceFlinger identifies the compositor; `gfxinfo` identifies the app rendering pipeline.
 Neither is inferred from the requested `-gpu lavapipe` argument. A software backend such
 as ANGLE/SwiftShader is reported as observed.

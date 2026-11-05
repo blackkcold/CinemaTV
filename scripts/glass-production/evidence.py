@@ -84,6 +84,8 @@ def verify_captures(directory, sha, sdk, layout):
             assert capture["decodedScene"].startswith("android.resource://dev.cinematv/")
         if layout == "phone" and capture["file"].endswith("-detail.png"):
             assert capture["renderer"] == "BASIC", "Phone detail must not reuse Home's local recording"
+            assert capture["drawScope"] == "DETAIL", "Global Home-to-Detail transition counts are not Detail evidence"
+            assert capture["sourcePresentDraws"] == 0, "Detail material inherited a live scene"
             assert capture["draws"]["full"] == capture["draws"]["blur"] == 0
     homes = {c["requested"]: c for c in captures if c["file"].endswith("-home.png")}
     if sdk >= 33:

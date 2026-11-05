@@ -16,6 +16,22 @@ PRODUCTION = ("dev.cinematv.ProductionGlassUiTest", "actualProductionRootsRender
 BUTTON = ("dev.cinematv.MobileGlassButtonTest", "primaryAndSecondaryKeepNativeTouchTargetsRolesAndDisabledState")
 BUTTON_EDGE = ("dev.cinematv.MobileGlassButtonTest", "pressedEdgeKeepsStableTouchTargetAndSingleClick")
 MATERIAL = ("dev.cinematv.GlassMaterialSmokeTest", "materialSurvivesFocusPressReducedMotionMissingArtAndFailure")
+MOTION = [("dev.cinematv.FocusMediaCardMotionTest", method) for method in (
+    "focusPressAndReleaseKeepDistinctScalesAndSingleActivation",
+    "touchPressWithoutFocusReturnsToIdentityOnCancel",
+    "reducedMotionDisablesGeometryEvenMidSpringAndWhilePressed",
+    "rootHintTransfersToNewFocusReversesAndSettlesWithoutLoop",
+    "backAndRouteResetCancelHintWithoutConsumingNavigation",
+    "animationFramesDoNotRecomposeTheWholeCardAndGlassTierDoesNotChangeMotion",
+    "identityCaptionsSelectionProgressAndLoadingSurviveImageFailure",
+    "productionReducedMotionProviderKeepsApi26SafeAndVisibleFocus",
+)]
+
+
+def expected_for(layout):
+    return [PRODUCTION, BUTTON, BUTTON_EDGE] + ([MATERIAL, *MOTION] if layout == "tv" else [])
+
+
 ERROR_MARKERS = ("ANR in dev.cinematv", "ANR in com.android", "FATAL EXCEPTION", "Application Not Responding:",
                  "Application Error:", "Application at fault:")
 
@@ -94,7 +110,7 @@ def run_layout(args, layout, sdk):
             (directory / f"{label}.txt").write_text(adb(*command))
         test_log = TestLogBoundary(directory, adb)
         test_log.start()  # Must read our marker back before any test can start.
-        expected = [PRODUCTION, BUTTON, BUTTON_EDGE] + ([MATERIAL] if layout == "tv" else [])
+        expected = expected_for(layout)
         classes = ",".join(dict.fromkeys(pair[0] for pair in expected))
         # Budget covers setup + instrumentation; no Gradle or APK rebuild in this job.
         remaining = max(1, min(520, int(580 - (time.monotonic() - start))))

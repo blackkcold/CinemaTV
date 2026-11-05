@@ -2,6 +2,10 @@ package dev.cinematv
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.mutableStateOf
@@ -25,7 +29,13 @@ class MobileGlassButtonTest {
         var clicks = 0
         compose.setContent {
             MaterialTheme {
-                MobileGlassButton(onClick = { clicks++ }) { Text("Edge hold") }
+                // Match the production Home/Detail scrollable ancestry. Delayed
+                // PressInteraction and inner layer updates must not alter the hit
+                // target or turn one native release into zero/multiple clicks.
+                Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
+                    MobileGlassButton(onClick = { clicks++ }) { Text("Edge hold") }
+                    Spacer(Modifier.height(1200.dp))
+                }
             }
         }
         val button = compose.onNodeWithText("Edge hold")

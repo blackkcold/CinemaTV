@@ -18,12 +18,14 @@ import dev.cinematv.ui.*
 import dev.cinematv.ui.tv.components.*
 import dev.cinematv.ui.tv.design.*
 import dev.cinematv.ui.tv.focus.*
+import dev.cinematv.ui.tv.motion.PosterMotionProvider
 import dev.cinematv.ui.tv.pages.*
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun TvRootApp(model: CinemaViewModel, onSceneDecoded: (String?) -> Unit = {}) {
     CinemaTvTheme(model.reducedMotion, model.glassQuality) {
+      PosterMotionProvider(resetKey = model.focusRoute) { posterInput ->
         val keyboard = LocalSoftwareKeyboardController.current
         val imeVisible = WindowInsets.isImeVisible
         // Keep ownership in the persistent root: a restored Search editor can
@@ -47,7 +49,7 @@ fun TvRootApp(model: CinemaViewModel, onSceneDecoded: (String?) -> Unit = {}) {
             LocalProductionGlassScene provides glassScene) {
             val layout = LocalTvLayout.current
             if (model.page != Page.PLAYER) ArtworkPrefetch(model.featured + model.tvShows, model.focused)
-            Box(Modifier.fillMaxSize().background(TvColors.Background)) {
+            Box(Modifier.fillMaxSize().then(posterInput).background(TvColors.Background)) {
                 if (model.page != Page.PLAYER) BackdropLayer(
                     if (model.page == Page.DETAIL) model.selected else model.focused ?: model.featured.firstOrNull(),
                     modifier = Modifier.recordProductionGlass(glassScene)
@@ -77,5 +79,6 @@ fun TvRootApp(model: CinemaViewModel, onSceneDecoded: (String?) -> Unit = {}) {
                 }
             }
         }
+      }
     }
 }

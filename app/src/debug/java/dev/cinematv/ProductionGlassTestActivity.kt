@@ -15,6 +15,7 @@ import dev.cinematv.ui.mobile.MobileRootApp
 import dev.cinematv.ui.tv.TvRootApp
 import dev.cinematv.ui.tv.components.GlassDrawDiagnostics
 import dev.cinematv.ui.tv.components.LocalGlassDrawDiagnostics
+import dev.cinematv.ui.tv.components.LocalGlassDrawScope
 import dev.cinematv.ui.tv.components.LocalProductionGlassObserver
 import dev.cinematv.ui.tv.components.LocalProductionSceneDecoded
 import dev.cinematv.ui.tv.components.ProductionGlassObservation
@@ -55,6 +56,7 @@ class ProductionGlassTestActivity : ComponentActivity() {
                 }
                 CompositionLocalProvider(
                     LocalGlassDrawDiagnostics provides glassDraws,
+                    LocalGlassDrawScope provides model.page.name,
                     LocalProductionGlassObserver provides { glassObservation = it },
                     LocalProductionSceneDecoded provides { decodedScene = it },
                 ) {
