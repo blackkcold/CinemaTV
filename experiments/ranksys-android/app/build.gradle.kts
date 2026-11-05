@@ -24,3 +24,14 @@ tasks.register("reportDependencies") {
         }
     }
 }
+
+val sourceArtifacts by configurations.creating
+dependencies {
+    sourceArtifacts("org.ranksys:RankSys-core:0.4.3:sources")
+    sourceArtifacts("org.ranksys:RankSys-novdiv:0.4.3:sources")
+    sourceArtifacts("org.ranksys:RankSys-diversity:0.4.3:sources")
+}
+tasks.register<Copy>("archiveCoreSources") {
+    from(sourceArtifacts)
+    into(rootDir.resolve("../../probe-evidence/upstream-sources"))
+}

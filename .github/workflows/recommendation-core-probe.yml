@@ -40,7 +40,10 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p probe-evidence
-          gradle --no-daemon --max-workers=2 -p experiments/ranksys-android :app:assembleDebug :app:assembleDebugAndroidTest :app:reportDependencies | tee probe-evidence/build-and-dependencies.txt
+          gradle --no-daemon --max-workers=2 -p experiments/ranksys-android :app:assembleDebug :app:assembleDebugAndroidTest :app:reportDependencies :app:archiveCoreSources | tee probe-evidence/build-and-dependencies.txt
+          sha256sum probe-evidence/upstream-sources/* > probe-evidence/upstream-source-sha256.txt
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump permissions experiments/ranksys-android/app/build/outputs/apk/debug/app-debug.apk | tee probe-evidence/permissions.txt
+          if grep -q 'android.permission.INTERNET' probe-evidence/permissions.txt; then exit 1; fi
           find experiments/ranksys-android/app/build/outputs/apk -name '*.apk' -printf '%p\t%s bytes\n' | tee probe-evidence/apk-sizes.txt
       - name: Enable KVM
         run: sudo chmod 666 /dev/kvm
@@ -53,9 +56,6 @@ jobs:
           disable-animations: true
           emulator-options: '-no-window -no-audio -no-snapshot -no-boot-anim -gpu swiftshader_indirect -memory 2048'
           script: bash experiments/ranksys-android/run-device-probe.sh
-      - name: Collect measured probe logs
-        if: always()
-        run: adb logcat -d -s RankSysProbe > probe-evidence/runtime.txt || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:

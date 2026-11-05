@@ -13,3 +13,5 @@ Source-review caveats:
 - RankSys's MMR uses average distance and per-step z-score normalization, not the max-similarity MMR formula in CinemaTV's Kotlin baseline. A production trace must reflect its actual selection process.
 - Cold start, missing features, zero-variance normalization, exclusions, identity, status feedback, provenance, reversible imports and privacy controls need application contracts.
 - Java8 code or a desktop JVM pass does not prove Android viability. This workflow obtains that evidence; it is not a claim of an existing pass.
+
+The semantic tests assert actual permutations for diversity weight 0.8 versus 0.2/0 and trace the published `value` calls without overriding them. The zero-variance characterization deliberately records the original library's NaN fallback, which remains an integration blocker. Finite output scores alone are insufficient because RankSys rewrites them to ordinal ranks. Published 0.4.3 source JARs and their SHA256 are archived to avoid assuming current master is the same artifact. The merged APK is checked for absence of INTERNET permission.
