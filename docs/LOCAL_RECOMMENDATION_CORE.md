@@ -1,3 +1,5 @@
+> This document records the Kotlin baseline and original research. The stacked RankSys integration uses a real published core with explicit numerical safeguards; see [RANKSYS_INTEGRATION.md](RANKSYS_INTEGRATION.md) for the current branch's engine and verification gates. Historical baseline claims below should not be read as the active engine on that branch.
+
 # Local recommendations: implementation, research and audit contract
 
 Status: development baseline, not a claim that a mature third-party Android recommender SDK or trained model has been integrated. Research checked 2026-11-04. Android build/device results must be attached to the PR before promotion.

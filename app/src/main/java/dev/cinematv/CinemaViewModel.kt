@@ -393,9 +393,9 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
             val now = System.currentTimeMillis()
             val snapshots = withContext(Dispatchers.Default) {
                 val checkCancelled: () -> Unit = { ensureActive() }
-                val movies = LocalRecommendationPipeline.rank(movieInput, signals, 50, now, checkCancelled = checkCancelled)
+                val movies = LocalRecommendationPipeline.rank(movieInput, signals, 50, now, checkCancelled = checkCancelled, backend = dev.cinematv.data.recommendation.ranksys.RankSysContentBackend)
                 ensureActive()
-                val series = LocalRecommendationPipeline.rank(seriesInput, signals, 50, now, checkCancelled = checkCancelled)
+                val series = LocalRecommendationPipeline.rank(seriesInput, signals, 50, now, checkCancelled = checkCancelled, backend = dev.cinematv.data.recommendation.ranksys.RankSysContentBackend)
                 listOf("电影" to movies, "剧集" to series)
             }
             ensureActive()

@@ -24,6 +24,18 @@ data class ContentEvidence(val key: String, val features: Map<String, Double>, v
 data class FeatureContribution(val tag: String, val profileWeight: Double, val candidateWeight: Double) {
     val contribution: Double get() = profileWeight * candidateWeight
 }
+data class CoreDecisionTrace(val relevanceZ: Double, val meanDistance: Double, val diversityZ: Double,
+    val diversityContribution: Double)
+data class CoreScoredCandidate(val key: String, val vector: Map<String, Double>, val similarity: Double)
+data class CoreDecision(val key: String, val relevanceContribution: Double, val selectionScore: Double,
+    val detail: CoreDecisionTrace)
+interface ContentRankingBackend {
+    val name: String
+    val version: String
+    val maxResults: Int
+    fun rank(profile: Map<String, Double>, candidates: List<CoreScoredCandidate>, diversityWeight: Double,
+        limit: Int, checkCancelled: () -> Unit): List<CoreDecision>
+}
 data class ContentTrace(
     val contributions: List<FeatureContribution>,
     val similarity: Double,
@@ -34,7 +46,8 @@ data class ContentTrace(
     val seenTier: Int,
     val rankBeforeDiversity: Int,
     val finalRank: Int,
-    val selectionPolicy: String
+    val selectionPolicy: String,
+    val coreDecision: CoreDecisionTrace? = null
 )
 data class ContentRankedItem(val key: String, val trace: ContentTrace)
 data class ContentRanking(
@@ -47,7 +60,10 @@ data class ContentRanking(
     val truncatedCandidateCount: Int,
     val truncatedPositiveWorkCount: Int,
     val coldStart: Boolean,
-    val items: List<ContentRankedItem>
+    val items: List<ContentRankedItem>,
+    val backendName: String = "Kotlin 基线实现",
+    val backendVersion: String = "rocchio-cosine-mmr-v1",
+    val backendFallbackReason: String? = null
 )
 
 /**
@@ -62,7 +78,8 @@ object ContentRecommendationCore {
         excludedKeys: Set<String> = emptySet(),
         limit: Int = 20,
         policy: RecommendationPolicy = RecommendationPolicy(),
-        checkCancelled: () -> Unit = {}
+        checkCancelled: () -> Unit = {},
+        backend: ContentRankingBackend? = null
     ): ContentRanking {
         checkCancelled()
         val unique = candidates.onEach { checkCancelled() }.distinctBy { it.key }
@@ -92,7 +109,50 @@ object ContentRecommendationCore {
         val remaining = bounded.toMutableList()
         val redundancy = bounded.associate { it.key to 0.0 }.toMutableMap()
         val output = mutableListOf<ContentRankedItem>()
-        while (output.size < limit.coerceIn(0, policy.maxResults) && remaining.isNotEmpty()) {
+        var usedBackend = false
+        var fallbackReason: String? = null
+        if (!cold && backend != null && policy.relevanceWeight < 1.0) {
+            try {
+                val result = mutableListOf<ContentRankedItem>()
+                val cap = limit.coerceIn(0, minOf(policy.maxResults, backend.maxResults))
+                for ((tier, group) in baseOrder.groupBy { it.seenTier }) {
+                    checkCancelled()
+                    if (result.size >= cap) break
+                    val known = group.filter { vectors.getValue(it.key).isNotEmpty() }
+                    val decisions = backend.rank(profile, known.map { CoreScoredCandidate(it.key,
+                        vectors.getValue(it.key), similarities.getValue(it.key)) }, 1 - policy.relevanceWeight,
+                        cap - result.size, checkCancelled)
+                    require(decisions.size == minOf(known.size, cap - result.size))
+                    require(decisions.map { it.key }.distinct().size == decisions.size)
+                    require(decisions.all { decision -> known.any { it.key == decision.key } })
+                    for (decision in decisions) {
+                        checkCancelled()
+                        require(listOf(decision.selectionScore, decision.relevanceContribution,
+                            decision.detail.relevanceZ, decision.detail.meanDistance, decision.detail.diversityZ,
+                            decision.detail.diversityContribution).all(Double::isFinite))
+                        result += ContentRankedItem(decision.key, ContentTrace(contributions.getValue(decision.key),
+                            similarities.getValue(decision.key), decision.relevanceContribution, 0.0,
+                            -decision.detail.diversityContribution, decision.selectionScore, tier,
+                            baseRanks.getValue(decision.key), result.size + 1, "seen-tier-then-ranksys-average-distance", decision.detail))
+                    }
+                    // Missing metadata is not maximum novelty. Keep such works as explicit fillers
+                    // within their viewing tier; they never enter a cosine/variance computation.
+                    for (candidate in group.filter { vectors.getValue(it.key).isEmpty() }) {
+                        if (result.size >= cap) break
+                        result += ContentRankedItem(candidate.key, ContentTrace(emptyList(), 0.0, 0.0, 0.0,
+                            0.0, 0.0, tier, baseRanks.getValue(candidate.key), result.size + 1, "missing-features-catalog-order"))
+                    }
+                }
+                output.addAll(result)
+                usedBackend = true
+            } catch (cancelled: java.util.concurrent.CancellationException) { throw cancelled }
+            catch (_: RuntimeException) {
+                // An unavailable/broken optional backend must not blank the catalog. No partial
+                // output is published; the dashboard explicitly identifies this baseline fallback.
+                fallbackReason = "推荐 core 计算失败，本次使用 Kotlin 基线；未发布部分结果。"
+            }
+        }
+        while (!usedBackend && output.size < limit.coerceIn(0, policy.maxResults) && remaining.isNotEmpty()) {
             checkCancelled()
             // Empty/sparse metadata is not evidence of dislike. Cold start preserves input order.
             val tier = remaining.minOf { it.seenTier }
@@ -118,7 +178,9 @@ object ContentRecommendationCore {
         }
         return ContentRanking(policy, profile.toMap(), usefulWorks, unique.size, bounded.size,
             unique.size - eligible.size, eligible.size - bounded.size,
-            validEvidence.size - positive.size, cold, output.toList())
+            validEvidence.size - positive.size, cold, output.toList(),
+            if (usedBackend) backend!!.name else if (cold) "目录冷启动" else "Kotlin 基线实现",
+            if (usedBackend) backend!!.version else policy.version, fallbackReason)
     }
 
     private fun normalize(input: Map<String, Double>, limit: Int): Map<String, Double> {

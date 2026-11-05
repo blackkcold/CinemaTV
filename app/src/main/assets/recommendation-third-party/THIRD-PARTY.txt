@@ -1,0 +1,44 @@
+CinemaTV local recommendations: third-party software
+
+This application contains original published RankSys core,
+novdiv and diversity 0.4.3 components, licensed under Mozilla Public License 2.0.
+Copyright (C) 2015 Information Retrieval Group at Universidad Autonoma de Madrid.
+https://github.com/RankSys/RankSys
+
+The complete matching RankSys source archives are included inside this APK:
+assets/recommendation-third-party/sources/RankSys-core-0.4.3-sources.jar
+assets/recommendation-third-party/sources/RankSys-novdiv-0.4.3-sources.jar
+assets/recommendation-third-party/sources/RankSys-diversity-0.4.3-sources.jar
+Use the recommendation dashboard license dialog to export the original source ZIP. An APK is also a ZIP archive; those entries can be extracted directly.
+MPL-2.0.txt contains the license. The original RankSys JARs and source files
+are unmodified. R8 may optimize their compiled form.
+
+CinemaTV's separate, original GuardedRankSys adapter is MIT-licensed and
+changes the numerical policy for zero/singleton variance. This application
+is not an unmodified RankSys implementation and is not endorsed by its authors.
+
+fastutil 7.0.6
+Copyright (C) 2002-2015 Sebastiano Vigna
+Portions copyright (C) 2003-2015 Paolo Boldi and Sebastiano Vigna
+Apache License, Version 2.0 (see Apache-2.0.txt).
+https://github.com/vigna/fastutil/tree/7.0.6
+
+Additional notice for the sorting and binary search code:
+
+Copyright (C) 1999 CERN - European Organization for Nuclear Research.
+
+Permission to use, copy, modify, distribute and sell this software and
+its documentation for any purpose is hereby granted without fee,
+provided that the above copyright notice appear in all copies and that
+both that copyright notice and this permission notice appear in
+supporting documentation. CERN makes no representations about the
+suitability of this software for any purpose. It is provided "as is"
+without expressed or implied warranty.
+
+jOOL 0.9.10
+Copyright (c) 2014-2016, Data Geekery GmbH, contact@datageekery.com
+Apache License, Version 2.0 (see Apache-2.0.txt).
+https://github.com/jOOQ/jOOL/tree/version-0.9.10
+
+Neither of the reviewed versioned fastutil/jOOL releases has a separate
+NOTICE file. Original library copyright and license conditions remain in force.

@@ -25,6 +25,7 @@ import dev.cinematv.ui.tv.components.CinemaGlassSurface
 import java.text.DateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.launch
 
 /** Reads the exact snapshot used to populate a shelf. Never runs a second, approximate scorer. */
 @Composable
@@ -35,8 +36,13 @@ fun RecommendationDashboardDialog(
     onOpenItem: (MediaItem) -> Unit
 ) {
     var tab by remember { mutableIntStateOf(0) }
+    var showLicenses by remember { mutableStateOf(false) }
+    val licensesOpener = remember { FocusRequester() }
+    val scope = rememberCoroutineScope()
     val current = snapshots.getOrNull(tab) ?: snapshots.firstOrNull()
     val close = remember { FocusRequester() }
+    val bodySize = if (tv) 16.sp else 13.sp
+    val detailSize = if (tv) 15.sp else 12.sp
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         CinemaGlassSurface(Modifier.fillMaxWidth(if (tv) .82f else .96f).fillMaxHeight(.9f), radius = 24.dp) {
             LazyColumn(Modifier.testTag("recommendation-dashboard").fillMaxSize().padding(if (tv) 24.dp else 16.dp),
@@ -47,7 +53,9 @@ fun RecommendationDashboardDialog(
                         DashboardAction("关闭", tv, Modifier.testTag("recommendation-dashboard-close").focusRequester(close), onDismiss)
                     }
                 }
-                item { Text("偏好与排序只在本机计算。分数不是喜欢概率，也不是作品质量评分。", color = Color.LightGray, fontSize = 13.sp) }
+                item { DashboardAction("开源 core 许可与源码", tv,
+                    Modifier.testTag("recommendation-licenses-open").focusRequester(licensesOpener)) { showLicenses = true } }
+                item { Text("偏好与排序只在本机计算。分数不是喜欢概率，也不是作品质量评分。", color = Color.LightGray, fontSize = bodySize) }
                 if (snapshots.size > 1) item {
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         snapshots.forEachIndexed { index, pair ->
@@ -60,31 +68,38 @@ fun RecommendationDashboardDialog(
                 } else {
                     val snapshot = current.second
                     val ranking = snapshot.ranking
+                    val rankSys = ranking.backendVersion.startsWith("RankSys-")
                     item {
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text("${current.first} · ${if (ranking.coldStart) "冷启动 / 目录原顺序" else "本地内容推荐"}", color = Color.White, fontSize = 19.sp)
-                            Text("${ranking.policy.version}\nKotlin 基线实现 · Rocchio 加权标签向量 + 余弦 + MMR\n未使用语义嵌入或预训练推荐模型。", color = Color.LightGray, fontSize = 13.sp)
-                            Text("快照：${DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.MEDIUM).format(Date(snapshot.asOfMs))}\n有效偏好作品 ${ranking.positiveWorkCount} · 候选 ${ranking.eligibleCandidateCount} · 输出 ${snapshot.rows.size}\n排除负反馈 ${ranking.excludedCandidateCount} · 过期元数据 ${snapshot.expiredCandidateCount}", color = Color.LightGray, fontSize = 13.sp)
+                            Text("${ranking.backendName}\n${ranking.backendVersion}\n" +
+                                (if (ranking.coldStart) "无有效类型/演员偏好，本次保留目录原顺序。" else if (rankSys) "本地加权标签画像；真实 RankSys 余弦与平均距离 MMR。" else "Kotlin 内容基线；余弦与全局最大冗余 MMR。") +
+                                "\n未使用语义嵌入或预训练推荐模型。", color = Color.LightGray, fontSize = bodySize)
+                            ranking.backendFallbackReason?.let { Text(it, color = Color(0xFFFFC678), fontSize = bodySize) }
+                            Text("快照：${DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.MEDIUM).format(Date(snapshot.asOfMs))}\n有效偏好作品 ${ranking.positiveWorkCount} · 候选 ${ranking.eligibleCandidateCount} · 输出 ${snapshot.rows.size}\n排除负反馈 ${ranking.excludedCandidateCount} · 过期元数据 ${snapshot.expiredCandidateCount}", color = Color.LightGray, fontSize = bodySize)
                             if (ranking.truncatedCandidateCount > 0 || ranking.truncatedPositiveWorkCount > 0)
-                                Text("本次容量限制：省略候选 ${ranking.truncatedCandidateCount}，偏好作品 ${ranking.truncatedPositiveWorkCount}。", color = Color(0xFFFFC678), fontSize = 13.sp)
+                                Text("本次容量限制：省略候选 ${ranking.truncatedCandidateCount}，偏好作品 ${ranking.truncatedPositiveWorkCount}。", color = Color(0xFFFFC678), fontSize = bodySize)
                         }
                     }
                     item {
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text("真实权重与规则", color = Color.White, fontSize = 18.sp)
-                            Text("收藏 ${LocalRecommendationWeights.FAVORITE} · 在看 ${LocalRecommendationWeights.WATCHING} · 想看 ${LocalRecommendationWeights.WANT_TO_WATCH}\n看过 ${LocalRecommendationWeights.WATCHED} · 播放进度 ${LocalRecommendationWeights.MEASURED_PROGRESS}\n类型 ${LocalRecommendationWeights.GENRE} · 演员 ${LocalRecommendationWeights.ACTOR}\n相关性 ${number(ranking.policy.relevanceWeight)} · 多样性 ${number(1 - ranking.policy.relevanceWeight)}", color = Color.LightGray, fontSize = 13.sp)
-                            Text("同一作品取最强证据，不因重复点击累加。先未看、再在看、最后看过；层级之间不直接比较分数。不感兴趣/弃剧始终排除。无有效类型/演员偏好时保留目录顺序。", color = Color.LightGray, fontSize = 13.sp)
+                            Text("收藏 ${LocalRecommendationWeights.FAVORITE} · 在看 ${LocalRecommendationWeights.WATCHING} · 想看 ${LocalRecommendationWeights.WANT_TO_WATCH}\n看过 ${LocalRecommendationWeights.WATCHED} · 播放进度 ${LocalRecommendationWeights.MEASURED_PROGRESS}\n类型 ${LocalRecommendationWeights.GENRE} · 演员 ${LocalRecommendationWeights.ACTOR}\n相关性 ${number(ranking.policy.relevanceWeight)} · 多样性 ${number(1 - ranking.policy.relevanceWeight)}", color = Color.LightGray, fontSize = bodySize)
+                            Text("同一作品取最强证据，不因重复点击累加。不感兴趣/弃剧始终排除。" +
+                                (if (ranking.coldStart) "无有效偏好时保留目录原顺序。" else if (rankSys)
+                                    "先未看、再在看、最后看过；层级分别重排，层级间不比较分数。缺特征作品在同层级末尾补充。" else
+                                    "先未看、再在看、最后看过；最大冗余由全部已选作品计算。缺特征作品仍按本轮选择分排序，不保证位于同层级末尾。"), color = Color.LightGray, fontSize = bodySize)
                         }
                     }
                     item {
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text("偏好向量 / 优先标签", color = Color.White, fontSize = 18.sp)
-                            Text("这是归一化后的稀疏标签向量，不是语义空间或因果图。", color = Color.LightGray, fontSize = 13.sp)
+                            Text("这是归一化后的稀疏标签向量，不是语义空间或因果图。", color = Color.LightGray, fontSize = bodySize)
                             val features = ranking.profile.entries.sortedWith(compareByDescending<Map.Entry<String, Double>> { it.value }.thenBy { it.key })
-                            if (features.isEmpty()) Text("还没有足够的类型/演员证据。收藏或标记有元数据的作品后自动更新。", color = Color.LightGray, fontSize = 13.sp)
+                            if (features.isEmpty()) Text("还没有足够的类型/演员证据。收藏或标记有元数据的作品后自动更新。", color = Color.LightGray, fontSize = bodySize)
                             else {
                                 features.take(16).forEach { (tag, weight) -> Text("${tagLabel(tag)}  ${number(weight)}", color = Color.White, fontSize = 14.sp) }
-                                if (features.size > 16) Text("显示前 16 / ${features.size} 个标签，其余仍参与计算。", color = Color.LightGray, fontSize = 12.sp)
+                                if (features.size > 16) Text("显示前 16 / ${features.size} 个标签，其余仍参与计算。", color = Color.LightGray, fontSize = detailSize)
                             }
                         }
                     }
@@ -94,18 +109,26 @@ fun RecommendationDashboardDialog(
                         Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                             DashboardAction("${trace.finalRank}. ${row.item.title}", tv,
                                 Modifier.testTag("recommendation-row-${trace.finalRank}")) { onOpenItem(row.item) }
-                            Text(row.reason, color = Color.LightGray, fontSize = 13.sp)
-                            Text("余弦 ${number(trace.similarity)} · 相关性贡献 ${number(trace.relevanceContribution)} − 多样性 ${number(trace.diversityPenalty)} = 本轮选择分 ${number(trace.selectionScore)}\n重排前 ${trace.rankBeforeDiversity} → 最终 ${trace.finalRank} · 观看层级 ${trace.seenTier}", color = Color.LightGray, fontSize = 12.sp)
+                            Text(row.reason, color = Color.LightGray, fontSize = bodySize)
+                            val core = trace.coreDecision
+                            if (core != null) Text("真实 core 余弦 ${number(trace.similarity)} · 相关性 z ${number(core.relevanceZ)}\n已选作品平均距离 ${number(core.meanDistance)} · 多样性 z ${number(core.diversityZ)}\n相关性贡献 ${number(trace.relevanceContribution)} + 多样性贡献 ${number(core.diversityContribution)} = 本轮选择分 ${number(trace.selectionScore)}\n重排前 ${trace.rankBeforeDiversity} → 最终 ${trace.finalRank} · 观看层级 ${trace.seenTier}", color = Color.LightGray, fontSize = detailSize)
+                            else Text("${trace.selectionPolicy}\n余弦 ${number(trace.similarity)} · 相关性贡献 ${number(trace.relevanceContribution)} − 多样性 ${number(trace.diversityPenalty)} = 本轮选择分 ${number(trace.selectionScore)}\n重排前 ${trace.rankBeforeDiversity} → 最终 ${trace.finalRank} · 观看层级 ${trace.seenTier}", color = Color.LightGray, fontSize = detailSize)
                             if (trace.contributions.isNotEmpty()) Text(trace.contributions.take(6).joinToString("\n") {
                                 "${tagLabel(it.tag)}：${number(it.profileWeight)} × ${number(it.candidateWeight)} = ${number(it.contribution)}"
-                            } + if (trace.contributions.size > 6) "\n仅展示贡献最高的 6 项，全部项均计入余弦。" else "", color = Color.LightGray, fontSize = 12.sp)
+                            } + if (trace.contributions.size > 6) "\n仅展示贡献最高的 6 项，全部项均计入余弦。" else "", color = Color.LightGray, fontSize = detailSize)
                         }
                     }
-                    item { Text("本页只读，不上传画像或导出播放地址。标记与观看记录继续使用原有本机片库；清除观看历史不会删除收藏与片库状态。", color = Color.LightGray, fontSize = 12.sp) }
+                    if (rankSys) item { Text("RankSys 使用每轮剩余候选的 z 标准化；单候选或零方差维度记 0。多样性使用与同层级已选作品的平均距离。分数不是概率，也不能跨轮比较。", color = Color.LightGray, fontSize = detailSize) }
+                    else if (!ranking.coldStart) item { Text("Kotlin 基线直接加权余弦，减去与全部已选作品的最大相似度惩罚；没有 z 标准化。", color = Color.LightGray, fontSize = detailSize) }
+                    item { Text("本页只读，不上传画像或导出播放地址。标记与观看记录继续使用原有本机片库；清除观看历史不会删除收藏与片库状态。", color = Color.LightGray, fontSize = detailSize) }
                 }
             }
         }
         if (tv) LaunchedEffect(Unit) { withFrameNanos { }; close.requestFocus() }
+    }
+    if (showLicenses) RecommendationLicensesDialog(tv) {
+        showLicenses = false
+        if (tv) scope.launch { withFrameNanos { }; licensesOpener.requestFocus() }
     }
 }
 

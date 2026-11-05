@@ -104,7 +104,8 @@ object LocalRecommendationPipeline {
         limit: Int = 50,
         nowMs: Long = System.currentTimeMillis(),
         policy: RecommendationPolicy = RecommendationPolicy(),
-        checkCancelled: () -> Unit = {}
+        checkCancelled: () -> Unit = {},
+        backend: ContentRankingBackend? = null
     ): LocalRecommendationSnapshot {
         checkCancelled()
         val available = catalog.filter { checkCancelled(); CatalogLicensePolicy.isAvailable(it, nowMs) }
@@ -135,7 +136,7 @@ object LocalRecommendationPipeline {
                 own[index].any { it.status == LibraryStatus.WATCHING || it.item.positionMs > 0 } -> 1
                 else -> 0
             }) }
-        val ranking = ContentRecommendationCore.rank(candidates, seeds, rejected, limit, policy, checkCancelled)
+        val ranking = ContentRecommendationCore.rank(candidates, seeds, rejected, limit, policy, checkCancelled, backend)
         val rows = ranking.items.map { row ->
             val index = row.key.substringAfter(':').toInt()
             val item = groups[index].item
