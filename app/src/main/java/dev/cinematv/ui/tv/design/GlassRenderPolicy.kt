@@ -1,6 +1,7 @@
 package dev.cinematv.ui.tv.design
 
-/** No device is presumed fast from its Android version alone: ENHANCED stays opt-in. */
+/** Historical bitmap V4 policy retained only for regression/migration reference.
+ * Production live rendering uses ProductionGlassPolicy, never this still-only gate. */
 object GlassRenderPolicy {
     const val MAX_WIDTH_DP = 600f
     const val MAX_HEIGHT_DP = 80f

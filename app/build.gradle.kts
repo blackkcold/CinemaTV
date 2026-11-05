@@ -57,6 +57,7 @@ kapt {
 }
 
 dependencies {
+    implementation(project(":backdrop"))
     // Published, unmodified RankSys core. Explicit closure avoids unrelated algorithms.
     listOf("org.ranksys:RankSys-diversity:0.4.3", "org.ranksys:RankSys-novdiv:0.4.3",
         "org.ranksys:RankSys-core:0.4.3", "it.unimi.dsi:fastutil:7.0.6", "org.jooq:jool:0.9.10")

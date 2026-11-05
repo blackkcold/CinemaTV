@@ -5,5 +5,7 @@
     <activity android:name=".TvTestActivity" android:exported="false"
       android:screenOrientation="landscape"
       android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|uiMode" />
+    <activity android:name=".ProductionGlassTestActivity" android:exported="false"
+      android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|uiMode" />
   </application>
 </manifest>

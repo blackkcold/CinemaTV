@@ -1,0 +1,122 @@
+name: Production glass native QA
+on:
+  push:
+    branches: [feature/production-glass-v2]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: production-glass-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+      - uses: actions/cache@v4
+        with:
+          path: .cache/cinematv-noto-fonts
+          key: noto-fonts-v2-${{ hashFiles('scripts/fonts/noto-fonts.lock.json') }}
+      - name: Validate source and focused harness contracts
+        run: |
+          python3 -m pip install --disable-pip-version-check 'Pillow==11.3.0'
+          python3 backdrop/scripts/verify-production-source.py
+          python3 -m unittest discover -s scripts/tests -v
+          python3 -m unittest discover -s scripts/glass-production -p 'test_*.py' -v
+      - name: Install compile SDK
+        run: |
+          SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -1)
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" 'platforms;android-36' 'build-tools;36.0.0'
+      - name: Build both APKs once, unit test and lint
+        run: |
+          bash scripts/generate-test-media.sh
+          gradle --no-daemon --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process :backdrop:testDebugUnitTest :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest :backdrop:lintDebug :app:lintDebug
+          python3 scripts/fonts/verify-noto-fonts.py
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          for module in ('backdrop', 'app'):
+              files = list(Path(module, 'build/test-results/testDebugUnitTest').glob('TEST-*.xml'))
+              assert files, f'{module}: absent unit results (NO-SOURCE)'
+              cases = [case for path in files for case in ET.parse(path).getroot().iter('testcase')]
+              assert cases and all(case.find('failure') is None and case.find('error') is None and case.find('skipped') is None for case in cases)
+          PY
+      - name: Validate and pin APK bytes to this commit
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/debug/app-debug.apk dist/
+          cp app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk dist/
+          for APK in dist/*.apk; do
+            unzip -t "$APK" | tail -n 2
+            "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$APK"
+          done
+          python3 scripts/glass-production/evidence.py build --directory dist --sha "$GITHUB_SHA"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: production-glass-apks
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: production-glass-build-reports
+          path: |
+            app/build/test-results/
+            backdrop/build/test-results/
+            app/build/reports/lint-results-debug.*
+            backdrop/build/reports/lint-results-debug.*
+          if-no-files-found: warn
+          retention-days: 14
+  native-ui:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - api: 35
+            target: default
+          - api: 31
+            target: default
+          - api: 26
+            target: google_apis
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: production-glass-apks
+          path: dist
+      - name: Prepare native evidence validator
+        run: |
+          python3 -m pip install --disable-pip-version-check 'Pillow==11.3.0'
+          python3 scripts/glass-production/evidence.py verify-build --directory dist --sha "$GITHUB_SHA"
+          sudo chmod 666 /dev/kvm
+      - name: Native UI, one emulator per SDK, API35 TV then phone
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          target: ${{ matrix.target }}
+          arch: x86_64
+          profile: pixel_2
+          emulator-build: '15004761'
+          disable-animations: false
+          emulator-options: '-no-window -no-audio -gpu lavapipe -feature -Vulkan -no-snapshot -no-boot-anim -memory 3072'
+          script: bash scripts/glass-production/run-matrix.sh '${{ matrix.api }}' "$GITHUB_SHA"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: production-glass-native-api${{ matrix.api }}
+          path: qa/production-glass/
+          if-no-files-found: error
+          retention-days: 14

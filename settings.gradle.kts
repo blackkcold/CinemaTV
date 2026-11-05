@@ -4,4 +4,4 @@ dependencyResolutionManagement {
     repositories { google(); mavenCentral() }
 }
 rootProject.name = "CinemaTV"
-include(":app")
+include(":app", ":backdrop")

@@ -9,7 +9,7 @@ share the ViewModel, domain identity, repository and playback factory.
 | Layer | Responsibility |
 |---|---|
 | `ui/tv/design` | TV theme, constraint-based dp dimensions, motion and conservative effects policy |
-| `ui/tv/components` | Validated scene, bounded still-image glass, focusable cards, rails and floating navigation |
+| `ui/tv/components` | Validated scene, source-owned live glass, focusable cards, rails and floating navigation |
 | `ui/tv/focus` | Live requester registry; no View references escape composition |
 | `ui/tv/pages` | Independent home, discovery, catalogs, search, details, live, library and settings |
 | `ui/mobile` | Touch Material 3 screens and portrait/landscape video presentation |
@@ -25,9 +25,15 @@ share the ViewModel, domain identity, repository and playback factory.
 A scene validates landscape aspect and decoded size before swapping; it keeps the
 previous decoded still during loading. Posters remain posters. Missing art uses
 original atmospheric Canvas art. Adjacent still prefetch is bounded and disabled
-in basic mode. Glass samples only the same still, clipped to a small surface;
-video Surfaces are never blurred or sampled. AGSL highlights are explicit opt-in,
-with API/memory/reduced-motion fallback.
+in basic mode. A scene-only Compose recording feeds independent glass material
+boxes; text/icons are later siblings. TV owns one non-player background, while
+mobile Home owns a local hero recording. The moving navigation lens samples only
+scene and glass container, never labels. Video Surfaces and separate windows are
+not recorded. Basic is constant-cost opaque depth, Blur uses API31 RenderEffect,
+and explicit Full retains the approved API33 optical shader. Lifecycle, hardware,
+memory, power, thermal and renderer-failure guards choose temporary fallback without
+rewriting preferences. Reduced Motion stops animation without changing static
+material. See [production glass](GLASS_PRODUCTION.md) for exact boundaries.
 
 TV dimensions derive from dp constraints rather than hard-coded 1920px. Five main
 navigation entries and separate tools retain safe screen gutters. Movies and series

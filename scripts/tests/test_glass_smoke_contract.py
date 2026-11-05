@@ -11,10 +11,14 @@ class GlassSmokeContractTest(unittest.TestCase):
         source = (ROOT / 'app/src/androidTest/java/dev/cinematv/GlassMaterialSmokeTest.kt').read_text()
         for forbidden in ('captureToImage(', 'PixelCopy.request(', 'takeScreenshot(', 'forceRedraw('):
             self.assertNotIn(forbidden, source)
-        self.assertIn('RuntimeShader(STILL_LENS_AGSL)', source)
+        self.assertIn('rememberProductionGlassScene(hasScene.value)', source)
+        self.assertIn('recordProductionGlass(scene)', source)
+        self.assertIn('failure.fail("test"', source)
         self.assertIn('diagnostics.successfulLensDraws > 0', source)
-        self.assertIn('diagnostics.successfulLensDraws > focusedDraws', source)
-        self.assertIn('assertEquals(pressedDraws, diagnostics.successfulLensDraws)', source)
+        self.assertIn('diagnostics.successfulLensDraws > beforePress', source)
+        self.assertIn('diagnostics.successfulLensDraws > beforeReduced', source)
+        self.assertIn('diagnostics.blurDraws > 0', source)
+        self.assertIn('assertEquals(beforeMissing, diagnostics.successfulLensDraws)', source)
 
     def test_hardware_frame_barrier_is_bounded_and_cleaned_up(self):
         source = (ROOT / 'app/src/androidTest/java/dev/cinematv/GlassMaterialSmokeTest.kt').read_text()
@@ -29,7 +33,7 @@ class GlassSmokeContractTest(unittest.TestCase):
 
     def test_listener_is_armed_before_mount_and_every_measured_mutation(self):
         source = (ROOT / 'app/src/androidTest/java/dev/cinematv/GlassMaterialSmokeTest.kt').read_text()
-        helper = source.split('private fun renderStage', 1)[1].split('@Test fun agslCompiles', 1)[0]
+        helper = source.split('private fun renderStage', 1)[1].split('@Test fun materialSurvives', 1)[0]
         self.assertLess(helper.index('addOnFrameMetricsAvailableListener'), helper.index('mutation()'))
         self.assertLess(helper.index('mutation()'), helper.index('compose.waitForIdle()'))
         self.assertNotIn('postInvalidateOnAnimation()', helper)

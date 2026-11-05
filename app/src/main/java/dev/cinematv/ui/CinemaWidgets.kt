@@ -2,13 +2,15 @@ package dev.cinematv.ui
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.snap
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
-import dev.cinematv.ui.tv.components.GlassControlMaterial
+import dev.cinematv.ui.tv.components.cinemaGlassMaterial
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -42,6 +44,7 @@ import coil3.compose.AsyncImage
 import dev.cinematv.data.MediaItem
 import dev.cinematv.ui.icons.CinemaIcon
 import dev.cinematv.ui.icons.CinemaSymbol
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.text
 import androidx.compose.ui.text.AnnotatedString
@@ -68,20 +71,24 @@ fun GlassAction(
     val effects = LocalTvEffects.current
     val interactions = remember { MutableInteractionSource() }
     val pressed by interactions.collectIsPressedAsState()
-    val scale by animateFloatAsState(
-        if (effects.reducedMotion) 1f else if (pressed) .985f else if (focused) effects.focusScale else 1f,
-        tween(effects.focusMillis), label = "action-scale")
+    val focus by animateFloatAsState(if (focused) 1f else 0f,
+        if (effects.reducedMotion) snap() else spring(.65f, 320f), label = "action-focus")
+    val press by animateFloatAsState(if (pressed) 1f else 0f,
+        if (effects.reducedMotion) snap() else spring(.55f, 380f), label = "action-press")
+    val scale = if (effects.reducedMotion) 1f else 1f + .045f * focus - .035f * press
     Box(
         modifier = modifier
-            .graphicsLayer { scaleX = scale; scaleY = scale }
-            .clip(RoundedCornerShape(26.dp))
             .onFocusChanged { focused = it.isFocused; if (it.isFocused) onFocus() }
             .focusProperties { canFocus = true }
-            .clickable(interactionSource = interactions, indication = null, onClick = onClick),
+            .clickable(interactionSource = interactions, indication = null, role = Role.Button, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        GlassControlMaterial(focused, pressed, selected, prominent, Modifier.matchParentSize())
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        // Transform the background through the engine's inverse-layer support;
+        // never scale a shared ancestor whose coordinates the source cannot invert.
+        Box(Modifier.matchParentSize().cinemaGlassMaterial(focus = focus, press = press,
+            selected = selected, prominent = prominent, layerBlock = { scaleX = scale; scaleY = scale }))
+        Row(Modifier.graphicsLayer { scaleX = scale; scaleY = scale },
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             if (icon != null) CinemaIcon(icon, Modifier.size(20.dp), selected = iconSelected,
                 onLightSurface = false)
             if (label.isNotEmpty()) Text(
