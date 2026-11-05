@@ -42,6 +42,8 @@ fun UpdateSettings(tv: Boolean, model: UpdateViewModel = viewModel()) {
         }
         CinemaText("测试版使用紫色图标。同包名切换保留数据，但只安装版本号更高且签名相同的包。",
             color = TvColors.Secondary, fontSize = 13.sp)
+        if (!model.enabled) CinemaText("当前构建暂未启用联网更新，需要完成固定签名与发布验证。",
+            color = TvColors.Secondary, fontSize = 13.sp, modifier = Modifier.testTag("update-unavailable"))
         CinemaText(model.message, color = TvColors.Text, fontSize = 14.sp, modifier = Modifier.testTag("update-status"))
         if (model.enabled && !model.busy) UpdateButton("检查更新", tv, "update-check", model::check)
         if (model.busy) UpdateButton("取消", tv, "update-cancel", model::cancel)

@@ -25,6 +25,7 @@ class MobileUpdateSettingsTest {
         rule.onNodeWithTag("update-status").assertTextContains("不会降级", substring = true)
         rule.onNodeWithTag("update-check").assertDoesNotExist()
         rule.onNodeWithTag("update-install").assertDoesNotExist()
+        rule.onNodeWithTag("update-unavailable").assertIsDisplayed()
         rule.runOnIdle { navigation.navigate(Page.HOME) }
         rule.onNodeWithTag("update-settings").assertDoesNotExist()
         rule.runOnIdle { navigation.navigate(Page.SETTINGS) }

@@ -27,7 +27,7 @@ class UpdateViewModel(application: Application) : AndroidViewModel(application) 
     var channel by mutableStateOf(repository.selectedChannel)
         private set
     var message by mutableStateOf(if (repository.updatesEnabled) "点击检查更新，仅访问 CinemaTV 官方发布。" else
-        "联网更新尚未启用。需完成固定签名、签名更新清单和安装验证后才能开启。")
+        "选择渠道不会更改当前已安装的版本。")
         private set
     var release by mutableStateOf<UpdateRelease?>(null)
         private set
