@@ -8,6 +8,12 @@ captures/
 *.aab
 *.keystore
 *.jks
+*.p12
+*.pfx
+*.key
+*.pem
+*.mobileprovision
+signing.properties
 .env
 node_modules/
 .DS_Store

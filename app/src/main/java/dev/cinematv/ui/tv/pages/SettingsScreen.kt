@@ -119,6 +119,7 @@ fun SettingsScreen(model: CinemaViewModel) {
                             }
                             else -> {
                                 item { SettingTitle("CinemaTV", "版本 ${BuildConfig.VERSION_NAME}") }
+                                item { dev.cinematv.ui.update.UpdateSettings(tv = true) }
                                 item { GlassAction("本地推荐看板", Modifier.testTag("recommendation-dashboard-open").focusRequester(recommendationEntry).width(180.dp).height(42.dp)) {
                                     recommendationWasOpened = true; recommendationOpen = true
                                 } }

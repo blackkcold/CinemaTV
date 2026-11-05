@@ -12,6 +12,19 @@ apply(from = "noto-fonts.gradle")
 // Keep AGP wiring in the plugin-owning script; the downloader stays plugin-independent.
 tasks.named("preBuild") { dependsOn("prepareNotoFonts") }
 
+// Channels share package/signing identity so switching is an ordinary forward upgrade.
+// Properties avoid renaming existing Debug/Release tasks or preview artifact paths.
+val updateChannel = providers.gradleProperty("cinematvChannel").getOrElse("dev")
+require(updateChannel in setOf("stable", "dev")) { "cinematvChannel must be stable or dev" }
+val updatesEnabled = providers.gradleProperty("cinematvUpdatesEnabled").getOrElse("false").toBooleanStrict()
+if (updatesEnabled) {
+    require(listOf("CINEMATV_KEYSTORE_PATH", "CINEMATV_KEYSTORE_PASSWORD", "CINEMATV_KEY_ALIAS", "CINEMATV_KEY_PASSWORD")
+        .all { !System.getenv(it).isNullOrBlank() }) { "Updates require external private release signing" }
+    require(providers.gradleProperty("cinematvVersionCode").isPresent && providers.gradleProperty("cinematvVersionName").isPresent) {
+        "Update-enabled builds require explicit globally increasing version information"
+    }
+}
+
 android {
     namespace = "dev.cinematv"
     compileSdk = 36
@@ -19,8 +32,15 @@ android {
         applicationId = "dev.cinematv"
         minSdk = 26
         targetSdk = 35
-        versionCode = 7
-        versionName = "0.6.0-preview"
+        versionCode = providers.gradleProperty("cinematvVersionCode").orNull?.toInt() ?: 7
+        versionName = providers.gradleProperty("cinematvVersionName").getOrElse("0.6.0-preview")
+        require(versionCode!! in 1..2_100_000_000)
+        buildConfigField("String", "UPDATE_CHANNEL", "\"$updateChannel\"")
+        buildConfigField("boolean", "UPDATES_ENABLED", updatesEnabled.toString())
+        manifestPlaceholders["updateChannel"] = updateChannel
+        manifestPlaceholders["channelIcon"] = if (updateChannel == "dev") "@mipmap/ic_launcher_dev" else "@mipmap/ic_launcher"
+        manifestPlaceholders["channelRoundIcon"] = if (updateChannel == "dev") "@mipmap/ic_launcher_dev" else "@mipmap/ic_launcher_round"
+        manifestPlaceholders["channelLabel"] = if (updateChannel == "dev") "CinemaTV Dev" else "CinemaTV"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     signingConfigs {
@@ -65,6 +85,7 @@ dependencies {
     implementation(composeBom)
     androidTestImplementation(composeBom)
     implementation("androidx.activity:activity-compose:1.11.0")
+    implementation("androidx.core:core-ktx:1.17.0")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.animation:animation")
@@ -89,6 +110,7 @@ dependencies {
     kapt("androidx.room:room-compiler:$room")
     androidTestImplementation("androidx.room:room-testing:$room")
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
