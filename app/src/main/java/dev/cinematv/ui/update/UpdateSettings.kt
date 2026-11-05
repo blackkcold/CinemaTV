@@ -62,7 +62,8 @@ fun UpdateSettings(tv: Boolean, model: UpdateViewModel = viewModel()) {
 @Composable
 private fun UpdateButton(label: String, tv: Boolean, tag: String, modifier: Modifier = Modifier, action: () -> Unit) {
     if (tv) GlassAction(label, modifier.testTag(tag).widthIn(min = 140.dp).height(44.dp), onClick = action)
-    else MobileGlassOutlinedButton(onClick = action, modifier = modifier.testTag(tag)) {
+    else MobileGlassOutlinedButton(onClick = action, modifier = modifier.testTag(tag),
+        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp)) {
         CinemaText(label, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
