@@ -158,12 +158,10 @@ private fun captureDialogWindow(rule: ComposeContentTestRule, tag: String): andr
         val target = checkNotNull(window) { "No dialog window for API26 evidence" }
         check(target.attributes.flags and android.view.WindowManager.LayoutParams.FLAG_SECURE == 0)
         check(target.decorView.hasWindowFocus() && host.isShown && host.isAttachedToWindow)
-        val origin = IntArray(2)
-        host.getLocationInWindow(origin)
-        val rect = node.boundsInRoot
-        bounds = android.graphics.Rect(kotlin.math.ceil(rect.left).toInt() + origin[0],
-            kotlin.math.ceil(rect.top).toInt() + origin[1], kotlin.math.floor(rect.right).toInt() + origin[0],
-            kotlin.math.floor(rect.bottom).toInt() + origin[1])
+        // Capture the complete decor, not a semantics-node crop. API26's window
+        // surface insets differ from Compose root coordinates; a root crop cut off
+        // the right edge despite the functional focus assertions passing.
+        bounds = android.graphics.Rect(0, 0, target.decorView.width, target.decorView.height)
         check(bounds.width() > 0 && bounds.height() > 0 && bounds.width().toLong() * bounds.height() <= 3_000_000L)
     }
     val executor = java.util.concurrent.Executors.newSingleThreadExecutor { work ->
@@ -181,7 +179,7 @@ private fun captureDialogWindow(rule: ComposeContentTestRule, tag: String): andr
             val done = java.util.concurrent.CountDownLatch(1)
             val result = java.util.concurrent.atomic.AtomicInteger(android.view.PixelCopy.ERROR_UNKNOWN)
             // Android8 may perform its native copy synchronously, so request and wait are off-main.
-            android.view.PixelCopy.request(checkNotNull(window), bounds, bitmap, { status ->
+            android.view.PixelCopy.request(checkNotNull(window), bitmap, { status ->
                 result.set(status); done.countDown()
             }, android.os.Handler(callback.looper))
             check(done.await(10, java.util.concurrent.TimeUnit.SECONDS)) { "Dialog PixelCopy callback timed out" }
