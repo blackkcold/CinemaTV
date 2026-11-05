@@ -23,7 +23,9 @@ supplies immersive window chrome and passive observers. It is not in release.
 - `MobileGlassButtonTest` preserves native target/role/disabled behavior.
   The TV pass on each SDK additionally runs the small `GlassMaterialSmokeTest`,
   nine `FocusMediaCardMotionTest` cases, and eight `InterruptedFocusRestorationTest`
-  cases. Exact execution is required: 21 tests per TV SDK and three on phone.
+  cases, plus three `GlassActionLayoutTest` cases for intrinsic/fixed sizing,
+  complete accessibility labels and stable native focus/press/click geometry.
+  Exact execution is required: 24 tests per TV SDK and three on phone.
   Interrupted restoration tests pause entry/lazy frame work and inject native
   D-pad events; newer navigation/content wins, cancellation never falls back,
   and ordinary saved-target/fallback behavior remains covered.
@@ -64,11 +66,16 @@ bash scripts/glass-production/run-matrix.sh 35 "$(git rev-parse HEAD)"
 
 Log checking does not require `logcat -c`, which failed before test startup on
 API26. It continuously reads the explicit main/system/crash buffers from a device
-clock timestamp, then requires unique START and END messages to appear under the
-expected log tag. Only that verified span is checked for crashes/ANRs. Initial
+clock timestamp. Before the test span, up to three independent READY probes
+verify the reader/write path, with a two-second command-and-observation budget
+each. A successful shell log command alone is not a delivery receipt. Formal
+START and END markers are still emitted only once and must each be observed
+under the exact threadtime log tag within the original ten-second deadline. Only that verified span is checked for crashes/ANRs. Initial
 replay remains in `live-test.log` for diagnosis but cannot fail this test span.
-Missing/duplicate markers, a reader exit, or an unsupported start timestamp fail
-closed. `log-boundary.json` records the strategy, marker verification state and
+Missing/duplicate/reversed markers, a reader exit, or an unsupported start
+timestamp fail closed. Old or late READY probes cannot satisfy a newer probe;
+no probe is retried after the instrumented test span begins. The stopped stream
+is checked again, so a late duplicate cannot leave a successful receipt. `log-boundary.json` records the strategy, marker verification state and
 command output on failure. Incomplete logs are clearly named `device-partial.log`
 and cannot pass the crash gate. No failed clear is simply ignored and no full
 boot log is substituted for test evidence.

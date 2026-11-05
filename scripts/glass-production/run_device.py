@@ -39,9 +39,15 @@ FOCUS_RESTORE = [("dev.cinematv.InterruptedFocusRestorationTest", method) for me
     "missingBookmarkStillUsesNormalEntryFallback",
 )]
 
+ACTION_LAYOUT = [("dev.cinematv.GlassActionLayoutTest", method) for method in (
+    "unconstrainedLabelsKeepDefaultPaddingAndFullSemantics",
+    "fixedSizesPreserveIconsAndEllipsizeOnlyTheVisibleLabel",
+    "nativeFocusAndPressKeepHitTargetAndTextLayoutStable",
+)]
+
 
 def expected_for(layout):
-    return [PRODUCTION, BUTTON, BUTTON_EDGE] + ([MATERIAL, *MOTION, *FOCUS_RESTORE] if layout == "tv" else [])
+    return [PRODUCTION, BUTTON, BUTTON_EDGE] + ([MATERIAL, *MOTION, *FOCUS_RESTORE, *ACTION_LAYOUT] if layout == "tv" else [])
 
 
 ERROR_MARKERS = ("ANR in dev.cinematv", "ANR in com.android", "FATAL EXCEPTION", "Application Not Responding:",

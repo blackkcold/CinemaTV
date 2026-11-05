@@ -9,7 +9,7 @@ import unittest
 import xml.etree.ElementTree as ET
 from evidence import digest, verify_captures
 from run_device import PRODUCTION, BUTTON, BUTTON_EDGE, MATERIAL, passed_instrumentation, reject_errors
-from test_log import TestLogBoundary, TAG
+from test_log import TestLogBoundary, TAG, READY_ATTEMPTS, READY_ATTEMPT_SECONDS
 
 ROOT = Path(__file__).resolve().parents[2]
 SHA = "a" * 40
@@ -195,26 +195,227 @@ class EvidenceContract(unittest.TestCase):
 
 
 class LogBoundaryContract(unittest.TestCase):
-    def reader(self, directory, during="", marker_tag=TAG):
+    def reader(self, directory, during="", marker_tag=TAG, drop=None, duplicate=None, on_emit=None):
         calls = []
         process = Mock()
         process.poll.return_value = None
-        def adb(*args):
+        def adb(*args, **options):
             calls.append(args)
             if args[:2] == ("shell", "date"):
                 return "11-05_02:45:30\n"
             if args[:2] == ("shell", "log"):
                 marker = args[-1]
+                if marker.startswith("READY:"):
+                    self.assertEqual(READY_ATTEMPT_SECONDS, options["timeout"])
+                if on_emit is not None:
+                    on_emit(marker, process)
                 path = directory / "live-test.log"
                 with path.open("a") as stream:
                     if marker.startswith("START:"):
                         stream.write("11-05 02:45:29.999 1 1 E OldBoot : FATAL EXCEPTION old startup\n")
-                    else:
+                    elif marker.startswith("END:"):
                         stream.write(during)
-                    stream.write(f"11-05 02:45:30.100 100 100 I {marker_tag}: {marker}\n")
+                    if drop is None or not drop(marker):
+                        line = f"11-05 02:45:30.100 100 100 I {marker_tag}: {marker}\n"
+                        stream.write(line * (2 if duplicate is not None and duplicate(marker) else 1))
                 return ""
             raise AssertionError(f"Unexpected adb command: {args}")
         return adb, process, calls
+
+    def clock(self):
+        # Advance only on requested sleeps, so missing-marker tests exercise the
+        # production deadlines/retries deterministically without wall-clock waits.
+        now = [0.0]
+        def sleep(seconds):
+            self.assertGreater(seconds, 0)
+            now[0] += seconds
+        return now, patch("test_log.time.monotonic", side_effect=lambda: now[0]), patch("test_log.time.sleep", side_effect=sleep)
+
+    def emitted(self, calls, kind):
+        return [call[-1] for call in calls if call[:2] == ("shell", "log") and call[-1].startswith(kind + ":")]
+
+    def test_first_ready_can_be_lost_without_reemitting_start(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            adb, process, calls = self.reader(directory, drop=lambda marker: marker.startswith("READY:") and marker.endswith(":1"))
+            boundary = TestLogBoundary(directory, adb)
+            now, monotonic, sleep = self.clock()
+            with patch("test_log.subprocess.Popen", return_value=process), monotonic, sleep:
+                boundary.start()
+                checked = boundary.finish()
+                boundary.close()
+            ready = self.emitted(calls, "READY")
+            self.assertEqual(2, len(ready))
+            self.assertNotEqual(ready[0], ready[1])
+            self.assertEqual([boundary.start_marker], self.emitted(calls, "START"))
+            self.assertEqual([boundary.end_marker], self.emitted(calls, "END"))
+            self.assertEqual(READY_ATTEMPT_SECONDS, now[0])
+            receipt = json.loads((directory / "log-boundary.json").read_text())
+            self.assertEqual("complete", receipt["state"])
+            self.assertEqual(ready[1], receipt["readyMarker"])
+            self.assertEqual(["not-observed", "observed", "observed", "observed"],
+                             [entry["observation"] for entry in receipt["markerCommands"]])
+            self.assertTrue(all(entry["commandState"] == "succeeded" for entry in receipt["markerCommands"]))
+            self.assertNotIn("READY:", checked)
+
+    def test_unavailable_ready_is_bounded_and_never_starts_tests(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            adb, process, calls = self.reader(directory, drop=lambda marker: marker.startswith("READY:"))
+            boundary = TestLogBoundary(directory, adb)
+            now, monotonic, sleep = self.clock()
+            with patch("test_log.subprocess.Popen", return_value=process), monotonic, sleep:
+                with self.assertRaisesRegex(RuntimeError, "READY handshake not established"):
+                    boundary.start()
+                boundary.close()
+            self.assertFalse(boundary.started)
+            self.assertEqual(READY_ATTEMPTS, len(set(self.emitted(calls, "READY"))))
+            self.assertEqual([], self.emitted(calls, "START"))
+            self.assertEqual([], self.emitted(calls, "END"))
+            self.assertAlmostEqual(READY_ATTEMPTS * READY_ATTEMPT_SECONDS, now[0])
+            receipt = json.loads((directory / "log-boundary.json").read_text())
+            self.assertEqual("failed", receipt["state"])
+            self.assertEqual(READY_ATTEMPTS, len(receipt["markerCommands"]))
+            self.assertTrue(all(entry["observation"] == "not-observed" for entry in receipt["markerCommands"]))
+            self.assertFalse((directory / "device.log").exists())
+
+    def test_ready_attempt_budget_includes_shell_command_time(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            now, monotonic, sleep = self.clock()
+            def slow_command(marker, process):
+                now[0] += READY_ATTEMPT_SECONDS * .75
+            adb, process, calls = self.reader(directory, drop=lambda marker: True, on_emit=slow_command)
+            boundary = TestLogBoundary(directory, adb)
+            with patch("test_log.subprocess.Popen", return_value=process), monotonic, sleep:
+                with self.assertRaisesRegex(RuntimeError, "READY handshake not established"):
+                    boundary.start()
+                boundary.close()
+            self.assertEqual(READY_ATTEMPTS, len(self.emitted(calls, "READY")))
+            self.assertAlmostEqual(READY_ATTEMPTS * READY_ATTEMPT_SECONDS, now[0])
+
+    def test_old_or_delayed_ready_cannot_satisfy_current_probe(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            previous = TestLogBoundary(directory, Mock())
+            boundary = TestLogBoundary(directory, None)
+            def old_probe(marker, process):
+                if marker.startswith("READY:"):
+                    with (directory / "live-test.log").open("a") as stream:
+                        # A prior viewport marker never counts. Nor does late
+                        # delivery of attempt 1 during attempts 2 and 3.
+                        old = f"READY:{previous.token}:1" if marker.endswith(":1") else f"READY:{boundary.token}:1"
+                        stream.write(f"11-05 02:45:30.100 100 100 I {TAG}: {old}\n")
+            adb, process, calls = self.reader(directory, drop=lambda marker: True, on_emit=old_probe)
+            boundary.adb = adb
+            _, monotonic, sleep = self.clock()
+            with patch("test_log.subprocess.Popen", return_value=process), monotonic, sleep:
+                with self.assertRaisesRegex(RuntimeError, "READY handshake not established"):
+                    boundary.start()
+                boundary.close()
+            self.assertEqual(READY_ATTEMPTS, len(self.emitted(calls, "READY")))
+            self.assertFalse(boundary.started)
+
+    def test_reader_exit_after_ready_write_fails_even_with_marker_present(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            def exit_reader(marker, process):
+                process.poll.return_value = 7
+            adb, process, calls = self.reader(directory, on_emit=exit_reader)
+            boundary = TestLogBoundary(directory, adb)
+            with patch("test_log.subprocess.Popen", return_value=process):
+                with self.assertRaisesRegex(RuntimeError, "reader exited.*status 7"):
+                    boundary.start()
+                boundary.close()
+            self.assertEqual(1, len(self.emitted(calls, "READY")))
+            self.assertEqual([], self.emitted(calls, "START"))
+            self.assertIn(self.emitted(calls, "READY")[0], (directory / "live-test.log").read_text())
+            self.assertEqual("failed", boundary.receipt["markerCommands"][0]["observation"])
+
+    def test_ready_duplicates_are_not_retried(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            adb, process, calls = self.reader(directory, duplicate=lambda marker: marker.startswith("READY:"))
+            boundary = TestLogBoundary(directory, adb)
+            with patch("test_log.subprocess.Popen", return_value=process):
+                with self.assertRaisesRegex(RuntimeError, "Duplicate"):
+                    boundary.start()
+                boundary.close()
+            self.assertEqual(1, len(self.emitted(calls, "READY")))
+            self.assertEqual([], self.emitted(calls, "START"))
+            self.assertEqual("failed", boundary.receipt["state"])
+
+    def test_missing_or_duplicate_formal_boundaries_fail_without_retries(self):
+        for kind in ("START", "END"):
+            for failure in ("missing", "duplicate"):
+                with self.subTest(kind=kind, failure=failure), tempfile.TemporaryDirectory() as temp:
+                    directory = Path(temp)
+                    matches = lambda marker: marker.startswith(kind + ":")
+                    adb, process, calls = self.reader(directory, drop=matches if failure == "missing" else None,
+                                                      duplicate=matches if failure == "duplicate" else None)
+                    boundary = TestLogBoundary(directory, adb)
+                    _, monotonic, sleep = self.clock()
+                    with patch("test_log.subprocess.Popen", return_value=process), monotonic, sleep:
+                        with self.assertRaisesRegex(RuntimeError, "not observed|Duplicate"):
+                            boundary.start()
+                            boundary.finish()
+                        if kind == "END" and failure == "duplicate":
+                            with self.assertRaisesRegex(RuntimeError, "duplicate"):
+                                boundary.close()
+                        else:
+                            boundary.close()
+                    self.assertEqual(1, len(self.emitted(calls, "READY")))
+                    self.assertEqual([boundary.start_marker], self.emitted(calls, "START"))
+                    self.assertEqual([boundary.end_marker] if kind == "END" else [], self.emitted(calls, "END"))
+                    self.assertEqual("failed", boundary.receipt["state"])
+                    self.assertFalse((directory / "device.log").exists())
+
+    def test_repeated_start_or_finish_cannot_send_another_boundary(self):
+        for repeat in ("start", "finish"):
+            with self.subTest(repeat=repeat), tempfile.TemporaryDirectory() as temp:
+                directory = Path(temp)
+                adb, process, calls = self.reader(directory)
+                boundary = TestLogBoundary(directory, adb)
+                with patch("test_log.subprocess.Popen", return_value=process):
+                    boundary.start()
+                    if repeat == "finish":
+                        boundary.finish()
+                    with self.assertRaisesRegex(RuntimeError, "Cannot restart|Cannot repeat"):
+                        getattr(boundary, repeat)()
+                    boundary.close()
+                self.assertEqual(1, len(self.emitted(calls, "START")))
+                self.assertEqual(1 if repeat == "finish" else 0, len(self.emitted(calls, "END")))
+                self.assertEqual("failed", boundary.receipt["state"])
+
+    def test_reader_exit_or_late_duplicate_at_cleanup_invalidates_completion(self):
+        for failure in ("reader-exit", "duplicate"):
+            with self.subTest(failure=failure), tempfile.TemporaryDirectory() as temp:
+                directory = Path(temp)
+                adb, process, _ = self.reader(directory)
+                boundary = TestLogBoundary(directory, adb)
+                with patch("test_log.subprocess.Popen", return_value=process):
+                    boundary.start()
+                    boundary.finish()
+                    if failure == "reader-exit":
+                        process.poll.return_value = 0
+                    else:
+                        with (directory / "live-test.log").open("a") as stream:
+                            stream.write(f"11-05 02:45:31.100 100 100 I {TAG}: {boundary.end_marker}\n")
+                    with self.assertRaisesRegex(RuntimeError, "reader exited|duplicate"):
+                        boundary.close()
+                self.assertEqual("failed", boundary.receipt["state"])
+
+    def test_reversed_or_duplicate_span_is_invalid_even_for_partial_evidence(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            boundary = TestLogBoundary(directory, Mock())
+            for markers in ((boundary.end_marker, boundary.start_marker),
+                            (boundary.start_marker, boundary.end_marker, boundary.end_marker)):
+                (directory / "live-test.log").write_text("".join(
+                    f"11-05 02:45:30.100 100 100 I {TAG}: {marker}\n" for marker in markers))
+                for require_end in (True, False):
+                    with self.subTest(markers=markers, require_end=require_end), self.assertRaises(RuntimeError):
+                        boundary.scoped(require_end)
 
     def test_marker_span_excludes_startup_and_never_clears_buffers(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -238,12 +439,17 @@ class LogBoundaryContract(unittest.TestCase):
     def test_crash_inside_verified_span_is_rejected(self):
         with tempfile.TemporaryDirectory() as temp:
             directory = Path(temp)
-            adb, process, _ = self.reader(directory, "11-05 02:45:31.100 120 120 E AndroidRuntime: FATAL EXCEPTION main\n")
+            errors = ("11-05 02:45:31.100 120 120 E AndroidRuntime: FATAL EXCEPTION main\n"
+                      "11-05 02:45:31.101 120 120 E ActivityManager: ANR in dev.cinematv\n")
+            adb, process, _ = self.reader(directory, errors,
+                                          drop=lambda marker: marker.startswith("READY:") and marker.endswith(":1"))
             boundary = TestLogBoundary(directory, adb)
-            with patch("test_log.subprocess.Popen", return_value=process):
+            _, monotonic, sleep = self.clock()
+            with patch("test_log.subprocess.Popen", return_value=process), monotonic, sleep:
                 boundary.start()
                 checked = boundary.finish()
                 boundary.close()
+            self.assertIn(errors, checked)
             with self.assertRaises(AssertionError):
                 reject_errors(checked)
 
@@ -266,10 +472,10 @@ class LogBoundaryContract(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             directory = Path(temp)
             adb, process, _ = self.reader(directory)
-            def denied(*args):
+            def denied(*args, **options):
                 if args[:2] == ("shell", "log"):
                     raise subprocess.CalledProcessError(1, args, output="log: permission denied")
-                return adb(*args)
+                return adb(*args, **options)
             boundary = TestLogBoundary(directory, denied)
             with patch("test_log.subprocess.Popen", return_value=process):
                 with self.assertRaises(subprocess.CalledProcessError):
@@ -278,14 +484,20 @@ class LogBoundaryContract(unittest.TestCase):
             receipt = json.loads((directory / "log-boundary.json").read_text())
             self.assertEqual("log: permission denied", receipt["commandOutput"])
             self.assertEqual("failed", receipt["state"])
+            self.assertEqual(1, len(receipt["markerCommands"]))
+            self.assertTrue(receipt["markerCommands"][0]["marker"].startswith("READY:"))
+            self.assertEqual("failed", receipt["markerCommands"][0]["commandState"])
+            self.assertFalse(boundary.started)
 
     def test_quoted_marker_wrong_tag_and_missing_end_cannot_pass(self):
         with tempfile.TemporaryDirectory() as temp:
             directory = Path(temp)
             boundary = TestLogBoundary(directory, Mock())
-            (directory / "live-test.log").write_text(f"11-05 02:45:30.100 1 1 I OtherTag: {boundary.start_marker}\n")
-            with self.assertRaises(RuntimeError):
-                boundary.scoped(require_end=True)
+            for prefix in ("11-05 02:45:30.100 1 1 I OtherTag: ",
+                           f"11-05 02:45:30.100 1 1 I OtherTag: quoted I {TAG}: "):
+                (directory / "live-test.log").write_text(prefix + boundary.start_marker + "\n")
+                with self.subTest(prefix=prefix), self.assertRaises(RuntimeError):
+                    boundary.scoped(require_end=False)
             (directory / "live-test.log").write_text(f"11-05 02:45:30.100 1 1 I {TAG}: {boundary.start_marker}\n")
             with self.assertRaises(RuntimeError):
                 boundary.scoped(require_end=True)

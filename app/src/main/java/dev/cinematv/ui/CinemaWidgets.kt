@@ -32,12 +32,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.constrainHeight
+import androidx.compose.ui.unit.constrainWidth
+import androidx.compose.ui.unit.offset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
@@ -45,7 +50,7 @@ import dev.cinematv.data.MediaItem
 import dev.cinematv.ui.icons.CinemaIcon
 import dev.cinematv.ui.icons.CinemaSymbol
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.text
 import androidx.compose.ui.text.AnnotatedString
 
@@ -55,6 +60,25 @@ val Ivory = Color(0xFFF5F5F7)
 val Muted = Color(0xFFA8A9B0)
 val Accent = Color(0xFFD5DDE9)
 val DeepRose = Color(0xFF3A1E28)
+
+// Stable layout modifiers: focus/press only change the existing graphics layers.
+private val GlassActionLabelPadding = glassActionContentPadding(horizontal = 16.dp)
+private val GlassActionIconPadding = glassActionContentPadding(horizontal = 8.dp)
+
+/** Measure content once; fixed-size controls give up padding before clipping their text. */
+private fun glassActionContentPadding(horizontal: Dp) = Modifier.layout { measurable, constraints ->
+    // Keep at least 8dp on each side under bounded width. The remaining preferred
+    // padding is added after measurement, so 80dp icon+text and 48dp labels still fit.
+    val minimumInset = 8.dp.roundToPx()
+    val content = measurable.measure(
+        constraints.copy(minWidth = 0, minHeight = 0).offset(horizontal = -minimumInset * 2)
+    )
+    val width = constraints.constrainWidth(content.width + horizontal.roundToPx() * 2)
+    // Do not subtract vertical padding before measuring: existing 35/36dp-high
+    // callers must retain their natural line/icon height rather than crop it.
+    val height = constraints.constrainHeight(content.height + 8.dp.roundToPx() * 2)
+    layout(width, height) { content.placeRelative((width - content.width) / 2, (height - content.height) / 2) }
+}
 
 @Composable
 fun GlassAction(
@@ -78,6 +102,7 @@ fun GlassAction(
     val scale = if (effects.reducedMotion) 1f else 1f + .045f * focus - .035f * press
     Box(
         modifier = modifier
+            .heightIn(min = 40.dp)
             .onFocusChanged { focused = it.isFocused; if (it.isFocused) onFocus() }
             .focusProperties { canFocus = true }
             .clickable(interactionSource = interactions, indication = null, role = Role.Button, onClick = onClick),
@@ -87,16 +112,18 @@ fun GlassAction(
         // never scale a shared ancestor whose coordinates the source cannot invert.
         Box(Modifier.matchParentSize().cinemaGlassMaterial(focus = focus, press = press,
             selected = selected, prominent = prominent, layerBlock = { scaleX = scale; scaleY = scale }))
-        Row(Modifier.graphicsLayer { scaleX = scale; scaleY = scale },
+        Row((if (label.isEmpty()) GlassActionIconPadding else GlassActionLabelPadding)
+            .graphicsLayer { scaleX = scale; scaleY = scale },
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             if (icon != null) CinemaIcon(icon, Modifier.size(20.dp), selected = iconSelected,
                 onLightSurface = false)
             if (label.isNotEmpty()) Text(
                 if (icon != null) label.removePrefix("← ").removePrefix("▶ ").removePrefix("＋ ") else label,
-                modifier = Modifier.clearAndSetSemantics { text = AnnotatedString(label) },
+                // Override only spoken text, retaining native text-layout semantics.
+                modifier = Modifier.weight(1f, fill = false).semantics { text = AnnotatedString(label) },
                 fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
                 color = Ivory,
-                maxLines = 1
+                maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis
             )
         }
     }
