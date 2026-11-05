@@ -164,3 +164,18 @@ If an existing preview has a different signing certificate, stop: there is no
 same-package in-place migration to the new key. Do not uninstall, clear data or
 suggest that a channel toggle bypasses Android signing. A separate, tested
 export/import migration needs to exist before offering a data-preserving move.
+
+## Public unsigned candidate transfer
+
+For this first stable candidate, `build-unsigned-candidate.sh` reserves version
+`0.8.0` / code `10`. It builds stable release bytes with the updater enabled, but
+with explicit `cinematvUnsignedCandidate=true`. That mode rejects every signing
+credential and outputs an unsigned, non-installable artifact with source commit,
+source tree and SHA-256 receipt. Gradle also rejects production signing variables
+in GitHub Actions. No private key is needed to compile public code.
+
+The external signer must compare this receipt and APK hash before signing, verify
+the signed APK's package/channel/version/minSdk and approved public certificate,
+and record its new hash. Only the signed bytes can undergo final installer/device
+acceptance. The unsigned candidate, test-key fixtures and earlier debug evidence
+are never a production release. The candidate job does not publish or certify it.

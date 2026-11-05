@@ -27,9 +27,21 @@ if (updateChannel == "stable") {
     }
 }
 val updatesEnabled = providers.gradleProperty("cinematvUpdatesEnabled").getOrElse("false").toBooleanStrict()
+// CI prepares public unsigned bytes. Only the authorized external signer may finish them.
+val unsignedCandidate = providers.gradleProperty("cinematvUnsignedCandidate").getOrElse("false").toBooleanStrict()
+val externalSigningNames = listOf("CINEMATV_KEYSTORE_PATH", "CINEMATV_KEYSTORE_PASSWORD", "CINEMATV_KEY_ALIAS", "CINEMATV_KEY_PASSWORD")
+require(System.getenv("GITHUB_ACTIONS") != "true" || externalSigningNames.none { !System.getenv(it).isNullOrBlank() }) {
+    "Private production signing credentials must never be configured in GitHub Actions"
+}
+if (unsignedCandidate) {
+    require(externalSigningNames.none { !System.getenv(it).isNullOrBlank() }) {
+        "Unsigned candidates must not receive signing credentials"
+    }
+}
 if (updatesEnabled) {
-    require(listOf("CINEMATV_KEYSTORE_PATH", "CINEMATV_KEYSTORE_PASSWORD", "CINEMATV_KEY_ALIAS", "CINEMATV_KEY_PASSWORD")
-        .all { !System.getenv(it).isNullOrBlank() }) { "Updates require external private release signing" }
+    require(unsignedCandidate || externalSigningNames.all { !System.getenv(it).isNullOrBlank() }) {
+        "Updates require external signing or an explicitly unsigned candidate for external signing"
+    }
     require(providers.gradleProperty("cinematvVersionCode").isPresent && providers.gradleProperty("cinematvVersionName").isPresent) {
         "Update-enabled builds require explicit globally increasing version information"
     }

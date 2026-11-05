@@ -196,3 +196,33 @@ jobs:
           name: update-installer-api-${{ matrix.api }}
           path: installer-evidence/
           if-no-files-found: error
+
+  unsigned-stable-candidate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+      - name: Install Android SDK
+        run: |
+          SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -1)
+          "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0"
+      - uses: actions/cache@v4
+        with:
+          path: .cache/cinematv-noto-fonts
+          key: noto-fonts-v2-${{ hashFiles('scripts/fonts/noto-fonts.lock.json') }}
+      - name: Prepare unsigned stable candidate without credentials
+        run: bash scripts/updates/build-unsigned-candidate.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: UNSIGNED-stable-candidate-NOT-FOR-INSTALLATION
+          path: candidate/
+          if-no-files-found: error

@@ -44,6 +44,8 @@ def prepare(apk, channel, url, fingerprint, notes, now, apksigner, apkanalyzer):
     minimum = int(sdk.get(ANDROID + "minSdkVersion", "0"))
     if not 0 < version <= 2100000000 or not 0 < len(name) <= 80 or minimum < 26:
         raise ValueError("Invalid version or minimum SDK")
+    if channel == "stable" and not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", name):
+        raise ValueError("Stable feeds require a non-prerelease version name")
     with apk.open("rb") as source:
         digest = hashlib.file_digest(source, "sha256").hexdigest()
     return dict(schema=1, channel=channel, versionCode=version, versionName=name,
