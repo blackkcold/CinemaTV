@@ -11,7 +11,7 @@ Android TV · Google TV · Android 手机
 Native LibreTV client with separate TV and touch interfaces.
 
 [![Android 8.0+](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white)](docs/INSTALL.md)
-[![Release](https://img.shields.io/github/v/release/blackkcold/CinemaTV?include_prereleases&label=release)](https://github.com/blackkcold/CinemaTV/releases)
+[![Stable](https://img.shields.io/github/v/release/blackkcold/CinemaTV?label=stable)](https://github.com/blackkcold/CinemaTV/releases/tag/v0.8.0)
 [![Build](https://github.com/blackkcold/CinemaTV/actions/workflows/android.yml/badge.svg?branch=main)](https://github.com/blackkcold/CinemaTV/actions/workflows/android.yml)
 [![License: MIT](https://img.shields.io/badge/project%20license-MIT-blue.svg)](LICENSE)
 
@@ -21,7 +21,7 @@ Native LibreTV client with separate TV and touch interfaces.
 
 CinemaTV 连接你自建的 [LibreTV](https://github.com/LibreSpark/LibreTV)，把浏览、搜索、选集、播放和本地片库放在同一个应用里。使用 Kotlin、Jetpack Compose 和 Media3，电视与手机各有适合自己的界面。
 
-**当前公开版本为 [v0.7.0-preview](https://github.com/blackkcold/CinemaTV/releases/tag/v0.7.0-preview)。** 本文功能与主画廊对应这个已发布的调试签名预览版；实体电视验收与固定签名升级仍在推进。新的玻璃/动效、dev/stable 更新和豆瓣个人同步尚未正式发布，不计入下列可用功能。
+**当前稳定版为 [v0.8.0](https://github.com/blackkcold/CinemaTV/releases/tag/v0.8.0)。** 本次只发布 stable，使用固定生产签名，包含新的原生玻璃、电视卡片动效与通道订阅设置。开发通道等待后续候选，dev11未公开，channel-dev未启用本次发布。豆瓣个人账户与片单同步不在本次稳定版中。发布采用下方明确列出的自动化和最终签名包验收范围，不代表实体电视或性能认证。
 
 应用不附带公共片源、账号或影视内容。使用前需要配置自己的服务和有权访问的内容来源。本项目与 LibreTV、DpadTV 及下列第三方服务均无隶属关系。
 
@@ -82,9 +82,9 @@ CinemaTV 连接你自建的 [LibreTV](https://github.com/LibreSpark/LibreTV)，�
 - 离线打包 Noto 字体，按内容语言与地区选择中日韩字形，不转换简繁内容。
 - 原创 A1 品牌与静态启动图标；应用内简短品牌动态不阻塞操作。
 
-## 主分支中的下一版
+## v0.8 的玻璃与电视动效
 
-新的原生玻璃与电视卡片动效已经合入主分支并完成对应模拟器验收，正在准备正式签名与发布，**不在上方 v0.7 下载包和截图中**。
+新的原生玻璃与电视卡片动效已包含在 v0.8.0 stable 中。**上方画廊仍是 v0.7.0-preview 截图，不能当成本版截图。**
 
 - Basic / Blur / Full 分档：Blur 需要 API 31+，Full 为 API 33+ 的显式选择；自动模式保守降级。
 - 电视焦点抬升、按压和层次动效支持减少动态；播放器 Surface 和独立弹窗不冒充可采样的电影画面。
@@ -107,7 +107,7 @@ CinemaTV 连接你自建的 [LibreTV](https://github.com/LibreSpark/LibreTV)，�
 
 完整配置、遥控器操作和设备测试范围见 [安装指南](docs/INSTALL.md)。
 
-**发布计划：** 正式签名与 stable/dev 切换正在开发，当前没有可用的正式更新订阅。其余通过验收的功能面向 stable；豆瓣个人账户与片单同步先在后续 dev 验证，不进入当前已发布版。功能是否可安装以实际 Release 和签名说明为准。
+**发布与更新：** 本次公开包为 stable `0.8.0 / code 10`，只发布 stable 更新清单；开发通道待后续候选，dev11仅用于未公开的升级验收。设置中的订阅选择不会立即换包或改图标，更新只接受更大的versionCode。正式包已启用显式检查更新，APK或清单可下载不等于线上更新全链路已验收。stable清单有效期至2026年11月12日14:40:12 UTC，到期需续签，只影响获取更新，不影响已安装APK使用。豆瓣个人账户与片单同步留待后续dev验证。
 
 ## 数据与隐私
 
@@ -138,7 +138,7 @@ npm --prefix backend/tv-bff test
 
 ## 当前边界
 
-预览版的模拟器测试不能替代实体电视认证。低内存盒子、长时间播放、HDR/编解码器覆盖与硬件图形性能仍需真机验证。当前不提供跨设备同步、扫码配对或额外播放内核。
+本版的模拟器测试不能替代实体电视认证。最终生产签名包已在 API26 隔离模拟器完成 stable→未公开dev11验收目标的覆盖升级，并保留一条通过实际界面写入的收藏/想看记录、服务器设置和通道订阅。该结果不代表所有数据库迁移、历史进度或线上更新全链路通过。低内存盒子、实体4K电视、四小时播放、HDR/编解码器覆盖与硬件帧率仍未验证。当前不提供跨设备同步、扫码配对或额外播放内核。详见 [本版验收范围](docs/RELEASE_CHECKLIST.md)。
 
 功能与验收范围集中维护在本文及对应文档中；逐版变更请查看 [发布记录](https://github.com/blackkcold/CinemaTV/releases)。
 

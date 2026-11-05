@@ -1,51 +1,88 @@
-# CinemaTV Stable Release Certification
+# CinemaTV release acceptance scope
 
-Status: **NOT CERTIFIED**. A successful GitHub Actions APK build alone does not
-establish a production-grade Android TV release.
+Status: **v0.8.0 stable released with the evidence and limits below.**
+Dev11 is an unpublished signed acceptance target. It is not distributed in this
+release; channel-dev publication is frozen pending a later candidate.
+This is not physical Android TV, codec/HDR or hardware-performance certification.
+A stable channel label does not mean every possible device or workflow was tested.
 
-## Mandatory TV hardware QA
+## Release identity and source
 
-- [ ] 2GB RAM TV box: model / Android version / build fingerprint
-- [ ] Mainstream Google TV: model / Android version / build fingerprint
-- [ ] Physical 4K Android TV: model / Android version / build fingerprint
-- [ ] Full 1080p and 4K screenshot comparisons to original UI reference images
-- [ ] Full Glass effect performance and low-end fallback verified on hardware
-- [ ] D-pad navigation, keyboard/IME, focus and scroll restoration across routes
-- [ ] 4-hour continuous playback without crash, OOM, or sustained memory growth
-- [ ] MP4, HLS, DASH, H.264, H.265 and 4K/HDR on explicitly capable hardware
-- [ ] Player audio, subtitle, video track override and decoder failover
-- [ ] Network 401/403/404, offline/online, source failover and session recovery
-- [ ] Series episode indexing, progress, resume, next episode, library after restart
-- [ ] Live TV channel switch, M3U, XMLTV timezones and EPG now/next
-- [ ] Production signing, fresh install, debug-to-release migration and update paths
-- [ ] Instrumented remote smoke tests and Macrobenchmark frame-time report
-- [ ] Permissions, OSS license notices, metadata credit and lawful asset audit
+| Item | Recorded value |
+|---|---|
+| Main release commit | `95a6704e1c7298eb5aa11a74106d0f25573c5232` |
+| Source tree | `4aa3a187e711dd024caa7c5fc5bddc38baad2c8e` |
+| Unsigned CI checkout embedded in both APKs | `2c119ce4d7926bbb2252ed2c0e0afa67a98a0dcd` |
+| Production certificate SHA-256 | `0798f1686a28ae4a386a376efcabba3a4c4bb547de760210d944a58455092e8c` |
+| Stable | `0.8.0`, code `10`, `CinemaTV-0.8.0-code10-stable.apk` |
+| Stable final signed SHA-256 | `5bf5d7ff746ccde281286365e138d12050a67d8ad23d5893b3570b6127607236` |
+| Unpublished acceptance target | `0.8.0-dev.1`, code `11`; not a download/release |
+| Unpublished dev target signed SHA-256 | `1bd9f3f6fb28d7d9c62fb14bfa79682e5a0c6213e79081a132298c1063249262` |
 
-## Release record
+The main merge and CI checkout have the same source tree. The APKs retain the
+actual CI checkout revision; merging documentation does not rewrite that provenance.
+Both final signed APKs are 42,839,907 bytes. Public certificates are not private keys.
 
-Git commit SHA: **TBD**
+## Verified coverage
 
-TV hardware test evidence URLs: **TBD**
+- [x] PR32 exact-tree [Android build/lint/tests](https://github.com/blackkcold/CinemaTV/actions/runs/42044983340).
+- [x] All 11 [update-channel CI jobs](https://github.com/blackkcold/CinemaTV/actions/runs/42044983304): stable/dev builds, unsigned candidates, phone/TV settings UI, disposable installer fixtures, API26/35 installer probes and repository acceptance.
+- [x] Final stable and dev APK signatures independently verified against the production fingerprint. Installed APKs pulled from API26 match their respective final input SHA-256 values.
+- [x] API26 final stable → unpublished dev11 target upgrade with `adb install -r`, preserving one real synthetic Favorite/Want to Watch record created through production UI, the synthetic server address and selected channel subscription across restart.
+- [x] Installed channel/version remains distinct from selected subscription. Dev/code11 selecting stable explains that no downgrade or data clearing is performed.
+- [x] Main merge [CI 42050433165](https://github.com/blackkcold/CinemaTV/actions/runs/42050433165) passed.
+- [ ] API33 final signed APK installation: **infrastructure-unverified**. Android booted, then the emulator was killed during install, without an installed hash or app launch. Neither an app pass nor an app failure is established.
+- [x] Separate API26 empty-device final-stable installation: installed-byte hash matches; first launch rendered with stable/code10 defaults, empty server/library, unknown-source authorization OFF, successful Back return and correct restart state. The cold launch exceeded the am-start wait threshold, with display recorded at 10.746 seconds; this is not a performance pass.
 
-Performance benchmark report: **TBD**
+Earlier [full source UI acceptance](https://github.com/blackkcold/CinemaTV/actions/runs/42016408458) passed phone 74, API26 43, TV1080 62 and TV4K 18 cases. That test checkout was `6263d5a068bf7266aae9c95bad0b1ff9462bbc62`, source tree `aeec2b5c04d2d016d65a7ce81ee0163fcab42c5b`, and used debug/test APKs. The release tree differs in public metadata, scripts and documentation; app/src, backdrop/src and the app build configuration are unchanged. TV4K attempt1 hit its 24-minute timeout after 7/18 progress; the same head and unchanged coverage/time limits passed all 18 in attempt2 (704 seconds overall, JUnit test duration 681.079 seconds). The failed attempt remains part of the record, not a removed test or relaxed timeout.
 
-Source/metadata/stream legality review: **TBD**
+The API26 final stable was installed over a previous same-certificate code10
+candidate, then upgraded to final dev. That earlier empty-emulator installation
+alone does not establish a clean install of the final stable bytes; the separate
+empty-device test above provides that evidence. The retained record
+was real application data backed by Room, not a separate SQLite sentinel; its
+single-record scope does not establish every table, historical schema or watched
+progress migration.
 
-Signed APK SHA-256: **TBD**
+## Not established by this release
 
-Reviewer + date: **TBD**
+- Physical 2GB TV boxes, mainstream Google TV and physical 4K Android TV.
+- Physical remote/IME/focus behaviour, HDMI/decoder handling and device-specific installation.
+- Four-hour continuous playback, thermal behaviour, OOM resistance and sustained memory growth.
+- Broad MP4/HLS/DASH/H.264/H.265/4K/HDR support across real devices.
+- Full network/authentication/source/decoder failure matrix and real home-server compatibility.
+- Hardware FPS/frame-time targets, optical-glass GPU cost or low-end hardware performance guarantees.
+- Complete Room schema/history/progress migrations or arbitrary existing user-library retention.
+- Final production online feed → validated download → permission/installer UI → completed install end-to-end.
+- Seamless migration from historical debug signatures; no generic export/import or data recovery exists.
 
-Open Release Gate blockers: **NOT ZERO**
+The isolated local emulator used software CPU emulation without KVM. A parallel
+attempt caused host resource pressure and was not counted as a pass. A recovery
+SystemUI ANR is recorded separately from CinemaTV; it is not hidden or relabelled
+as app success. No CinemaTV fatal exception or app ANR was found in the captured
+final API26 chain logs. Emulator launch timings are diagnostic observations, not
+physical-device performance benchmarks. No real media playback was exercised in
+that final-package retention run.
 
-This checklist is a gate, not a certification statement. Do not publish stable
-until actual hardware evidence is recorded and Release Gate #1 is closed.
+## Future release checks
 
-## Preview automation
+1. Reserve one new globally increasing versionCode across both channels.
+2. Record source commit/tree, exact final APK hash, package/channel/version/minSdk
+   and production certificate; never substitute a debug or earlier candidate hash.
+3. Run applicable build/lint/unit/backend and UI checks. State which test artifacts
+   differ from the final production binary.
+4. Exercise the actual final APKs for the declared acceptance scope and preserve
+   evidence. Report outstanding hardware or workflow limits explicitly rather
+   than claiming certification.
+5. Verify uploaded release bytes and any signed feed independently. Record feed
+   signature, payload identity, URL/hash/size and expiry. Feed availability alone
+   is not a final-APK updater end-to-end test.
+6. Retain lawful-source/metadata/asset boundaries and OSS notices. This client
+   bundles no public stream source, user account or media catalogue.
 
-Preview publication is separately gated on the exact source commit: APK archive
-and debug-signature validation, Lint, JVM/BFF tests, phone instrumentation, and
-1080p/4K Compose TV scenarios with reviewed visual comparisons. Missing screenshots,
-focus traces, viewport metadata or rendered frame samples block publication.
-The release notes link the executing workflow and the evidence ZIP carries its
-reports. These automated preview checks do not check off the physical hardware
-or private-signing requirements above.
+## Historical previews
+
+Preview automation uses debug signatures and its own exact-tree promotion checks.
+Those results remain attributed to those versions and do not become production
+signature or physical-device evidence. README screenshots remain explicitly
+labelled **v0.7.0-preview**; do not relabel them as v0.8 captures.
