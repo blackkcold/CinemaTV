@@ -2,13 +2,20 @@
 
 ## 下载与兼容性
 
-- [发布页](https://github.com/blackkcold/CinemaTV/releases)：仅在同一提交通过完整门禁后发布 v0.5.0-preview APK、截图、验收证据及 SHA-256。源码中的版本号不代表已经发布。
-- 同一 APK 支持 Android TV / Google TV 和 Android 手机；最低 Android 8.0（API 26）。包名 `dev.cinematv`，版本 `0.5.0-preview`，versionCode `6`。
-- 本版使用 Android Debug 签名。不同 CI 构建的调试密钥可能不同；如出现 `INSTALL_FAILED_UPDATE_INCOMPATIBLE`，需先备份配置再卸载重装。卸载会清空本地历史和设置。
+- 从 [Releases](https://github.com/blackkcold/CinemaTV/releases) 下载 APK。当前公开版本为 [v0.7.0-preview](https://github.com/blackkcold/CinemaTV/releases/tag/v0.7.0-preview)，附有 SHA-256、UI 验收证据及同树发布凭据；源码版本号或候选分支不等于已发布。
+- 同一 APK 支持 Android TV / Google TV 和 Android 手机；最低 Android 8.0（API 26），包名 `dev.cinematv`。
+- 当前公开包是调试签名预览，不是正式 stable。不同 CI 构建的调试密钥可能不同，不能保证相互覆盖安装。
+- 出现 `INSTALL_FAILED_UPDATE_INCOMPATIBLE` 时请停止安装，不要为了消除报错直接卸载。卸载会删除本地设置、收藏、片库和观看进度；当前没有通用导出恢复或跨设备同步。
+
+### 发布通道与升级边界
+
+stable/dev 通道、应用内联网更新和固定生产签名仍在开发，当前没有可订阅的正式 feed 或生产签名 APK。后续其余验收功能面向 stable；豆瓣个人账户与片单同步先进入 dev 验证，不在当前公开预览中提供。
+
+只有实际发布说明确认的版本与签名才构成可用升级路径。调试签名不能无损转换为另一把生产签名；不要假设切换通道可以降级或恢复被卸载的数据。相关开发：[更新通道 PR](https://github.com/blackkcold/CinemaTV/pull/27)。
 
 ## 首次使用
 
-1. 通过 U 盘、设备文件管理器，或 `adb install -r CinemaTV-v0.5.0-preview.apk` 安装。
+1. 通过 U 盘、设备文件管理器，或 `adb install -r CinemaTV-v0.7.0-preview.apk` 安装。
 2. 打开设置 →「连接与账户」，输入自建 LibreTV 地址；如服务需要密码，完成登录。
 3. 使用服务器已配置的片源，或在「片源与订阅」添加有权访问的 Apple CMS JSON API。
 4. 直播添加 M3U 订阅；XMLTV 节目单地址可选。只有可访问的订阅和媒体流才可播放。
@@ -16,7 +23,7 @@
 
 APK 不提供默认公共片源、账号或媒体内容。公网连接请使用 HTTPS；会话 Cookie 和 BFF 令牌保存在进程内存，应用重启后可能需要重新认证。
 
-## 高清剧照与玻璃效果
+## 高清剧照与玻璃效果（v0.7 公开版）
 
 首页优先使用来源提供的横版剧照。配置可选的独立 [TV BFF](../backend/tv-bff/README.md)，可按片名、年份和电影/剧集类型保守匹配 TMDB 元数据；歧义结果会被拒绝。
 
@@ -24,7 +31,9 @@ APK 不提供默认公共片源、账号或媒体内容。公网连接请使用 
 
 「画面与性能」提供自动、基础、背景磨砂、镜片折射，以及减少动态效果。TV 的镜片折射需 Android 13+、硬件绘制和合格静态剧照，并且仅作用于聚焦的小尺寸按钮边缘；低内存、旧系统、减少动态、缺图或绘制失败自动使用静态层次。手机按钮使用相同 V4 静态层次，不宣称实时折射。视频 Surface 不参与采样。缺少合格横图时显示原创氛围背景。详见 [效果与成本边界](GLASS_V4.md)。
 
-## 本版功能
+主分支已合入下一版实时 Compose 场景玻璃和电视卡片动效，尚待正式签名与发布。自行构建主分支时，请改看 [新玻璃实现](GLASS_PRODUCTION.md) 和 [新动效实现](MOTION_PRODUCTION.md)：Blur 为 API31+，Full 为显式 API33+，视频与独立弹窗使用 Basic；减少动态与材质选择相互独立。上方下载链接仍指已公开 v0.7，不能将候选代码说明当成该 APK 的功能。
+
+## 已发布功能
 
 | 范围 | 已实现 |
 |---|---|
@@ -34,6 +43,7 @@ APK 不提供默认公共片源、账号或媒体内容。公网连接请使用 
 | 搜索与片库 | 渐进搜索、历史、收藏、五种片库状态、真实时长续播 |
 | 播放 | Media3、选集/换源、有限次故障恢复、音轨/字幕/画质/倍速面板、后台暂停 |
 | 直播 | 订阅、分组频道、XMLTV 当前/接续/后续节目 |
+| 本地推荐 | 本机显式偏好、RankSys 余弦/MMR 与数值保护，手机/TV 推荐看板展示实际权重和排序依据 |
 | 手机 | 五个底部入口、独立触控布局、横竖屏播放和旋转连续性 |
 
 ## 自动化验收与真机边界
@@ -45,7 +55,7 @@ APK 不提供默认公共片源、账号或媒体内容。公网连接请使用 
 | 手机 | API 30，1080×1920，含横屏播放和旋转 |
 | TV 界面 | API 33，1920×1080 / density 320 |
 | TV 界面 | API 33，3840×2160 / density 640 |
-| 最低 API 兼容性 | API 26，仅离线字体、静态按钮与品牌降级，不代替完整导航/播放矩阵 |
+| 最低 API 兼容性 | API 26，离线字体、静态按钮、品牌降级与推荐看板；不代替完整导航/播放矩阵 |
 
 TV 界面测试使用模拟器中的专用原生测试 Activity，不等同于真实 Android TV 系统或硬件认证。测试中的虚构片名、原创矢量画面及合成 H.264/AAC 片段均只用于测试；片段不进入用户 APK。
 
@@ -56,6 +66,7 @@ TV 界面测试使用模拟器中的专用原生测试 Activity，不等同于�
 JDK 17、Gradle 8.13、Android SDK 36 / Build Tools 36.0.0。
 
 ```bash
+bash scripts/generate-test-media.sh
 gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug
 npm --prefix backend/tv-bff test
 ```
@@ -66,7 +77,7 @@ npm --prefix backend/tv-bff test
 
 字体离线打包 Noto Sans 与 Noto Sans CJK，并保留 OFL 许可。按内容语言或系统区域选择 SC/TC/HK/JP/KR 字形，不转换简繁文字。首次构建须下载固定哈希的官方文件；安装后无需字体网络访问。字体数据约 20.63 MB，尚不能将此数值当成 APK 总大小或运行内存。详见 [字体实现和许可](NOTO_TYPOGRAPHY.md)。
 
-## v0.5 本地片库与目录
+## 本地片库与目录
 
 首次启动会将旧收藏、观看历史和片库状态事务性迁入 Room；保留原始记录，不使用破坏性迁移。每一集独立保存位置与实测时长，收藏与观看状态可以同时存在。若迁移失败，应用会提示，仍可加载服务器播放列表。详见 [数据与隐私说明](LOCAL_LIBRARY.md)。
 
@@ -75,6 +86,8 @@ npm --prefix backend/tv-bff test
 豆瓣 TOP250 / 评分筛选要求明确来源、有效许可到期时间与实际排名。可以接入运营者有权使用的目录，或在取得适用书面授权后启用独立的 BFF 获取模块。获取模块默认关闭，不附带抓取数据，且尚未进行获准的真实端点验证；不能把配置声明当作授权证明。客户端区分完整、部分、旧缓存及访问限制，不会将 TMDB 或 LibreTV 评分标为豆瓣。配置契约见 [BFF 文档](../backend/tv-bff/README.md)，来源审查及边界见[豆瓣获取说明](DOUBAN_ACQUISITION.md)。
 
 本地数据库、设置和播放链接排除于 Android 云备份及设备迁移；当前没有跨设备同步或导出恢复功能。卸载仍会删除本地数据。
+
+设置 → 本地推荐看板可查看实际偏好、手动权重与排序依据。推荐只在本机计算，不是机器学习训练，也不会把分数当成喜欢概率；应用其他联网功能照常。看板还可导出固定的第三方开源许可与源码包，这不是用户片库备份。详见 [推荐实现与许可](RANKSYS_INTEGRATION.md)。
 
 
 ### Device QA system-image provenance

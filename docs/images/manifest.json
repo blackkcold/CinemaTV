@@ -1,0 +1,55 @@
+{
+  "release": "v0.7.0-preview",
+  "release_url": "https://github.com/blackkcold/CinemaTV/releases/tag/v0.7.0-preview",
+  "evidence_asset": "CinemaTV-v0.7.0-preview-ui-evidence.zip",
+  "evidence_sha256": "94c34346f4bb6dfd195462f7a0b1a0e84b375000ea3d07b937eef694e96b92a2",
+  "source_run": "https://github.com/blackkcold/CinemaTV/actions/runs/41974230917",
+  "released_main": "298e2a0c4f4065d994dafe27a10d0433c459c994",
+  "images": [
+    {
+      "file": "tv-home.png",
+      "archive_entry": "ui-evidence-tv1080/qa/ui-evidence/01-home.png",
+      "sha256": "7062eb188080f4e7c2b22d1167f412576da8c9a2f70421ee968001914b766a4c",
+      "device": "tv1080",
+      "checkout_sha": "5d119a4c0b32a94ed6099e54895ccec253511ace",
+      "checkout_tree": "8f5bf237239cbc11d6047dd5d1b2a8400473938a",
+      "modifications": "none"
+    },
+    {
+      "file": "tv-detail.png",
+      "archive_entry": "ui-evidence-tv1080/qa/ui-evidence/03-detail.png",
+      "sha256": "e7f9ff92d5bc57b5e44c8af6d2dcd34d10487fc63e337cb56cc12d7468e7b1c1",
+      "device": "tv1080",
+      "checkout_sha": "5d119a4c0b32a94ed6099e54895ccec253511ace",
+      "checkout_tree": "8f5bf237239cbc11d6047dd5d1b2a8400473938a",
+      "modifications": "none"
+    },
+    {
+      "file": "tv-library.png",
+      "archive_entry": "ui-evidence-tv1080/qa/ui-evidence/10-library.png",
+      "sha256": "5fbedf8637b9f0d1231af76b312d9959669b1ae6b4a2ba7d4a28ea1ae9050738",
+      "device": "tv1080",
+      "checkout_sha": "5d119a4c0b32a94ed6099e54895ccec253511ace",
+      "checkout_tree": "8f5bf237239cbc11d6047dd5d1b2a8400473938a",
+      "modifications": "none"
+    },
+    {
+      "file": "tv-recommendations.png",
+      "archive_entry": "ui-evidence-tv1080/qa/ui-evidence/recommendation-tv-overview.png",
+      "sha256": "48be78f86dda4724546bbd0f10f6fb85ae794c3c318965695e0dba41144ded6c",
+      "device": "tv1080",
+      "checkout_sha": "5d119a4c0b32a94ed6099e54895ccec253511ace",
+      "checkout_tree": "8f5bf237239cbc11d6047dd5d1b2a8400473938a",
+      "modifications": "none"
+    },
+    {
+      "file": "phone-recommendations.png",
+      "archive_entry": "ui-evidence-phone/qa/ui-evidence/recommendation-phone-overview.png",
+      "sha256": "b7e5d77a440a2e96263dfe9d2aae17db538e822bc67a36ed1b5a3e6640692286",
+      "device": "phone",
+      "checkout_sha": "5d119a4c0b32a94ed6099e54895ccec253511ace",
+      "checkout_tree": "8f5bf237239cbc11d6047dd5d1b2a8400473938a",
+      "modifications": "none"
+    }
+  ]
+}

@@ -1,113 +1,156 @@
+<div align="center">
+
+<img src="app/src/main/res/drawable-nodpi/ic_launcher_legacy.png" width="112" alt="CinemaTV A1 标志">
+
 # CinemaTV
 
-A native Android TV / Google TV and Android phone client for a self-hosted LibreTV instance.
-Kotlin, Jetpack Compose for TV and Media3; separate TV and touch layouts.
+**为遥控器与触屏分别设计的原生影视客户端**
 
-**v0.8.0 preview candidate: live glass, responsive focus and TV motion.** Releases are debug-signed
-previews. Physical TV certification and production signing remain tracked in
-[Release Gate #1](https://github.com/blackkcold/CinemaTV/issues/1).
+Android TV · Google TV · Android 手机
 
-[Download releases](https://github.com/blackkcold/CinemaTV/releases) ·
-[Build and QA](https://github.com/blackkcold/CinemaTV/actions/workflows/android.yml) ·
-[中文安装指南](docs/INSTALL.md) · [UI rebuild decisions](docs/UI_REDESIGN.md)
+Native LibreTV client with separate TV and touch interfaces.
 
-## Features
+[![Android 8.0+](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white)](docs/INSTALL.md)
+[![Release](https://img.shields.io/github/v/release/blackkcold/CinemaTV?include_prereleases&label=release)](https://github.com/blackkcold/CinemaTV/releases)
+[![Build](https://github.com/blackkcold/CinemaTV/actions/workflows/android.yml/badge.svg?branch=main)](https://github.com/blackkcold/CinemaTV/actions/workflows/android.yml)
+[![License: MIT](https://img.shields.io/badge/project%20license-MIT-blue.svg)](LICENSE)
 
-| Area | Behavior |
-|---|---|
-| TV browsing | Full-screen decoded scene, floating navigation, responsive hero, landscape rails and center-focused discovery |
-| Movies / series | Distinct poster-wall and landscape-card layouts; filters use available category/year/rating data |
-| Focus | Route/rail/title identity, scroll restoration, controlled horizontal traversal, dialog and player return targets |
-| Artwork | Conservative title/year matching, bounded cache/prefetch, validated landscape dimensions, original fallback |
-| Glass / motion | Live Full optics or ordinary Blur on verified Compose scenes; conservative Basic fallback, independent reduced motion and responsive poster focus |
-| Search / library | Room-backed works/seasons/episodes/sources; local, catalog and NDJSON stages; title/alias/actor search and provenance-aware filters |
-| Recommendations | On-device RankSys cosine/MMR with explicit numerical guards, existing favorites/status/progress, real preference/weight/decision dashboard and offline license/source access |
-| Playback | Media3, episode resume and measured duration, floating TV controls, track/speed panels, background pause |
-| Live | M3U subscriptions, channel groups, XMLTV current/next and scrollable future guide |
-| Typography | Offline Noto Sans + explicitly selected CJK regional faces, OFL notices and system first-frame fallback |
-| Phone | Five tabs, separate touch screens and fitted portrait/landscape playback with rotation continuity |
-| Service | Direct LibreTV adapter; optional licensed-catalog/TMDB BFF and separately gated Douban Top 250 acquisition with explicit source, expiry and snapshot state |
+[下载 APK](https://github.com/blackkcold/CinemaTV/releases) · [安装指南](docs/INSTALL.md) · [使用与隐私](docs/LOCAL_LIBRARY.md) · [反馈问题](https://github.com/blackkcold/CinemaTV/issues)
 
-The APK contains no public content feeds, credentials, catalog dataset or copyrighted posters. It includes an approved [TMDB brand asset](docs/THIRD_PARTY_ASSETS.md) under TMDB attribution rules.
-UI QA uses fictional titles, original vector artwork and a synthetic H.264/AAC
-clip confined to the instrumentation APK.
+</div>
 
-## Build and test
+CinemaTV 连接你自建的 [LibreTV](https://github.com/LibreSpark/LibreTV)，把浏览、搜索、选集、播放和本地片库放在同一个应用里。使用 Kotlin、Jetpack Compose 和 Media3，电视与手机各有适合自己的界面。
 
-JDK 17, Gradle 8.13, Android SDK 36 / build tools 36.0.0.
+**当前公开版本为 [v0.7.0-preview](https://github.com/blackkcold/CinemaTV/releases/tag/v0.7.0-preview)。** 本文功能与主画廊对应这个已发布的调试签名预览版；实体电视验收与固定签名升级仍在推进。新的玻璃/动效、dev/stable 更新和豆瓣个人同步尚未正式发布，不计入下列可用功能。
+
+应用不附带公共片源、账号或影视内容。使用前需要配置自己的服务和有权访问的内容来源。本项目与 LibreTV、DpadTV 及下列第三方服务均无隶属关系。
+
+## 界面
+
+<table>
+<tr>
+<td width="50%"><img src="docs/images/tv-home.png" alt="CinemaTV 电视首页：全屏场景、悬浮导航和内容轨道"><br><sub>电视首页</sub></td>
+<td width="50%"><img src="docs/images/tv-detail.png" alt="CinemaTV 电视详情：选集、收藏、来源和作品关联"><br><sub>详情与选集</sub></td>
+</tr>
+<tr>
+<td><img src="docs/images/tv-library.png" alt="CinemaTV 本地片库与观看记录"><br><sub>本地片库</sub></td>
+<td><img src="docs/images/tv-recommendations.png" alt="CinemaTV 本地推荐看板：实际引擎、规则和排序依据"><br><sub>本地推荐看板</sub></td>
+</tr>
+</table>
+
+以上为 **v0.7.0-preview** 在 Android 模拟器中实际运行的界面，非设计稿。展示使用虚构片名、原创测试画面和合成媒体，不代表内置影视资源。拍摄版本、运行环境与原始证据见 [截图说明](docs/images/README.md)。
+
+<details>
+<summary>查看手机推荐看板</summary>
+
+<img src="docs/images/phone-recommendations.png" width="280" alt="v0.7.0-preview 手机端实际推荐看板">
+
+</details>
+
+## 可以做什么
+
+### 浏览与搜索
+
+- 电视使用全屏场景、横向内容轨道和独立电影/剧集布局；方向键移动后保留焦点与滚动位置。
+- 搜索先呈现本地记录，再补充已配置目录和 LibreTV 片源；支持来源提供的别名、演员、类型和年份信息。
+- 有完整数据时可按类型、年份、评分筛选。缺失字段保持未知，评分保留真实来源。
+- 横版图片进行保守匹配与尺寸检查；没有合适图片时使用原创背景。
+
+### 片库与续播
+
+- 收藏、想看、在看、看过、弃剧和逐集进度保存在本机。收藏与观看状态可以同时存在。
+- 按已知作品、季和来源浏览详情；支持手动关联未识别条目，并提供冲突检查、取消关联和一步撤销。
+- 播放进度遵循来源与剧集身份。身份不确定时保留记录，不把进度猜测性地转到另一集或另一来源。
+
+### 播放与直播
+
+- Media3 播放、选集、来源切换、倍速及可用音轨/字幕选择，支持后台暂停与逐集续播。
+- 手机使用独立触控播放器，适配横竖屏和旋转时的播放连续性。
+- M3U 订阅、频道分组，以及 XMLTV 当前、接续与后续节目单。
+
+### 本地推荐
+
+- 根据本机收藏、观看状态与进度，为已配置的目录候选排序。没有偏好记录时保留来源顺序，负反馈会排除匹配作品。
+- 设置中的「本地推荐看板」展示实际引擎、权重、偏好标签和排序依据。使用 RankSys 余弦相似度与 MMR，并加入 CinemaTV 数值保护。
+- 偏好与排序留在设备上，不使用推荐网络服务。搜索、图片和播放仍需要相应网络连接。
+
+推荐分数不是喜欢概率，也不是作品评分。更多实现与限制见 [推荐说明](docs/RANKSYS_INTEGRATION.md)。
+
+### 适配与显示
+
+- 电视遥控器与手机触屏分别设计，提供分层玻璃控件、减少动态效果和性能降级。
+- 离线打包 Noto 字体，按内容语言与地区选择中日韩字形，不转换简繁内容。
+- 原创 A1 品牌与静态启动图标；应用内简短品牌动态不阻塞操作。
+
+## 主分支中的下一版
+
+新的原生玻璃与电视卡片动效已经合入主分支并完成对应模拟器验收，正在准备正式签名与发布，**不在上方 v0.7 下载包和截图中**。
+
+- Basic / Blur / Full 分档：Blur 需要 API 31+，Full 为 API 33+ 的显式选择；自动模式保守降级。
+- 电视焦点抬升、按压和层次动效支持减少动态；播放器 Surface 和独立弹窗不冒充可采样的电影画面。
+- 代码与限制见 [玻璃实现](docs/GLASS_PRODUCTION.md)、[动效实现](docs/MOTION_PRODUCTION.md)。模拟器验收不代表真实电视帧率认证。
+
+## 安装与首次使用
+
+最低要求为 **Android 8.0 / API 26**。同一应用支持电视与手机，包名为 `dev.cinematv`。
+
+1. 从 [Releases](https://github.com/blackkcold/CinemaTV/releases) 下载 APK，并阅读该版本的签名与升级说明。
+2. 安装后打开「设置 → 连接与账户」，填写自建 LibreTV 地址，按需登录。
+3. 使用服务端已配置的来源，或添加自己有权访问的 Apple CMS JSON API / M3U 订阅。
+4. 搜索一部作品，打开详情选择来源和剧集。收藏与观看进度会进入本地片库。
+
+例如，服务地址可以是 `https://libretv.example.com`。这是占位示例，需要替换为自己的地址。公网连接建议使用 HTTPS。
+
+可选的 [TV BFF](backend/tv-bff/README.md) 提供授权目录与 TMDB 元数据匹配。没有配置目录时，首页可使用本地记录；首次使用没有记录时，可先通过 LibreTV 搜索添加内容。
+
+**升级提醒：** 现有调试预览包的签名可能不同。出现签名冲突时不要直接卸载；卸载会删除本地设置、片库和观看进度，目前没有通用导出恢复或跨设备同步。
+
+完整配置、遥控器操作和设备测试范围见 [安装指南](docs/INSTALL.md)。
+
+**发布计划：** 正式签名与 stable/dev 切换正在开发，当前没有可用的正式更新订阅。其余通过验收的功能面向 stable；豆瓣个人账户与片单同步先在后续 dev 验证，不进入当前已发布版。功能是否可安装以实际 Release 和签名说明为准。
+
+## 数据与隐私
+
+- 不附带服务器凭据、公共片源、豆瓣目录数据或商业影视海报。
+- 本地片库、设置和播放链接不进入 Android 云备份或设备迁移；不上传偏好与推荐历史。
+- 播放链接不会发送给 TMDB。可选元数据服务仍须由运营者遵守其使用条件。
+- 豆瓣获取默认关闭，需要适用授权与获准端点验证；不能把配置声明当成授权证明。
+
+[本地数据说明](docs/LOCAL_LIBRARY.md) · [来源与授权边界](docs/DOUBAN_ACQUISITION.md)
+
+## 开发
+
+环境：JDK 17、Gradle 8.13、Android SDK 36、Build Tools 36.0.0。测试媒体已随源码提供，普通构建无需 FFmpeg。
 
 ```bash
+bash scripts/generate-test-media.sh
 gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug
 npm --prefix backend/tv-bff test
 ```
 
-APK: `app/build/outputs/apk/debug/app-debug.apk`.
+调试 APK 输出到 `app/build/outputs/apk/debug/app-debug.apk`。
 
-The Actions build validates the APK archive and signature. UI QA covers a portrait
-phone (API 30), 1920×1080 and 3840×2160 TV UI viewports (API 33),
-and an API 26 font/static-control/recommendation compatibility target. `[ui-qa]`
-commits run the full instrumentation matrix; `[preview-release]` additionally
-publishes only after build and all UI jobs pass **at that commit**. Screenshots,
-JUnit results, reviewed screenshot comparisons and informational emulator frame
-metrics accompany the preview. Missing evidence or failed comparisons block publication.
+- [架构](docs/ARCHITECTURE.md)：共享数据与播放逻辑，独立 TV / 手机界面。
+- [构建与测试](https://github.com/blackkcold/CinemaTV/actions/workflows/android.yml)：编译、Lint、单元与协议测试。
+- [验收与发布边界](docs/RELEASE_CHECKLIST.md)：模拟器 UI、真实播放协议、硬件覆盖与签名要求。
 
-## Setup
+欢迎提交可复现的问题或改进建议。反馈时请附上版本、设备型号、Android 版本与操作步骤，并移除密码、令牌、私有地址和播放链接。
 
-1. Install on Android 8.0 / API 26 or later.
-2. Open Settings and connect your self-hosted LibreTV instance; sign in when required.
-3. Use the server's configured sources or add your authorized CMS / M3U sources.
-4. Optionally configure a TV BFF with an operator-managed TMDB token for matched landscape art and an authorized metadata catalog. Douban acquisition has a separate [permission and activation gate](docs/DOUBAN_ACQUISITION.md).
+## 当前边界
 
-[Full installation and device QA guide](docs/INSTALL.md).
+预览版的模拟器测试不能替代实体电视认证。低内存盒子、长时间播放、HDR/编解码器覆盖与硬件图形性能仍需真机验证。当前不提供跨设备同步、扫码配对或额外播放内核。
 
-## Architecture
+功能与验收范围集中维护在本文及对应文档中；逐版变更请查看 [发布记录](https://github.com/blackkcold/CinemaTV/releases)。
 
-- [`ui/tv/`](app/src/main/java/dev/cinematv/ui/tv): design tokens, scene/glass/cards,
-  focus registry, floating navigation and independent TV pages.
-- [`ui/mobile/`](app/src/main/java/dev/cinematv/ui/mobile): Material 3 touch UI.
-- `CinemaViewModel`: shared presentation, navigation and local-library state.
-- `data/`: sole LibreTV protocol decoding and persistence boundary.
-- `playback/` and `ui/TvPlayerPage.kt`: player ownership, lifecycle and TV overlay.
-- [`backend/tv-bff/`](backend/tv-bff): optional dependency-free Node metadata adapter.
+## 许可与致谢
 
-[Architecture](docs/ARCHITECTURE.md) · [Engineering constraints](AGENTS.md).
+CinemaTV 原创代码和测试画面采用 [MIT License](LICENSE)。没有复制 DpadTV、FongMi 或 LibreTV 的实现代码，原创品牌素材位于 [design/branding](design/branding/)。
 
-## Current limits
+- [LibreTV](https://github.com/LibreSpark/LibreTV)：连接的上游服务。
+- [AndroidX Media3](https://github.com/androidx/media)、Jetpack Compose：播放与原生界面。
+- RankSys：MPL-2.0；fastutil / jOOL：Apache-2.0，保留对应版本的附加声明。APK 提供完整许可及匹配版本的 RankSys 源码包，详见 [第三方推荐组件](docs/RANKSYS_INTEGRATION.md)。
+- 主分支的 AndroidLiquidGlass / Backdrop 复用部分采用 Apache-2.0，保留 [许可证](backdrop/LICENSE)、[上游与修改声明](backdrop/NOTICE.md)，不归入 CinemaTV 原创 MIT 代码。
+- Noto Sans / Noto Sans CJK：SIL Open Font License，详见 [字体说明](docs/NOTO_TYPOGRAPHY.md)。
+- TMDB：可选元数据来源；官方品牌素材与使用说明见 [第三方资产](docs/THIRD_PARTY_ASSETS.md)。
 
-The preview is not a physical-device or production-signing certification. Four-hour playback/codec/HDR hardware coverage,
-cross-device sync, QR pairing and additional playback engines remain outside this
-preview. Legacy preferences import into Room is implemented; future Room schema
-versions still require explicit migrations. Live glass never samples a video Surface.
-Full is explicit API33+ opt-in, Blur requires API31+, and AUTO remains conservative.
-See [production glass](docs/GLASS_PRODUCTION.md) and [motion](docs/MOTION_PRODUCTION.md).
-Douban acquisition is fixture-tested and disabled by default; applicable written
-permission and permitted live endpoint validation have not been established.
-
-## Original branding
-
-Editable SVGs live in [`design/branding/`](design/branding/). The approved pre-rainbow A1
-mark uses a static Android launcher icon and centered 320×180 TV banner. A bounded,
-six-second in-app header treatment preserves its horizontal motion without blocking
-input; reduced motion and low-cost devices use the static mark. Reviewed raster
-assets are hash-locked; CI validates them without rewriting or committing files.
-
-| App icon | TV banner |
-|---|---|
-| ![CinemaTV app icon](app/src/main/res/drawable-nodpi/ic_launcher_legacy.png) | ![CinemaTV TV banner](app/src/main/res/drawable-nodpi/tv_banner.png) |
-
-## Licensing
-
-CinemaTV-authored code and test art use the [MIT License](LICENSE). No DpadTV,
-FongMi or LibreTV implementation source is copied. Third-party libraries and
-metadata services retain their own licenses and attribution conditions. Bundled
-Noto font bytes and original OFL notices are documented in [typography](docs/NOTO_TYPOGRAPHY.md).
-The original RankSys components use MPL-2.0; fastutil/jOOL use Apache-2.0 with
-retained additional notices. Full texts and matching RankSys source JARs ship in
-the APK and are accessible from Settings → local recommendation dashboard.
-See [actual core integration and limits](docs/RANKSYS_INTEGRATION.md).
-
-This product may use the TMDB API through an independently configured BFF but
-is not endorsed or certified by TMDB. No API key is bundled. Public service
-connections should use HTTPS.
-
-See [local library and privacy](docs/LOCAL_LIBRARY.md) and [v0.7.0 preview notes](docs/releases/v0.7.0-preview.md) for migration, expiry, validation and release boundaries.
+This product uses the TMDB API but is not endorsed or certified by TMDB.
