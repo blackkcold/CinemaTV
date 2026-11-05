@@ -274,12 +274,18 @@ def source_entry_key(url, item_id):
     return "entry:" + hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
+def metadata_entry_key(item_id, kind="movie"):
+    value = "".join(f"{len(part)}:{part}" for part in ("metadata", kind, item_id))
+    return "entry:" + hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
 def poster_fixture(port=12345):
     data = copy.deepcopy(fixture())
     profile = "poster-motion"
     data["profile"] = profile
     origin = dict(data["start"], profile=profile, bookmarkRegion="hero", bookmarkItem="primary",
-                  featuredKeys=[f"movie-{i}" for i in range(5)], tvShowKeys=[f"show-{i}" for i in range(5)],
+                  featuredKeys=[metadata_entry_key(f"catalog:synthetic:movie-{i}") for i in range(5)],
+                  tvShowKeys=[metadata_entry_key(f"catalog:synthetic:tv-{i}", "tv") for i in range(5)],
                   selectedKey="", focusRoute="HOME",
                   expectedDetailKey=source_entry_key(f"http://127.0.0.1:{port}/provider", "movie-2"),
                   historyCount=0, movieCount=24, tvShowCount=24)
@@ -313,6 +319,23 @@ def poster_fixture(port=12345):
 
 
 class PosterProfileTest(unittest.TestCase):
+    def test_fixture_metadata_namespace_is_not_a_provider_listing_id(self):
+        # Actual 9de8ef raw ready-Detail receipts exposed this adapter boundary.
+        metadata_id = "catalog:synthetic:movie-2"
+        self.assertEqual("entry:32a341c27b84cc109efae62a62aab4711694dd0d60fff8d8e3eeb5e50e94c4f3",
+                         metadata_entry_key(metadata_id))
+        for port, observed in ((39995, "9a4500b1f123f7536347c4c3ad9ec03aa3f57f46aba0516cef7a94c11a83f7f9"),
+                               (45091, "fe11d34f9277185d19e0d2ad602e9a55d78557659ea2be64d5b0ab7e470e0742")):
+            url = f"http://127.0.0.1:{port}/provider"
+            self.assertEqual("entry:" + observed, source_entry_key(url, "movie-2"))
+            self.assertNotEqual(source_entry_key(url, metadata_id), source_entry_key(url, "movie-2"))
+            data = poster_fixture(port)
+            self.assertEqual("entry:" + observed, data["inputs"][9]["after"]["selectedKey"])
+            self.assertTrue(frame_summary(data, "poster-motion")["validForComparison"])
+            data["inputs"][9]["after"]["selectedKey"] = source_entry_key(url, metadata_id)
+            with self.assertRaises(AssertionError):
+                frame_summary(data, "poster-motion")
+
     def test_resolved_detail_identity_and_original_route_are_both_required(self):
         data = poster_fixture()
         self.assertNotEqual(data["start"]["featuredKeys"][2], data["inputs"][9]["after"]["selectedKey"])
@@ -550,8 +573,10 @@ class PosterProfileTest(unittest.TestCase):
         self.assertIn('.put("focusRoute", model.focusRoute)', activity)
         self.assertIn('.put("expectedDetailKey", expectedDetailKey())', activity)
         expected = activity.split("private fun expectedDetailKey(): String {", 1)[1].split("private fun status()", 1)[0]
-        self.assertIn('model.featured.getOrNull(2)?.takeIf { it.source == null } ?: return ""', expected)
-        self.assertIn('MediaDomainMapper.entryId(item.copy(source = TvSource("fixture", "测试片库", "${fixture.base}/provider")))', expected)
+        self.assertIn('model.featured.getOrNull(2)?.takeIf { it.source == null && it.catalogProvider == "synthetic" && !it.isTv } ?: return ""', expected)
+        self.assertIn('item.id.takeIf { it.startsWith("catalog:synthetic:") }', expected)
+        self.assertIn('?.removePrefix("catalog:synthetic:")?.takeIf { it.matches(Regex("movie-(?:[0-9]|1[0-9]|2[0-3])")) } ?: return ""', expected)
+        self.assertIn('MediaDomainMapper.entryId(item.copy(id = providerId, source = TvSource("fixture", "测试片库", "${fixture.base}/provider")))', expected)
         self.assertNotIn("model.selected", expected)
         for banned in ("LocalMotion", "mainClock", "requestFocus()", "focusCoordinator.remember", "selected =", "scrollToItem"):
             self.assertNotIn(banned, activity)

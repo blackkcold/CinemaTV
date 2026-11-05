@@ -21,8 +21,8 @@ android {
         applicationId = "dev.cinematv"
         minSdk = 26
         targetSdk = 35
-        versionCode = 7
-        versionName = "0.6.0-preview"
+        versionCode = 9
+        versionName = "0.8.0-preview"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     signingConfigs {

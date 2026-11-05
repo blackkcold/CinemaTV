@@ -8,11 +8,66 @@ import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.Rule
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.junit4.AndroidComposeTestRule
+import androidx.test.ext.junit.rules.ActivityScenarioRule
 
 /** Run on API26 and current TV/phone devices: proves native TTC loading, not merely file existence. */
 class NotoFontsDeviceTest {
-    @get:Rule val compose = createAndroidComposeRule<NotoTestActivity>()
+    // The font specimen is not an Activity-transition test. Disable only this
+    // test host's launch animation; never change the device or product settings.
+    @get:Rule val compose = AndroidComposeTestRule(
+        ActivityScenarioRule<NotoTestActivity>(Intent(
+            InstrumentationRegistry.getInstrumentation().targetContext, NotoTestActivity::class.java
+        ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION))
+    ) { rule ->
+        var activity: NotoTestActivity? = null
+        rule.scenario.onActivity { activity = it }
+        requireNotNull(activity)
+    }
+
+    @Test fun fontSpecimenDisablesOnlyItsOwnStartingPreview() {
+        val preview = compose.activity.obtainStyledAttributes(intArrayOf(android.R.attr.windowDisablePreview))
+        try {
+            assertTrue("The font host must not be covered by the system splash exit", preview.getBoolean(0, false))
+        } finally { preview.recycle() }
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val productInfo = context.packageManager.getActivityInfo(
+            android.content.ComponentName(context, dev.cinematv.MainActivity::class.java), 0)
+        val productTheme = android.view.ContextThemeWrapper(context, productInfo.themeResource)
+        val productPreview = productTheme.obtainStyledAttributes(intArrayOf(android.R.attr.windowDisablePreview))
+        try {
+            assertFalse("Product startup preview must stay unchanged", productPreview.getBoolean(0, false))
+        } finally { productPreview.recycle() }
+    }
+
+    @Test fun drawEpochFenceRejectsUnarmedAndStaleFrameMetrics() {
+        val tracker = NotoCompositorCapture.DrawEpochTracker()
+        tracker.recordDraw(7) // Unarmed draws cannot become evidence.
+        val epoch = tracker.arm(7)
+        assertNull(epoch.firstDraw.get())
+        tracker.recordDraw(7) // No public frame callback yet.
+        assertNull(epoch.firstDraw.get())
+        epoch.frameTime.set(100)
+        tracker.recordDraw(6)
+        assertNull(epoch.firstDraw.get())
+        tracker.recordDraw(7)
+        val first = epoch.firstDraw.get()
+        assertEquals(NotoCompositorCapture.DrawStamp(7, 100), first)
+        epoch.frameTime.set(200)
+        tracker.recordDraw(7)
+        assertEquals("Redraws must not move the first-draw fence", first, epoch.firstDraw.get())
+        assertFalse(NotoCompositorCapture.isFrameAtOrAfterDraw(null, 7, 200))
+        assertFalse(NotoCompositorCapture.isFrameAtOrAfterDraw(first, 8, 200))
+        assertFalse(NotoCompositorCapture.isFrameAtOrAfterDraw(first, 7, 99))
+        assertFalse(NotoCompositorCapture.isFrameAtOrAfterDraw(first, 7, -1))
+        assertTrue(NotoCompositorCapture.isFrameAtOrAfterDraw(first, 7, 100))
+        assertTrue(NotoCompositorCapture.isFrameAtOrAfterDraw(first, 7, 101))
+        tracker.disarm(epoch)
+        val next = tracker.arm(8)
+        tracker.recordDraw(7)
+        assertNull(next.firstDraw.get())
+        tracker.disarm(next)
+    }
 
     @Test fun composeCjkBoldHonorsWeightAndSynthesisOnBothSurfaces() = runBlocking {
         val assets = InstrumentationRegistry.getInstrumentation().targetContext.assets

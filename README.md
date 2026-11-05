@@ -3,7 +3,7 @@
 A native Android TV / Google TV and Android phone client for a self-hosted LibreTV instance.
 Kotlin, Jetpack Compose for TV and Media3; separate TV and touch layouts.
 
-**v0.5.0 preview candidate: local library and personalized discovery.** Releases are debug-signed
+**v0.8.0 preview candidate: live glass, responsive focus and TV motion.** Releases are debug-signed
 previews. Physical TV certification and production signing remain tracked in
 [Release Gate #1](https://github.com/blackkcold/CinemaTV/issues/1).
 
@@ -19,9 +19,9 @@ previews. Physical TV certification and production signing remain tracked in
 | Movies / series | Distinct poster-wall and landscape-card layouts; filters use available category/year/rating data |
 | Focus | Route/rail/title identity, scroll restoration, controlled horizontal traversal, dialog and player return targets |
 | Artwork | Conservative title/year matching, bounded cache/prefetch, validated landscape dimensions, original fallback |
-| Glass / motion | V4 depth buttons, optional focused scene-still lens on TV; static phone fallback, low-memory/API gates and reduced motion |
+| Glass / motion | Live Full optics or ordinary Blur on verified Compose scenes; conservative Basic fallback, independent reduced motion and responsive poster focus |
 | Search / library | Room-backed works/seasons/episodes/sources; local, catalog and NDJSON stages; title/alias/actor search and provenance-aware filters |
-| Recommendations | Local explicit favorites/status/progress signals, explainable ranking, negative feedback and cold-start catalog order |
+| Recommendations | On-device RankSys cosine/MMR with explicit numerical guards, existing favorites/status/progress, real preference/weight/decision dashboard and offline license/source access |
 | Playback | Media3, episode resume and measured duration, floating TV controls, track/speed panels, background pause |
 | Live | M3U subscriptions, channel groups, XMLTV current/next and scrollable future guide |
 | Typography | Offline Noto Sans + explicitly selected CJK regional faces, OFL notices and system first-frame fallback |
@@ -45,7 +45,7 @@ APK: `app/build/outputs/apk/debug/app-debug.apk`.
 
 The Actions build validates the APK archive and signature. UI QA covers a portrait
 phone (API 30), 1920×1080 and 3840×2160 TV UI viewports (API 33),
-and a small API 26 font/static-control compatibility target. `[ui-qa]`
+and an API 26 font/static-control/recommendation compatibility target. `[ui-qa]`
 commits run the full instrumentation matrix; `[preview-release]` additionally
 publishes only after build and all UI jobs pass **at that commit**. Screenshots,
 JUnit results, reviewed screenshot comparisons and informational emulator frame
@@ -74,11 +74,12 @@ metrics accompany the preview. Missing evidence or failed comparisons block publ
 
 ## Current limits
 
-The preview is not a physical-device or production-signing certification. True
-framebuffer optical refraction, four-hour playback/codec/HDR hardware coverage,
+The preview is not a physical-device or production-signing certification. Four-hour playback/codec/HDR hardware coverage,
 cross-device sync, QR pairing and additional playback engines remain outside this
 preview. Legacy preferences import into Room is implemented; future Room schema
-versions still require explicit migrations. Still-image glass never samples a video Surface.
+versions still require explicit migrations. Live glass never samples a video Surface.
+Full is explicit API33+ opt-in, Blur requires API31+, and AUTO remains conservative.
+See [production glass](docs/GLASS_PRODUCTION.md) and [motion](docs/MOTION_PRODUCTION.md).
 Douban acquisition is fixture-tested and disabled by default; applicable written
 permission and permitted live endpoint validation have not been established.
 
@@ -100,9 +101,13 @@ CinemaTV-authored code and test art use the [MIT License](LICENSE). No DpadTV,
 FongMi or LibreTV implementation source is copied. Third-party libraries and
 metadata services retain their own licenses and attribution conditions. Bundled
 Noto font bytes and original OFL notices are documented in [typography](docs/NOTO_TYPOGRAPHY.md).
+The original RankSys components use MPL-2.0; fastutil/jOOL use Apache-2.0 with
+retained additional notices. Full texts and matching RankSys source JARs ship in
+the APK and are accessible from Settings → local recommendation dashboard.
+See [actual core integration and limits](docs/RANKSYS_INTEGRATION.md).
 
 This product may use the TMDB API through an independently configured BFF but
 is not endorsed or certified by TMDB. No API key is bundled. Public service
 connections should use HTTPS.
 
-See [local library and privacy](docs/LOCAL_LIBRARY.md) and [v0.5.0 preview notes](docs/releases/v0.5.0-preview.md) for migration, expiry, validation and release boundaries.
+See [local library and privacy](docs/LOCAL_LIBRARY.md) and [v0.7.0 preview notes](docs/releases/v0.7.0-preview.md) for migration, expiry, validation and release boundaries.

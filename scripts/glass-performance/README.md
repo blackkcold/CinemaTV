@@ -122,8 +122,12 @@ remain stable within warmup, both measured cycles and across the nine poster tri
 The source-less metadata identity legitimately differs from the resolved source entry.
 `expectedDetailKey` is computed using production `MediaDomainMapper.entryId` on featured[2]
 with the independently known fixture source (`fixture.base + "/provider"`), never from
-`selected`. This fixture preserves the catalog item ID when resolving its source; that
-mapping is not assumed for arbitrary providers. Missing featured[2] or an already
+`selected`. The production metadata adapter prefixes the original fixture ID as
+`catalog:synthetic:movie-N`; fixture search returns the provider listing ID `movie-N`.
+The expectation explicitly verifies the synthetic source-less movie namespace and removes
+only that known adapter prefix before hashing the provider URL and listing ID. It does not
+hash the namespaced metadata ID as a provider ID, and this mapping is not assumed for
+arbitrary providers. Missing featured[2], an unexpected namespace/provider or an already
 source-backed catalog item produces an empty expectation and is rejected. A nonempty
 entry hash and exact equality are required, not title matching or merely a Detail page.
 Original detail `focusRoute` and resolved `selectedKey` must both match. All snapshots,

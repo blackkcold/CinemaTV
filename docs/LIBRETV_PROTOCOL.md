@@ -112,3 +112,29 @@ stream outcomes/truncation/legacy form, cookie reset and blocked-request
 cancellation. These tests do not exercise live Douban, public media, remote
 provider access, or real-device decode capability. Android instrumentation must
 be run by the normal device/CI gate before claiming device verification.
+
+### Instrumentation fixture storage isolation
+
+Candidate run `41971271586` found two `LibreTvProtocolTest` failures before any
+request was sent: `row()` could not select a unique fixture source. All cases had
+reused one preference-file name and deleted it between cases, while repository
+settings are intentionally persisted with asynchronous `SharedPreferences.apply()`.
+A pending write can race deletion/reopening of that shared test file. This is
+fixture contamination, not evidence of accepting a forbidden provider response.
+
+Protocol and repository contract cases now use unique UUID-suffixed preference
+names and hold the same SharedPreferences instance for their lifetime. Setup
+requires an empty fixture; protocol setup also requires exactly its own loopback
+source. Cleanup commits an empty state on that same instance before deleting its
+file. An overlapping-fixtures regression uses a gated IO-thread writer, asserts distinct
+backing files, reads the first fixture during repeated asynchronous writes to the
+second, then joins/cleans up and verifies the first remains unchanged. The original
+single-source, 403-stop, cached-done ordering and cancellation assertions remain
+intact. No product storage, user data, transport or ranking behavior changes.
+Exact-candidate Android execution is still required before release.
+
+Platform behavior checked against AOSP Android 11: `ContextImpl.deleteSharedPreferences`
+evicts the cache and deletes files without draining another instance's queued writes;
+`SharedPreferencesImpl.EditorImpl.commit` waits on its disk-write completion.
+- https://android.googlesource.com/platform/frameworks/base/+/android-11.0.0_r1/core/java/android/app/ContextImpl.java
+- https://android.googlesource.com/platform/frameworks/base/+/android-11.0.0_r1/core/java/android/app/SharedPreferencesImpl.java

@@ -154,10 +154,13 @@ class GlassBenchmarkActivity : ComponentActivity() {
             .put("restoreFinishedAtNanos", value.restoreFinishedAtNanos ?: JSONObject.NULL)
     }
     private fun expectedDetailKey(): String {
-        // This fixture maps the catalog ID to the same ID at its known provider.
+        // The metadata adapter prefixes catalog IDs, but this fixture's search
+        // returns the original provider vodId. Do not hash the adapter namespace.
         // Derive independently of selected, which legitimately changes after resolution.
-        val item = model.featured.getOrNull(2)?.takeIf { it.source == null } ?: return ""
-        return MediaDomainMapper.entryId(item.copy(source = TvSource("fixture", "测试片库", "${fixture.base}/provider")))
+        val item = model.featured.getOrNull(2)?.takeIf { it.source == null && it.catalogProvider == "synthetic" && !it.isTv } ?: return ""
+        val providerId = item.id.takeIf { it.startsWith("catalog:synthetic:") }
+            ?.removePrefix("catalog:synthetic:")?.takeIf { it.matches(Regex("movie-(?:[0-9]|1[0-9]|2[0-3])")) } ?: return ""
+        return MediaDomainMapper.entryId(item.copy(id = providerId, source = TvSource("fixture", "测试片库", "${fixture.base}/provider")))
     }
     private fun status(): JSONObject {
         val value = observation

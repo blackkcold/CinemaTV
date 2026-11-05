@@ -25,7 +25,9 @@ supplies immersive window chrome and passive observers. It is not in release.
   nine `FocusMediaCardMotionTest` cases, and eleven `InterruptedFocusRestorationTest`
   cases, plus three `GlassActionLayoutTest` cases for intrinsic/fixed sizing,
   complete accessibility labels and stable native focus/press/click geometry.
-  Exact execution is required: 27 tests per TV SDK and three on phone.
+  Seven `ContentRailTraversalTest` cases cover synchronous visible focus, smooth
+  viewport crossings, rapid reversal and interrupted/reordered lazy moves.
+  Exact execution is required: 34 tests per TV SDK and three on phone.
   Interrupted restoration tests pause entry/lazy frame work and inject native
   D-pad events; newer navigation/content wins, cancellation never falls back,
   and ordinary saved-target/fallback behavior remains covered. Native default
