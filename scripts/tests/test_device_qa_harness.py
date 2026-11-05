@@ -60,7 +60,7 @@ class DeviceMatrixTest(unittest.TestCase):
             {"name": "tv4k", "target": "default", "api": 33, "size": "3840x2160", "density": 640,
              "classes": "dev.cinematv.TvUiRegressionTest,dev.cinematv.TvWorkNavigationTest,dev.cinematv.TvManualWorkAssociationTest,dev.cinematv.TvLibraryCatalogControlsTest,dev.cinematv.TvRecommendationDashboardTest,dev.cinematv.GlassMaterialSmokeTest,dev.cinematv.ui.typography.NotoFontsDeviceTest"},
             {"name": "compat26", "target": "google_apis", "api": 26, "size": "1920x1080", "density": 320,
-             "classes": "dev.cinematv.ui.typography.NotoFontsDeviceTest,dev.cinematv.GlassMaterialSmokeTest#materialSurvivesFocusPressReducedMotionMissingArtAndFailure,dev.cinematv.CinemaBrandStartupTest"},
+             "classes": "dev.cinematv.ui.typography.NotoFontsDeviceTest,dev.cinematv.GlassMaterialSmokeTest#materialSurvivesFocusPressReducedMotionMissingArtAndFailure,dev.cinematv.CinemaBrandStartupTest,dev.cinematv.TvRecommendationDashboardTest"},
         ]})
 
     def test_catalog_library_navigation_and_protocol_suites_are_registered(self):
@@ -442,9 +442,9 @@ class DeviceRunnerTest(unittest.TestCase):
             "-Pandroid.testInstrumentationRunnerArguments.class=dev.cinematv.MobileNavigationSmokeTest",
         ]])
 
-    def test_only_4k_receives_eighteen_minute_instrumentation_budget(self):
+    def test_only_4k_receives_twenty_four_minute_instrumentation_budget(self):
         for viewport, tv, expected in (("1080x1920", False, "12m"), ("1920x1080", True, "12m"),
-                                       ("1920x1080", False, "12m"), ("3840x2160", True, "18m")):
+                                       ("1920x1080", False, "12m"), ("3840x2160", True, "24m")):
             with self.subTest(viewport=viewport, tv=tv):
                 code, _, _, _ = self.run_harness(viewport=viewport, tv=tv)
                 self.assertEqual(code, 0)
@@ -464,7 +464,7 @@ class DeviceRunnerTest(unittest.TestCase):
                 self.assertTrue(diagnostics)
                 self.assertIn("live-log-stopped", self.files)
                 invocation = [args for args in self.calls["timeout"] if "gradle" in args]
-                self.assertEqual(invocation[0][:4], ["--signal=TERM", "--kill-after=30s", "18m", "gradle"])
+                self.assertEqual(invocation[0][:4], ["--signal=TERM", "--kill-after=30s", "24m", "gradle"])
 
     def test_4k_trace_and_heartbeat_outlive_instrumentation_and_are_cleaned_up(self):
         for status in (0, 124):
@@ -473,15 +473,15 @@ class DeviceRunnerTest(unittest.TestCase):
                 self.assertEqual(code, status)
                 self.assertIn(f"device-total\t{status}\t", stages)
                 calls = self.calls["timeout"]
-                self.assertTrue(any(args[:4] == ["--signal=TERM", "--kill-after=30s", "18m", "gradle"] for args in calls))
-                self.assertTrue(any(args[:4] == ["--signal=TERM", "--kill-after=5s", "20m", "adb"] for args in calls))
-                self.assertTrue(any(args[:4] == ["--signal=TERM", "--kill-after=5s", "22m", "python3"] for args in calls))
+                self.assertTrue(any(args[:4] == ["--signal=TERM", "--kill-after=30s", "24m", "gradle"] for args in calls))
+                self.assertTrue(any(args[:4] == ["--signal=TERM", "--kill-after=5s", "26m", "adb"] for args in calls))
+                self.assertTrue(any(args[:4] == ["--signal=TERM", "--kill-after=5s", "28m", "python3"] for args in calls))
                 self.assertIn("live-log-stopped", self.files)
         source = (SCRIPTS / "run-device-qa.sh").read_text()
         self.assertIn('kill "$QA_HEARTBEAT_PID"', source)
         self.assertIn('wait "$QA_HEARTBEAT_PID"', source)
         workflow = (SCRIPTS.parent / ".github/workflows/tv-smoke.yml").read_text()
-        self.assertIn('timeout-minutes: 25', workflow)
+        self.assertIn("timeout-minutes: ${{ matrix.name == 'tv4k' && 30 || 25 }}", workflow)
         self.assertIn('timeout-minutes: 45', workflow)
 
     def test_process_budgets_keep_kill_grace_and_stage_limits(self):

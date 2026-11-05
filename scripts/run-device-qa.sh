@@ -125,18 +125,19 @@ configure_device() {
 run_stage device-setup configure_device "$1" "$2"
 timeout --kill-after=5s 5s free -m > qa/host-memory-before.txt || true
 
-# Same seven tests took 809s in run 41927931286 versus 588s in 41919417173
-# (1.38x software-renderer variance), projecting about 960s for the full 4K
-# suite before removing duplicate synchronization. Bound that target at 18m;
-# keep its trace/heartbeat alive beyond the test deadline. Other targets retain
-# their budgets, and the workflow's 25m emulator / 45m job limits stay unchanged.
+# 4K software rendering is a functional gate, not a device latency benchmark.
+# Run 41964523868 completed the expanded suite in about 17m; 41967681737
+# reached seven passing cases at 18m and was killed while the next was active
+# (stage exit 124, no assertion failure). Allow a finite 24m for this target's
+# shared-runner variance, with live diagnostics and kill grace intact. Keep
+# all classes/pixel gates and the other targets' existing limits unchanged.
 CINEMA_INSTRUMENTATION_BUDGET=12m
 CINEMA_TRACE_BUDGET=14m
 CINEMA_HEARTBEAT_BUDGET=18m
 if [ "$1" = 3840x2160 ]; then
-  CINEMA_INSTRUMENTATION_BUDGET=18m
-  CINEMA_TRACE_BUDGET=20m
-  CINEMA_HEARTBEAT_BUDGET=22m
+  CINEMA_INSTRUMENTATION_BUDGET=24m
+  CINEMA_TRACE_BUDGET=26m
+  CINEMA_HEARTBEAT_BUDGET=28m
 fi
 
 # Keep main's continuously captured trace, with a finite lifetime and cleanup.

@@ -14,9 +14,11 @@ import java.io.IOException
 import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
+import java.util.UUID
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.collect
@@ -40,18 +42,21 @@ class LibreTvProtocolTest {
     private lateinit var db: CinemaLibraryDatabase
     private lateinit var server: FixtureServer
     private lateinit var repo: LibreTvRepository
-    private val prefName = "libretv-protocol-fixture"
+    // A late SharedPreferences.apply() from another case must never revive our fixture.
+    private val prefName = "libretv-protocol-fixture-${UUID.randomUUID()}"
+    private lateinit var fixturePreferences: SharedPreferences
     private val work = MediaItem("catalog:test", "Fixture film", year = "2020",
         aliases = listOf("Fixture alias"), metadataIds = mapOf("catalog" to "test"))
 
     @Before fun setUp() {
         context = ApplicationProvider.getApplicationContext()
-        context.deleteSharedPreferences(prefName)
+        fixturePreferences = context.getSharedPreferences(prefName, Context.MODE_PRIVATE)
+        assertTrue("Protocol fixture preferences must start empty", fixturePreferences.all.isEmpty())
         db = Room.inMemoryDatabaseBuilder(context, CinemaLibraryDatabase::class.java).build()
         server = FixtureServer()
         val isolated = object : ContextWrapper(context) {
             override fun getSharedPreferences(name: String, mode: Int): SharedPreferences =
-                context.getSharedPreferences(prefName, mode)
+                fixturePreferences
         }
         repo = LibreTvRepository(isolated, LocalMediaLibrary(
             databaseProvider = { db },
@@ -60,12 +65,53 @@ class LibreTvProtocolTest {
             configureServer(this@LibreTvProtocolTest.server.base)
             addSource("Fixture source", "${this@LibreTvProtocolTest.server.base}/provider")
         }
+        assertEquals("Only this case's loopback source is configured",
+            listOf("${server.base}/provider"), repo.sources().map { it.url })
     }
 
     @After fun tearDown() {
-        server.close()
-        db.close()
-        context.deleteSharedPreferences(prefName)
+        try {
+            if (::server.isInitialized) server.close()
+        } finally {
+            try {
+                if (::db.isInitialized) db.close()
+            } finally {
+                if (::fixturePreferences.isInitialized) {
+                    // Commit on the same instance drains its pending apply writes before deletion.
+                    assertTrue("Protocol fixture cleanup must persist", fixturePreferences.edit().clear().commit())
+                }
+                if (::context.isInitialized) context.deleteSharedPreferences(prefName)
+            }
+        }
+    }
+
+    @Test fun overlappingFixturesDoNotShareSourcesOrPendingPreferenceWrites() = runBlocking {
+        val previous = LibreTvProtocolTest()
+        try {
+            previous.setUp()
+            assertNotEquals("Concurrent fixtures must have distinct backing files", prefName, previous.prefName)
+            withTimeout(5_000) {
+                val firstWrite = CompletableDeferred<Unit>()
+                val continueWriting = CompletableDeferred<Unit>()
+                val writer = launch(Dispatchers.IO) {
+                    previous.repo.addSource("Pending fixture source", "${previous.server.base}/other")
+                    firstWrite.complete(Unit)
+                    continueWriting.await()
+                    repeat(16) {
+                        previous.repo.addSource("Pending fixture source $it", "${previous.server.base}/other")
+                    }
+                }
+                firstWrite.await()
+                assertEquals(listOf("${server.base}/provider"), repo.sources().map { it.url })
+                continueWriting.complete(Unit)
+                repeat(16) {
+                    assertEquals(listOf("${server.base}/provider"), repo.sources().map { it.url })
+                }
+                writer.join()
+            }
+            assertEquals(2, previous.repo.sources().size)
+        } finally { previous.tearDown() }
+        assertEquals(listOf("${server.base}/provider"), repo.sources().map { it.url })
     }
 
     private fun row(id: String, year: String = "2020", typeName: String = "电影") = JSONObject()

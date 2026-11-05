@@ -110,8 +110,7 @@ frame, but did not wait for the separate window-entry completion.
 The debug-only, non-exported `NotoTestActivity` now records the real
 `onEnterAnimationComplete()` callback in a per-instance latch. The instrumentation
 thread waits at most ten seconds before creating/capturing the specimen content.
-There is no fixed sleep, injected callback, no-animation shortcut or screenshot
-retry. A host that stops is rejected rather than reusing stale readiness; recreation
+There is no fixed sleep, injected callback or screenshot retry. A host that stops is rejected rather than reusing stale readiness; recreation
 creates a new latch. The callback is not itself a physical-presentation fence, so
 the existing fresh-frame, Compose-idle, focus/package and coordinate gates remain.
 The full-app TV test host and device animation settings are unchanged.
@@ -133,6 +132,75 @@ Callback sources:
 - https://developer.android.com/reference/android/app/Activity#onEnterAnimationComplete()
 - https://android.googlesource.com/platform/frameworks/base/+/android-8.0.0_r36/services/core/java/com/android/server/wm/AppWindowToken.java
 - https://android.googlesource.com/platform/frameworks/base/+/android-13.0.0_r1/services/core/java/com/android/server/wm/AppTransitionController.java
+
+### v0.7 specimen launch and epoch fence
+
+Candidate run `41964523868` exposed a smaller tonal contamination on API33 TV1080:
+black became RGB (1,1,1) and glyph interiors (251,251,251), despite the real entry
+callback. Against the passing v0.6 same-target images, background and white glyph
+masks had identical geometry, and each old gray value mapped to just one new gray
+value (approximately `new = 0.9806 * old + 1`, RMS 0.07 gray levels). The font,
+host and capture source had not changed. This is evidence of compositor tonal
+contamination, not a CJK stroke or weight change; the specific layer is not proven.
+
+The font specimen rule now requests `FLAG_ACTIVITY_NO_ANIMATION` only for its
+own `NotoTestActivity` launch. This test isolates font rendering and is not an
+Activity-transition acceptance test. Product activities, the shared host and global
+animation settings are unchanged. The real entry callback, uninterrupted-host
+requirement and exact opaque-black/pixel-hash assertions remain mandatory.
+
+The previous fresh-frame fence could accept a late old metrics callback after a
+new epoch had drawn. The replacement arms before mutation, takes timestamps from
+public `Choreographer.FrameCallback` callbacks, records only the first actual draw
+of the target epoch, and waits at most ten seconds for a matching-or-later
+`FrameMetrics.VSYNC_TIMESTAMP`. Unarmed/wrong epochs, stale metrics and redraws
+that would move the first-draw fence are covered by a device regression test.
+Callbacks/listeners are removed in `finally`; no pixel retries or relaxed gates
+are introduced. Each capture JSON records target epoch, first-draw timestamp and
+matched actual-vsync timestamp. This proves the app-frame ordering, **not** physical
+SurfaceFlinger presentation; display readback and black-background guards remain
+separate requirements. Exact-candidate full device execution is still required.
+
+### Android 12+ starting-window isolation
+
+Run `41967681737` kept the strict TV1080 black guard failing (RGB 4), despite
+NO_ANIMATION and the corrected epoch fence. Phone/API30 and API26 passed all ten
+font specimens. The TV failure had black 0 → 4, white 255 → 238, and background
+48 → 48, matching an approximately 8% gray-48 overlay. Its device log records a
+`Splash Screen dev.cinematv` starting window for `NotoTestActivity`, followed by
+`SPLASHSCREEN_EXIT_ANIM`. The system splash exit is separate from the Activity
+entry callback/NO_ANIMATION request. Those earlier changes alone did not solve it.
+
+The non-exported font host now has a debug-only theme inheriting the unchanged
+Material.NoActionBar parent with `android:windowDisablePreview=true`. AOSP13
+`ActivityRecord.validateStartingWindowTheme` honors this for app-origin launches;
+the recorded instrumentation launch is from the app UID, not Launcher/SystemUI.
+A defensive API31 public `SplashScreen` exit listener immediately removes any
+transferred splash instead of animating it and is cleared on destroy. It does not
+persist a global splash theme. No unconditional splash-callback wait is used,
+because that callback is only issued when a splash exists. The capture provenance
+records this isolation and any exit removals. A device test verifies both the
+font-host override and the unchanged MainActivity effective theme. This isolates a debug test host, not product startup/splash transitions. The
+isolated OfficialLibreTvPlaybackAcceptanceTest also reuses NotoTestActivity, so
+its phone/TV runs must be revalidated with this host change. Product activities,
+brand behavior and their tests remain unchanged. The exact black, native-weight, raw-hash,
+foreground and frame-epoch assertions are still mandatory, with no image retry.
+
+Sources:
+- https://android.googlesource.com/platform/frameworks/base/+/android-13.0.0_r1/services/core/java/com/android/server/wm/ActivityRecord.java
+- https://developer.android.com/reference/android/R.attr#windowDisablePreview
+- https://developer.android.com/reference/android/window/SplashScreen#setOnExitAnimationListener(android.window.SplashScreen.OnExitAnimationListener)
+- https://developer.android.com/reference/android/window/SplashScreenView#remove()
+
+The same second candidate's 4K run ended separately at the 18-minute whole-suite
+harness deadline (exit 124), after seven passing long navigation/library cases and
+while the next was still active, before the font class. It is not a font pass or a
+font failure. The first candidate completed the full 4K suite in about 17 minutes.
+Only 4K's functional harness budget is now 24 minutes (trace 26, heartbeat 28,
+emulator step 30; job 45). Other targets, per-operation deadlines, classes and pixel
+assertions stay unchanged; actual timeout/failure propagation remains tested.
+This gives software-renderer/shared-runner variance headroom, not a performance
+certification or permission to ignore an unfinished run.
 
 ### API26 readback compatibility
 

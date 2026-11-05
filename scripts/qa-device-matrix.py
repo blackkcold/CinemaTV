@@ -11,9 +11,9 @@ DEVICES = [
     {"name": "tv4k", "target": "default", "api": 33, "size": "3840x2160", "density": 640,
      "classes": "dev.cinematv.TvUiRegressionTest,dev.cinematv.TvWorkNavigationTest,dev.cinematv.TvManualWorkAssociationTest,dev.cinematv.TvLibraryCatalogControlsTest,dev.cinematv.TvRecommendationDashboardTest,dev.cinematv.GlassMaterialSmokeTest,dev.cinematv.ui.typography.NotoFontsDeviceTest"},
     # Minimum-supported Android: offline fonts, glass fallback and brand motion,
-    # without duplicating the full navigation/player matrix or skipping AGSL.
+    # plus the short recommendation/license integration class; no duplicate full navigation/player chain.
     {"name": "compat26", "target": "google_apis", "api": 26, "size": "1920x1080", "density": 320,
-     "classes": "dev.cinematv.ui.typography.NotoFontsDeviceTest,dev.cinematv.GlassMaterialSmokeTest#materialSurvivesFocusPressReducedMotionMissingArtAndFailure,dev.cinematv.CinemaBrandStartupTest"},
+     "classes": "dev.cinematv.ui.typography.NotoFontsDeviceTest,dev.cinematv.GlassMaterialSmokeTest#materialSurvivesFocusPressReducedMotionMissingArtAndFailure,dev.cinematv.CinemaBrandStartupTest,dev.cinematv.TvRecommendationDashboardTest"},
 ]
 
 
