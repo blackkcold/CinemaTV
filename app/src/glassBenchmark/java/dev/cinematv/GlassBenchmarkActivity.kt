@@ -7,6 +7,7 @@ import android.os.Looper
 import android.util.Log
 import android.view.KeyEvent
 import android.view.View
+import android.view.Window
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -51,6 +52,8 @@ class GlassBenchmarkActivity : ComponentActivity() {
     private var fontFailures = emptySet<String>()
     private var recorder: FrameTimingRecorder? = null
     private var measuring = false
+    private var originalWindowCallback: Window.Callback? = null
+    private var inputWindowCallback: Window.Callback? = null
     private var inputIndex = 0
     private var startStatus = JSONObject()
     private val inputs = JSONArray()
@@ -104,6 +107,19 @@ class GlassBenchmarkActivity : ComponentActivity() {
                 }
             }
         }
+        // Observe the public Window callback before forwarding every event unchanged.
+        // ComponentActivity's override is restricted to AndroidX; do not call or
+        // override that API and do not swallow native Back/D-pad dispatch.
+        val delegate = requireNotNull(window.callback)
+        originalWindowCallback = delegate
+        val inputObserver = object : Window.Callback by delegate {
+            override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+                observeNativeKey(event)
+                return delegate.dispatchKeyEvent(event)
+            }
+        }
+        inputWindowCallback = inputObserver
+        window.callback = inputObserver
         Log.i(TAG, "created $runId")
     }
 
@@ -169,7 +185,7 @@ class GlassBenchmarkActivity : ComponentActivity() {
             Log.i(TAG, "complete $runId")
         }
     }
-    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+    private fun observeNativeKey(event: KeyEvent) {
         if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0 && event.keyCode in INPUT_KEYS) {
             val start = System.nanoTime()
             val input = JSONObject().put("index", inputIndex++).put("key", event.keyCode)
@@ -183,9 +199,11 @@ class GlassBenchmarkActivity : ComponentActivity() {
                 Log.i(TAG, "input $input")
             }, 520)
         }
-        return super.dispatchKeyEvent(event)
     }
     override fun onDestroy() {
+        if (window.callback === inputWindowCallback) originalWindowCallback?.let { window.callback = it }
+        inputWindowCallback = null
+        originalWindowCallback = null
         recorder?.cancel()
         handler.removeCallbacksAndMessages(null)
         if (::fixture.isInitialized) fixture.close()

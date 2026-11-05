@@ -182,6 +182,14 @@ class ProtocolTest(unittest.TestCase):
             (root / "runs.json").write_text(json.dumps(runs))
             self.assertFalse(analyze(root)["completeComparison"])
 
+    def test_native_keys_forward_through_public_window_callback(self):
+        source = (ROOT / "app/src/glassBenchmark/java/dev/cinematv/GlassBenchmarkActivity.kt").read_text()
+        self.assertIn("object : Window.Callback by delegate", source)
+        self.assertIn("observeNativeKey(event)\n                return delegate.dispatchKeyEvent(event)", source)
+        self.assertNotIn("super.dispatchKeyEvent", source)
+        self.assertNotIn('@SuppressLint("RestrictedApi")', source)
+        self.assertIn("KeyEvent.KEYCODE_BACK", source)
+
     def test_percentile(self):
         self.assertIsNone(percentile([], .95))
         self.assertEqual(2.5, percentile([1, 2, 3, 4], .5))
