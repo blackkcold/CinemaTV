@@ -1,4 +1,6 @@
 """One authoritative real-key sequence for the driver, receipts and analysis."""
+import re
+
 QUALITY = {"FULL": "ENHANCED", "BLUR": "BACKDROP", "BASIC": "BASIC"}
 ORDERS = (("FULL", "BLUR", "BASIC"), ("BLUR", "BASIC", "FULL"), ("BASIC", "FULL", "BLUR"))
 # Start on Home's primary hero. Focus-only navigation cannot activate a route.
@@ -42,9 +44,15 @@ def poster_catalog(state, catalog=None):
     shows = state.get("tvShowKeys", [])
     assert len(shows) == 5 and all(isinstance(k, str) and k for k in shows) and len(set(shows)) == 5, "Expected first five stable unique show presentationKeys"
     assert state.get("historyCount") == 0, "Continue history changes the native first rail"
+    expected = state.get("expectedDetailKey")
+    assert isinstance(expected, str) and re.fullmatch(r"entry:[0-9a-f]{64}", expected), "Missing or invalid independently derived fixture detail key"
+    assert expected != keys[2], "Resolved fixture entry must differ from source-less metadata identity"
+    expected_route = "DETAIL:" + keys[2] if state.get("route") == "DETAIL" else "HOME"
+    assert state.get("focusRoute") == expected_route, "Wrong original poster detail focus route"
     if catalog is not None:
-        assert (keys, shows) == catalog, "Catalog identity/order changed during profile"
-    return (keys, shows)
+        assert (keys, shows) == catalog[:2], "Catalog identity/order changed during profile"
+        assert expected == catalog[2], "Expected resolved detail identity changed within trial"
+    return (keys, shows, expected)
 
 
 def poster_origin(state, catalog=None):
@@ -58,7 +66,7 @@ def poster_step(state, offset, catalog):
     offset %= len(POSTER_CYCLE)
     assert state["route"] == POSTER_CYCLE[offset][1], "Wrong poster route"
     if offset == 7:
-        assert state.get("selectedKey") == catalog[0][2], "Detail selected identity must be featured[2]"
+        assert state.get("selectedKey") == catalog[2], "Detail selected identity must be the independently derived fixture source entry"
     elif offset == 11:
         poster_origin(state, catalog)
     else:

@@ -63,11 +63,11 @@ val Accent = Color(0xFFD5DDE9)
 val DeepRose = Color(0xFF3A1E28)
 
 // Stable layout modifiers: focus/press only change the existing graphics layers.
-private val GlassActionLabelPadding = glassActionContentPadding(horizontal = 16.dp)
-private val GlassActionIconPadding = glassActionContentPadding(horizontal = 8.dp)
+private val GlassActionLabelPadding = Modifier.glassActionContentPadding(horizontal = 16.dp)
+private val GlassActionIconPadding = Modifier.glassActionContentPadding(horizontal = 8.dp)
 
 /** Measure content once; fixed-size controls give up padding before clipping their text. */
-private fun glassActionContentPadding(horizontal: Dp) = Modifier.layout { measurable, constraints ->
+private fun Modifier.glassActionContentPadding(horizontal: Dp) = layout { measurable, constraints ->
     // Keep at least 8dp on each side under bounded width. The remaining preferred
     // padding is added after measurement, so 80dp icon+text and 48dp labels still fit.
     val minimumInset = 8.dp.roundToPx()

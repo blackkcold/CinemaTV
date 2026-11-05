@@ -49,8 +49,19 @@ ACTION_LAYOUT = [("dev.cinematv.GlassActionLayoutTest", method) for method in (
 )]
 
 
+RAIL_TRAVERSAL = [("dev.cinematv.ContentRailTraversalTest", method) for method in (
+    "visibleNativeTargetsTransferSynchronouslyWithoutAdvancingAFrame",
+    "crossingViewportKeepsSmoothScrollAndFocusesTheExactStableKey",
+    "rapidNativeReversalCancelsOldPendingDestination",
+    "nativeUpInterruptsPendingLazyMoveWithoutStealingNavigation",
+    "nativeDownInterruptsPendingLazyMoveWithoutStealingOtherControl",
+    "nativeBackRetainsItsRouteOwnerWhileLazyMoveIsPending",
+    "reorderedDataCannotCompletePendingMoveUsingItsOldIndex",
+)]
+
+
 def expected_for(layout):
-    return [PRODUCTION, BUTTON, BUTTON_EDGE] + ([MATERIAL, *MOTION, *FOCUS_RESTORE, *ACTION_LAYOUT] if layout == "tv" else [])
+    return [PRODUCTION, BUTTON, BUTTON_EDGE] + ([MATERIAL, *MOTION, *FOCUS_RESTORE, *ACTION_LAYOUT, *RAIL_TRAVERSAL] if layout == "tv" else [])
 
 
 ERROR_MARKERS = ("ANR in dev.cinematv", "ANR in com.android", "FATAL EXCEPTION", "Application Not Responding:",

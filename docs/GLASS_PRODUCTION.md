@@ -87,6 +87,12 @@ overlays remain a separate verification requirement.
   cancelled work cannot be overwritten by a stale restoration. Dedicated native
   regression tests cover interrupted entry frames, lazy preparation/attachment,
   route changes, missing targets and unchanged normal restoration.
+- Horizontal rail traversal transfers focus to already attached cards in the
+  native key event instead of waiting for scrolling or two rendered frames.
+  Offscreen preparation keeps smooth scrolling and hands focus over as soon as
+  the stable-key target attaches. New input, route/data changes and newer focus
+  ownership cancel pending work. Dedicated actual-rail regressions cover visible
+  movement, animated viewport crossings, rapid reversal and interruptions.
 - Full release still requires the repository's media, D-pad, lifecycle and release
   gates. A targeted glass pass is not complete release acceptance. SwiftShader
   timing is not a physical television GPU or presented-frame guarantee.

@@ -105,18 +105,32 @@ keys, measured indices 14–37):
 1. Down to `rail:为你精选`, featured index 0.
 2. Right four times: indices 1, 2, 3, 4.
 3. Left twice: indices 3, 2.
-4. Center: real Detail route, selected identity exactly featured[2].
+4. Center: real Detail route whose `focusRoute` is `DETAIL:` plus featured[2]'s original
+   metadata key; selected identity must equal that item's independently derived fixture
+   provider entry key after source resolution.
 5. Back: Home, same rail/bookmark at index 2.
 6. Left twice: indices 1, 0.
 7. Up: Home hero `hero/primary` again.
 
 The activity publishes passive `featuredKeys` and `tvShowKeys` (the first five native
 `presentationKey` values each), explicit `movieCount`/`tvShowCount` (24/24), `historyCount`,
-`selectedKey`, and existing route/bookmark state. Limiting key arrays keeps every logcat
+`selectedKey`, `focusRoute`, `expectedDetailKey`, and existing route/bookmark state. Limiting key arrays keeps every logcat
 receipt below Android's per-entry payload limit; all five traversed movie identities are
 covered. Assertions use these keys, never baked-in hashes. Clean isolated `pm clear`
 requires 24 movies, 24 shows and no continue history. The reported catalog identities and order must
 remain stable within warmup, both measured cycles and across the nine poster trials.
+The source-less metadata identity legitimately differs from the resolved source entry.
+`expectedDetailKey` is computed using production `MediaDomainMapper.entryId` on featured[2]
+with the independently known fixture source (`fixture.base + "/provider"`), never from
+`selected`. This fixture preserves the catalog item ID when resolving its source; that
+mapping is not assumed for arbitrary providers. Missing featured[2] or an already
+source-backed catalog item produces an empty expectation and is rejected. A nonempty
+entry hash and exact equality are required, not title matching or merely a Detail page.
+Original detail `focusRoute` and resolved `selectedKey` must both match. All snapshots,
+including preparation/warmup, lock the expected resolved identity within one trial.
+Different launches may use different loopback ports and therefore different resolved
+keys; only the original movie/show catalog identities and order are compared across runs.
+Legacy poster receipts missing either new field are rejected, not reinterpreted as passing.
 The driver and analyzer reject wrong keys, routes, selected identity, bookmarks, origin,
 catalog, warmup or counts. The activity independently refuses poster measurement unless
 its native Home bookmark is hero primary and history is empty. Nothing sets focus,

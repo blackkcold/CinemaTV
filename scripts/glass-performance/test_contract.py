@@ -1,4 +1,5 @@
 import copy
+import hashlib
 import importlib.util
 import json
 from pathlib import Path
@@ -267,13 +268,21 @@ class ProtocolTest(unittest.TestCase):
         self.assertIsNone(percentile([], .95))
         self.assertEqual(2.5, percentile([1, 2, 3, 4], .5))
 
-def poster_fixture():
+def source_entry_key(url, item_id):
+    # Fixture URLs and IDs are ASCII; matches production length-prefixed entryId.
+    value = "".join(f"{len(part)}:{part}" for part in (url, item_id))
+    return "entry:" + hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def poster_fixture(port=12345):
     data = copy.deepcopy(fixture())
     profile = "poster-motion"
     data["profile"] = profile
     origin = dict(data["start"], profile=profile, bookmarkRegion="hero", bookmarkItem="primary",
                   featuredKeys=[f"movie-{i}" for i in range(5)], tvShowKeys=[f"show-{i}" for i in range(5)],
-                  selectedKey="", historyCount=0, movieCount=24, tvShowCount=24)
+                  selectedKey="", focusRoute="HOME",
+                  expectedDetailKey=source_entry_key(f"http://127.0.0.1:{port}/provider", "movie-2"),
+                  historyCount=0, movieCount=24, tvShowCount=24)
     data["start"], data["end"] = copy.deepcopy(origin), copy.deepcopy(origin)
     data["inputs"], data["windows"] = [], []
     indices = (0, 1, 2, 3, 4, 3, 2, None, 2, 1, 0, None)
@@ -285,7 +294,8 @@ def poster_fixture():
         offset = (index - 2) % 12
         if index >= 2:
             if offset == 7:
-                state.update(bookmarkRegion="detail", bookmarkItem="play", selectedKey=origin["featuredKeys"][2])
+                state.update(bookmarkRegion="detail", bookmarkItem="play", selectedKey=origin["expectedDetailKey"],
+                             focusRoute="DETAIL:" + origin["featuredKeys"][2])
             elif offset != 11:
                 state.update(bookmarkRegion="rail:为你精选", bookmarkItem=origin["featuredKeys"][indices[offset]])
         state["draws"]["basic"] = (index + 1) * 10
@@ -303,6 +313,35 @@ def poster_fixture():
 
 
 class PosterProfileTest(unittest.TestCase):
+    def test_resolved_detail_identity_and_original_route_are_both_required(self):
+        data = poster_fixture()
+        self.assertNotEqual(data["start"]["featuredKeys"][2], data["inputs"][9]["after"]["selectedKey"])
+        self.assertTrue(frame_summary(data, "poster-motion")["validForComparison"])
+        for index in (9, 21, 33):
+            for mutation in ("metadata", "wrong-source", "wrong-id", "wrong-origin"):
+                data = poster_fixture()
+                state = data["inputs"][index]["after"]
+                if mutation == "metadata": state["selectedKey"] = state["featuredKeys"][2]
+                elif mutation == "wrong-source": state["selectedKey"] = source_entry_key("http://127.0.0.1:54321/provider", "movie-2")
+                elif mutation == "wrong-id": state["selectedKey"] = source_entry_key("http://127.0.0.1:12345/provider", "movie-3")
+                else: state["focusRoute"] = "DETAIL:" + state["featuredKeys"][3]
+                with self.subTest(index=index, mutation=mutation), self.assertRaises(AssertionError):
+                    frame_summary(data, "poster-motion")
+
+    def test_detail_contract_fields_are_required_and_stable_through_all_phases(self):
+        for target in ("start", "end", *range(38)):
+            for mutation in ("empty", "malformed", "changed", "metadata", "missing-expected", "missing-route"):
+                data = poster_fixture()
+                state = data[target] if isinstance(target, str) else data["inputs"][target]["after"]
+                if mutation == "empty": state["expectedDetailKey"] = ""
+                elif mutation == "malformed": state["expectedDetailKey"] = "not-an-entry"
+                elif mutation == "changed": state["expectedDetailKey"] = source_entry_key("http://127.0.0.1:54321/provider", "movie-2")
+                elif mutation == "metadata": state["expectedDetailKey"] = state["featuredKeys"][2]
+                elif mutation == "missing-expected": del state["expectedDetailKey"]
+                else: del state["focusRoute"]
+                with self.subTest(target=target, mutation=mutation), self.assertRaises(AssertionError):
+                    frame_summary(data, "poster-motion")
+
     def test_exact_profiles_and_counts(self):
         self.assertEqual([19, 22, 22, 21, 23, 4, 20, 22, 21, 23, 4], [v[0] for v in cycle_for(DEFAULT_PROFILE)])
         self.assertEqual([20, 22, 22, 22, 22, 21, 21, 23, 4, 21, 21, 19], [v[0] for v in cycle_for("poster-motion")])
@@ -414,7 +453,9 @@ class PosterProfileTest(unittest.TestCase):
             (root / "setup.json").write_text(json.dumps({"profile": "poster-motion", "status": "ready"}))
             runs = []
             for run_id, tier in EXPECTED_RUNS:
-                data = poster_fixture()
+                # Independent launches may have different fixture ports/resolved
+                # entries, while metadata identity/order must remain unchanged.
+                data = poster_fixture(port=12000 + len(runs))
                 data.update(runId=run_id, expectedMode=tier, requested=QUALITY[tier])
                 def counts(value):
                     return {mode.lower(): value if tier == mode else 0 for mode in ("FULL", "BLUR", "BASIC")}
@@ -449,8 +490,8 @@ class PosterProfileTest(unittest.TestCase):
                         state["featuredKeys"] = ["other-" + k for k in state["featuredKeys"]]
                         if state["bookmarkRegion"] == "rail:为你精选":
                             state["bookmarkItem"] = "other-" + state["bookmarkItem"]
-                        if state["selectedKey"]:
-                            state["selectedKey"] = "other-" + state["selectedKey"]
+                        if state["route"] == "DETAIL":
+                            state["focusRoute"] = "DETAIL:" + state["featuredKeys"][2]
                     host_path = root / "r1-full/inputs.json"
                     original_host = host_path.read_text()
                     host_path.write_text(json.dumps([{"native": v} for v in value["inputs"]]))
@@ -471,6 +512,7 @@ class PosterProfileTest(unittest.TestCase):
                      featuredKeys=["entry:" + str(i).zfill(64) for i in range(5)],
                      tvShowKeys=["entry:" + str(i + 5).zfill(64) for i in range(5)],
                      selectedKey="entry:" + "s" * 64, bookmarkItem="entry:" + "b" * 64,
+                     focusRoute="DETAIL:entry:" + "f" * 64, expectedDetailKey="entry:" + "e" * 64,
                      bookmarkRegion="rail:为你精选", requested="ENHANCED", expectedMode="FULL",
                      actualMode="FULL", reason="OPTICAL_RUNTIME_FAILURE" * 2,
                      densityDpi=320, widthPx=1920, heightPx=1080,
@@ -505,6 +547,12 @@ class PosterProfileTest(unittest.TestCase):
             self.assertIn(f'.put("{field}",', activity)
         self.assertIn('.put("focusOwnerBefore", focusJson())', activity)
         self.assertIn('.put("focusOwner", focusJson())', activity)
+        self.assertIn('.put("focusRoute", model.focusRoute)', activity)
+        self.assertIn('.put("expectedDetailKey", expectedDetailKey())', activity)
+        expected = activity.split("private fun expectedDetailKey(): String {", 1)[1].split("private fun status()", 1)[0]
+        self.assertIn('model.featured.getOrNull(2)?.takeIf { it.source == null } ?: return ""', expected)
+        self.assertIn('MediaDomainMapper.entryId(item.copy(source = TvSource("fixture", "测试片库", "${fixture.base}/provider")))', expected)
+        self.assertNotIn("model.selected", expected)
         for banned in ("LocalMotion", "mainClock", "requestFocus()", "focusCoordinator.remember", "selected =", "scrollToItem"):
             self.assertNotIn(banned, activity)
         workflow = (ROOT / ".github/workflows/production-glass-performance.yml").read_text()

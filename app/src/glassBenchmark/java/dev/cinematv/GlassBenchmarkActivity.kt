@@ -15,6 +15,8 @@ import androidx.activity.viewModels
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.core.view.WindowCompat
+import dev.cinematv.data.MediaDomainMapper
+import dev.cinematv.data.TvSource
 import dev.cinematv.ui.shared.presentationKey
 import dev.cinematv.ui.tv.TvRootApp
 import dev.cinematv.ui.tv.focus.LocalTvFocusOwnerObserver
@@ -151,6 +153,12 @@ class GlassBenchmarkActivity : ComponentActivity() {
             .put("restoreRequestedAtNanos", value.restoreRequestedAtNanos ?: JSONObject.NULL)
             .put("restoreFinishedAtNanos", value.restoreFinishedAtNanos ?: JSONObject.NULL)
     }
+    private fun expectedDetailKey(): String {
+        // This fixture maps the catalog ID to the same ID at its known provider.
+        // Derive independently of selected, which legitimately changes after resolution.
+        val item = model.featured.getOrNull(2)?.takeIf { it.source == null } ?: return ""
+        return MediaDomainMapper.entryId(item.copy(source = TvSource("fixture", "测试片库", "${fixture.base}/provider")))
+    }
     private fun status(): JSONObject {
         val value = observation
         val bookmark = model.focusCoordinator.last(model.focusRoute)
@@ -161,6 +169,7 @@ class GlassBenchmarkActivity : ComponentActivity() {
             .put("featuredKeys", JSONArray(model.featured.take(5).map { it.presentationKey }))
             .put("tvShowKeys", JSONArray(model.tvShows.take(5).map { it.presentationKey }))
             .put("historyCount", model.history().size).put("selectedKey", model.selected?.presentationKey ?: "")
+            .put("focusRoute", model.focusRoute).put("expectedDetailKey", expectedDetailKey())
             .put("bookmarkRegion", bookmark?.region ?: "").put("bookmarkItem", bookmark?.itemKey ?: "")
             .put("focusOwner", focusJson())
             .put("requested", requested.name).put("expectedMode", expected.name)

@@ -6,7 +6,7 @@ import json
 import math
 from pathlib import Path
 import statistics
-from protocol import DEFAULT_PROFILE, PROFILES, EXPECTED_RUNS, QUALITY, cycle_for, validate_profile, poster_origin, poster_step
+from protocol import DEFAULT_PROFILE, PROFILES, EXPECTED_RUNS, QUALITY, cycle_for, validate_profile, poster_catalog, poster_origin, poster_step
 
 MODES = ("FULL", "BLUR", "BASIC")
 
@@ -47,6 +47,8 @@ def frame_summary(data, profile=DEFAULT_PROFILE):
     catalog = None
     if profile == "poster-motion":
         catalog = poster_origin(data["start"])
+        for state in [data["end"], *(v["after"] for v in data["inputs"])]:
+            poster_catalog(state, catalog)
         poster_origin(data["end"], catalog)
         warmup = [v for v in data["inputs"] if not v["measured"]]
         assert [v["index"] for v in warmup] == list(range(warmup_count)), "Exactly one native warmup cycle plus Up/Down required"
@@ -178,7 +180,11 @@ def analyze(directory, profile=DEFAULT_PROFILE):
                 validate_profile(run, profile)
                 result = frame_summary(data, profile)
                 if profile == "poster-motion":
-                    matrix_catalog = poster_origin(data["start"], matrix_catalog)
+                    # The fixture gets a fresh loopback port on each launch. Its
+                    # resolved entry is stable within a run, not across launches.
+                    catalog = poster_origin(data["start"])[:2]
+                    assert matrix_catalog is None or catalog == matrix_catalog, "Catalog identity/order changed across poster trials"
+                    matrix_catalog = catalog
                 assert result["runId"] == run["runId"] and result["tier"] == run["tier"], "Run identity/tier differs from planned trial"
                 host = json.loads((directory / run["runId"] / "inputs.json").read_text())
                 assert [step["native"] for step in host if step["native"]["measured"]] == [step for step in data["inputs"] if step["measured"]], "Host and native input receipts differ"

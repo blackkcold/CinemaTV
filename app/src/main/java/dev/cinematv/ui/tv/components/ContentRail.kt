@@ -9,7 +9,9 @@ import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.input.key.*
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -29,22 +31,25 @@ fun ContentRail(title: String, items: List<MediaItem>, model: CinemaViewModel, p
     val scope = rememberCoroutineScope()
     val registry = LocalTvFocusRegistry.current
     val effects = LocalTvEffects.current
+    val route = model.focusRoute
+    val focusOwner = LocalNavigationFocusOwner.current
+    val navigationHasFocus by rememberUpdatedState(LocalNavigationHasFocus.current)
     val saved = remember { model.focusCoordinator.restore(model.focusRoute, region) }
     val itemKeys = items.map { it.presentationKey }
+    val currentKeys by rememberUpdatedState(itemKeys)
     RegisterLazyFocusRegion(model, region, state, itemKeys)
     var activeKey by remember { mutableStateOf(saved ?: itemKeys.first()) }
-    var requestedKey by remember { mutableStateOf(activeKey) }
+    val traversal = remember(route, region) { RailFocusTraversal(activeKey) }
     val active = itemKeys.indexOf(activeKey).coerceAtLeast(0)
-    var moving by remember { mutableStateOf(false) }
     var movement by remember { mutableStateOf<Job?>(null) }
-    var generation by remember { mutableIntStateOf(0) }
-    LaunchedEffect(itemKeys) {
+    fun cancelMovement() {
+        traversal.cancel(activeKey)
+        movement?.cancel()
+    }
+    LaunchedEffect(route, itemKeys) {
         // A recommendation refresh must not finish a queued move to an index
         // that now represents a different movie.
-        generation++
-        movement?.cancel()
-        moving = false
-        requestedKey = activeKey
+        cancelMovement()
     }
     Column(Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 12.dp)) {
         Text(title, color = TvColors.Text, fontSize = 22.sp, fontWeight = FontWeight.Bold,
@@ -57,31 +62,67 @@ fun ContentRail(title: String, items: List<MediaItem>, model: CinemaViewModel, p
                 val target = rememberFocusTarget(model, region, item.presentationKey)
                 FocusMediaCard(item, onFocus = {
                     activeKey = item.presentationKey
-                    if (!moving) requestedKey = item.presentationKey
+                    if (!traversal.requestingFocus) cancelMovement()
                     model.onMediaFocus(item, region)
                 }, onClick = { model.open(item) },
                     portrait = portrait, continueWatching = continueWatching,
                     modifier = Modifier.focusRequester(target)
                         .then(if (entryRequester != null && index == active) Modifier.focusRequester(entryRequester) else Modifier)
                         .onPreviewKeyEvent { event ->
-                            if (event.type != KeyEventType.KeyDown || event.key !in listOf(Key.DirectionLeft, Key.DirectionRight)) false
+                            if (event.type != KeyEventType.KeyDown) false
+                            else if (event.key !in listOf(Key.DirectionLeft, Key.DirectionRight)) {
+                                // Vertical navigation, activation and Back retain their
+                                // existing owners, but invalidate an unfinished move.
+                                cancelMovement()
+                                false
+                            }
                             else {
-                                val requested = itemKeys.indexOf(requestedKey).coerceAtLeast(0)
-                                val next = (requested + if (event.key == Key.DirectionRight) 1 else -1).coerceIn(0, items.lastIndex)
-                                if (next != requested) {
-                                    requestedKey = itemKeys[next]; moving = true
-                                    val token = ++generation
+                                val move = traversal.move(currentKeys, activeKey,
+                                    if (event.key == Key.DirectionRight) 1 else -1)
+                                if (move != null) {
                                     movement?.cancel()
-                                    movement = scope.launch {
+                                    fun ownership() = FocusRestorationGuard(route, model.focusCoordinator.last(route),
+                                        focusOwner, focusOwner?.hasFocus ?: navigationHasFocus)
+                                    var guard = ownership()
+                                    val isCurrent = {
+                                        traversal.isCurrent(move, currentKeys) &&
+                                            guard.isCurrent(model.focusRoute, model.focusCoordinator.last(route),
+                                                focusOwner?.hasFocus ?: navigationHasFocus)
+                                    }
+                                    val request = {
+                                        if (!isCurrent()) false else traversal.requestFocus {
+                                            registry.request(route, region, move.targetKey)
+                                        }.also { granted -> if (granted) guard = ownership() }
+                                    }
+                                    val visible = state.layoutInfo.visibleItemsInfo.firstOrNull { it.key == move.targetKey }
+                                    val needsScroll = visible == null || visible.offset < state.layoutInfo.viewportStartOffset ||
+                                        visible.offset + visible.size > state.layoutInfo.viewportEndOffset
+                                    // The native event transfers attached focus now, before
+                                    // launching a coroutine or awaiting animation/frames.
+                                    val transferred = request()
+                                    if (transferred && !needsScroll) traversal.finish(move, activeKey)
+                                    else movement = scope.launch {
                                         try {
-                                            val visible = state.layoutInfo.visibleItemsInfo.firstOrNull { it.index == next }
-                                            if (visible == null || visible.offset < state.layoutInfo.viewportStartOffset || visible.offset + visible.size > state.layoutInfo.viewportEndOffset) {
-                                                val anchor = if (next > active) (next - 2).coerceAtLeast(0) else next
-                                                if (effects.reducedMotion) state.scrollToItem(anchor) else state.animateScrollToItem(anchor)
+                                            coroutineScope {
+                                                val scroll = if (needsScroll) launch {
+                                                    if (isCurrent()) {
+                                                        val anchor = currentKeys.indexOf(move.anchorKey)
+                                                        if (anchor >= 0) {
+                                                            if (effects.reducedMotion) state.scrollToItem(anchor)
+                                                            else state.animateScrollToItem(anchor)
+                                                        }
+                                                    }
+                                                } else null
+                                                try {
+                                                    val granted = transferred || withTimeoutOrNull(2_000) {
+                                                        awaitRailFocusTarget(isCurrent, request) { withFrameNanos { } }
+                                                    } == true
+                                                    if (granted) while (scroll?.isActive == true && isCurrent()) {
+                                                        withFrameNanos { }
+                                                    }
+                                                } finally { scroll?.cancel() }
                                             }
-                                            withFrameNanos { }; withFrameNanos { }
-                                            registry.request(model.focusRoute, region, items[next].presentationKey)
-                                        } finally { if (token == generation) moving = false }
+                                        } finally { traversal.finish(move, activeKey) }
                                     }
                                 }
                                 true
