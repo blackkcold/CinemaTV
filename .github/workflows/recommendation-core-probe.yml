@@ -1,0 +1,70 @@
+name: Recommendation core Android probe
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'experiments/ranksys-android/**'
+      - '.github/workflows/recommendation-core-probe.yml'
+permissions:
+  contents: read
+concurrency:
+  group: recommendation-core-probe-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  android-compatibility:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - api: 26
+            target: google_apis
+          - api: 33
+            target: default
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+      - name: Install compile SDK
+        run: |
+          SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -1)
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" 'platforms;android-36' 'build-tools;36.0.0'
+      - name: Build isolated probe and record dependency and APK sizes
+        run: |
+          set -o pipefail
+          mkdir -p probe-evidence
+          gradle --no-daemon --max-workers=2 -p experiments/ranksys-android :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest :app:reportDependencies :app:archiveCoreSources :app:archiveCoreBinaries | tee probe-evidence/build-and-dependencies.txt
+          sha256sum probe-evidence/runtime-jars/* > probe-evidence/runtime-jar-sha256.txt
+          sha256sum probe-evidence/upstream-sources/* > probe-evidence/upstream-source-sha256.txt
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump permissions experiments/ranksys-android/app/build/outputs/apk/debug/app-debug.apk | tee probe-evidence/permissions.txt
+          if grep -q 'android.permission.INTERNET' probe-evidence/permissions.txt; then exit 1; fi
+          find experiments/ranksys-android/app/build/outputs/apk -name '*.apk' -printf '%p\t%s bytes\n' | tee probe-evidence/apk-sizes.txt
+      - name: Enable KVM
+        run: sudo chmod 666 /dev/kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          target: ${{ matrix.target }}
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          emulator-options: '-no-window -no-audio -no-snapshot -no-boot-anim -gpu swiftshader_indirect -memory 2048'
+          script: bash experiments/ranksys-android/run-device-probe.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ranksys-api${{ matrix.api }}-evidence
+          path: |
+            probe-evidence/
+            experiments/ranksys-android/app/build/outputs/mapping/release/
+            experiments/ranksys-android/app/build/outputs/apk/release/
+            experiments/ranksys-android/app/build/reports/androidTests/
+            experiments/ranksys-android/app/build/outputs/androidTest-results/
+          if-no-files-found: error
