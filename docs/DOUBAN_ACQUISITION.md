@@ -36,6 +36,29 @@ No DpadTV implementation, bundled metadata, images or branding was copied. DpadT
 
 Douban's [published legal statement](https://www.douban.com/about/legal), information/data sections 1–3, states permission requirements for reuse of movie metadata and ratings, derivative applications and collection. Operators must obtain applicable authorization and comply with its permitted endpoints, request limits, retention and attribution. An environment flag or JSON declaration is not proof of permission. Account cookies are not a substitute.
 
-No written permission, provider credentials or permitted live acceptance environment was available for this implementation. No live Douban chart request was made. Transport/parser/cache tests use synthetic fixtures and injected responses; passing them does **not** establish current public-endpoint availability or production access rights.
+No written permission or provider credentials were available for production activation. Transport/parser/cache unit tests use synthetic fixtures and injected responses; passing them does **not** establish production access rights. A later user-requested limited public endpoint probe is documented below and is not a substitute for that activation gate.
 
 The shipped integration is therefore implemented but inactive until the operator completes that activation gate. Real endpoint/schema validation, rights review and hardware acceptance remain separate release qualifications.
+
+## Limited public endpoint probe (2026-11-04)
+
+At the user’s request, an isolated cloud probe made three single-concurrency requests,
+spaced at least ten seconds apart, with an explicit compatibility-probe User-Agent.
+The maximum budget was six, including redirects and retries. No credentials, cookies,
+proxy rotation, browser impersonation or automatic redirect following were used.
+
+- The movie service’s `robots.txt` returned HTTP 200. Its `/j/` JSON path is disallowed;
+  the probe did not call those endpoints.
+- `/top250?start=0&filter=` returned HTTP 200. The existing independent parser read
+  25 records, ranks 1–25 and their ratings, with no warnings and a complete **page**.
+  This is not a complete 250-record snapshot or a TV/series chart.
+- A single linked subject detail returned HTTP 302 to `sec.douban.com` verification.
+  The probe stopped immediately without following the redirect, retrying or requesting
+  a poster. Details and image download therefore remain unverified.
+
+The [sanitized request ledger](evidence/douban-public-probe-20261104.json) records
+status, timestamps and response hashes, not a redistributed dataset or security
+challenge parameters. Raw pages and images are not bundled in the repository.
+This establishes a narrow point-in-time public list/parser compatibility result,
+not ongoing availability, rights to redistribute data, or production activation.
+Acquisition remains disabled by default.

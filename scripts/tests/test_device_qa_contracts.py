@@ -65,6 +65,49 @@ class DeviceQaContractTest(unittest.TestCase):
             '10-library', '11-settings', '12-effects', '13-player', '14-player-panel',
         ])
 
+    def test_remote_trace_retains_synchronized_observation_without_duplicate_idle(self):
+        source = (ROOT / 'app/src/androidTest/java/dev/cinematv/TvUiRegressionTest.kt').read_text()
+        key = source.split('private fun key(', 1)[1].split('private fun assertFullyVisible(', 1)[0]
+        self.assertIn('target.performKeyInput { pressKey(composeKey) }', key)
+        self.assertIn('rule.onAllNodes(isFocused()).fetchSemanticsNodes()', key)
+        self.assertIn('File(directory, "focus-trace.txt").appendText(', key)
+        self.assertLess(key.index('target.performKeyInput'), key.index('val trace ='))
+        self.assertLess(key.index('val trace ='), key.index('.appendText('))
+        self.assertNotIn('rule.waitForIdle()', key)
+        # Back still targets the owning window, including modal dialogs.
+        self.assertIn('RootMatchers.isDialog()', key)
+        self.assertIn('ViewActions.pressBack()', key)
+        self.assertIn('Espresso.pressBack()', key)
+
+    def test_capture_settles_fonts_with_one_synchronized_root_fetch(self):
+        source = (ROOT / 'app/src/androidTest/java/dev/cinematv/TvUiRegressionTest.kt').read_text()
+        fonts = source.split('private fun awaitBundledFonts()', 1)[1].split('private fun awaitPlatformImeVisible(', 1)[0]
+        capture = source.split('private fun captureWindow()', 1)[1].split('private fun screenshot(', 1)[0]
+        self.assertIn('rule.waitUntil(15000)', fonts)
+        self.assertIn('assertTrue("Bundled Noto failed:', fonts)
+        self.assertNotIn('rule.waitForIdle()', fonts + capture)
+        markers = ['awaitBundledFonts()', 'rule.onRoot().fetchSemanticsNode()', 'TvWindowCapture.capture(']
+        positions = [capture.index(marker) for marker in markers]
+        self.assertEqual(positions, sorted(positions))
+        self.assertEqual(capture.count('fetchSemanticsNode()'), 1)
+
+    def test_frame_sample_keeps_all_remote_events_and_closes_listener_on_failure(self):
+        source = (ROOT / 'app/src/androidTest/java/dev/cinematv/TvUiRegressionTest.kt').read_text()
+        sample = source.split('private fun recordFrameMetrics()', 1)[1]
+        self.assertEqual(sample.count('repeat(8)'), 1)
+        loop = sample.split('repeat(8) {', 1)[1].split('}', 1)[0]
+        self.assertEqual(re.findall(r'key\(KeyEvent\.(\w+)\)', loop), [
+            'KEYCODE_DPAD_RIGHT', 'KEYCODE_DPAD_DOWN', 'KEYCODE_DPAD_LEFT', 'KEYCODE_DPAD_UP'])
+        self.assertIn('rule.runOnUiThread { rule.activity.window.addOnFrameMetricsAvailableListener(', sample)
+        self.assertIn('rule.runOnUiThread { rule.activity.window.removeOnFrameMetricsAvailableListener(listener) }', sample)
+        self.assertRegex(sample, r'finally\s*\{\s*try\s*\{\s*rule.runOnUiThread')
+        self.assertRegex(sample, r'finally\s*\{\s*thread.quitSafely\(\); thread.join\(2000\)')
+        self.assertNotIn('rule.runOnIdle', sample)
+        self.assertIn('FrameMetrics.TOTAL_DURATION', sample)
+        self.assertIn('assertTrue("Frame evidence must contain rendered frames", values.isNotEmpty())', sample)
+        self.assertIn('software renderer; see emulator launch log for actual GPU', sample)
+        self.assertNotIn('Lavapipe', sample)
+
     def test_capture_requires_fresh_focused_full_resolution_display(self):
         source = (ROOT / 'app/src/androidTest/java/dev/cinematv/TvWindowCapture.kt').read_text()
         test = (ROOT / 'app/src/androidTest/java/dev/cinematv/TvUiRegressionTest.kt').read_text()
