@@ -69,7 +69,20 @@ private fun recommendationDashboard(rule: ComposeContentTestRule, activity: Comp
         }
         rule.onNodeWithTag("recommendation-licenses-open").performClick()
         rule.onNodeWithTag("recommendation-licenses").assertIsDisplayed()
-        rule.waitUntil(10_000) { rule.onAllNodesWithText("fastutil 7.0.6", substring = true).fetchSemanticsNodes().isNotEmpty() }
+        try {
+            // Focusable TV scroll containers can merge text into a different semantics node.
+            // Inspect the actual text child, not an assumption about merged-tree ownership.
+            rule.waitUntil(10_000) { rule.onAllNodesWithText("fastutil 7.0.6", substring = true,
+                useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
+        } catch (failure: Throwable) {
+            val directory = File(InstrumentationRegistry.getArguments().getString("additionalTestOutputDir")
+                ?: activity.getExternalFilesDir(null)!!.absolutePath, "ui-evidence").apply { mkdirs() }
+            File(directory, "recommendation-licenses-semantics.txt").writeText(
+                rule.onNodeWithTag("recommendation-licenses", useUnmergedTree = true).printToString(maxDepth = 30))
+            captureDashboard(rule, activity, tv, "licenses-failure", "recommendation-licenses")
+            throw failure
+        }
+        captureDashboard(rule, activity, tv, "licenses", "recommendation-licenses")
         if (tv) {
             rule.onNodeWithTag("recommendation-licenses-close").assertIsFocused()
             val licenseText = rule.onNodeWithTag("recommendation-license-text")
@@ -108,11 +121,12 @@ private fun recommendationDashboard(rule: ComposeContentTestRule, activity: Comp
     }
 }
 
-private fun captureDashboard(rule: ComposeContentTestRule, activity: ComponentActivity, tv: Boolean, stage: String) {
+private fun captureDashboard(rule: ComposeContentTestRule, activity: ComponentActivity, tv: Boolean, stage: String,
+    tag: String = "recommendation-dashboard") {
     val directory = File(InstrumentationRegistry.getArguments().getString("additionalTestOutputDir")
         ?: activity.getExternalFilesDir(null)!!.absolutePath, "ui-evidence").apply { mkdirs() }
     // This captures the Compose dialog viewport, not a claim about physical display readback.
-    val bitmap = rule.onNodeWithTag("recommendation-dashboard").captureToImage().asAndroidBitmap()
+    val bitmap = rule.onNodeWithTag(tag).captureToImage().asAndroidBitmap()
     File(directory, "recommendation-${if (tv) "tv" else "phone"}-$stage.png").outputStream().use {
         check(bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it))
     }

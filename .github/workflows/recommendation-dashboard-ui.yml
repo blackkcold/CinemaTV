@@ -33,13 +33,13 @@ jobs:
             api: 33
             target: default
             size: 1920x1080
-            density: 160
+            density: 320
             class: dev.cinematv.TvRecommendationDashboardTest
           - name: compat26
             api: 26
             target: google_apis
             size: 1920x1080
-            density: 160
+            density: 320
             class: dev.cinematv.TvRecommendationDashboardTest
     steps:
       - uses: actions/checkout@v4
