@@ -56,6 +56,15 @@ class InstrumentationContract(unittest.TestCase):
         for forbidden in ("captureToImage(", "PixelCopy", "forceRedraw(", "createBitmap(", "createScaledBitmap("):
             self.assertNotIn(forbidden, source)
 
+    def test_core_lock_filters_external_jars_before_resolving_android_library(self):
+        source = (ROOT / "app/build.gradle.kts").read_text()
+        self.assertIn("incoming.artifactView", source)
+        self.assertIn("componentFilter", source)
+        self.assertIn("ModuleComponentIdentifier", source)
+        self.assertIn("ArtifactTypeDefinition.JAR_TYPE", source)
+        self.assertIn("expected.getValue(artifact.file.name)", source)
+        self.assertNotIn("resolvedConfiguration.resolvedArtifacts", source)
+
     def test_ci_reuses_apks_without_rebuilding_or_media_suite(self):
         workflow = (ROOT / ".github/workflows/production-glass.yml").read_text()
         self.assertIn("branches: [feature/production-glass-v2]", workflow)
