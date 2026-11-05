@@ -120,3 +120,25 @@ val stageRecommendationSources by tasks.registering(Copy::class) {
 }
 android.sourceSets.getByName("main").assets.srcDir(layout.buildDirectory.dir("generated/recommendationAssets"))
 tasks.named("preBuild") { dependsOn(stageRecommendationSources) }
+
+val verifyRecommendationCore by tasks.registering {
+    doLast {
+        val expected = mapOf(
+            "RankSys-core-0.4.3.jar" to "11a69497cb46c17bbbb66c7c5b8bc077557ba3142993816e3b954291ceb2044c",
+            "RankSys-diversity-0.4.3.jar" to "c5308d43a11faeb879c95a280430106d8c9ef0024f1e621abfe35e4e805c9936",
+            "RankSys-novdiv-0.4.3.jar" to "27f9682b4939739814c982ac567073cee6c676c36069e3c8aa11f03637133154",
+            "fastutil-7.0.6.jar" to "f723d392658f62b3fbed7357cc7d39b10484836e2cbc92dc485b2121e86c4ad9",
+            "jool-0.9.10.jar" to "c71cd5a5a0ddb88973bab02673bcf7ee21a8e2ebf4c9efdc12b47156ef1b4a9e")
+        val artifacts = configurations.getByName("debugRuntimeClasspath").resolvedConfiguration.resolvedArtifacts.filter {
+            it.moduleVersion.id.group == "org.ranksys" ||
+                (it.moduleVersion.id.group == "it.unimi.dsi" && it.name == "fastutil") ||
+                (it.moduleVersion.id.group == "org.jooq" && it.name == "jool")
+        }
+        check(artifacts.map { it.file.name }.toSet() == expected.keys) { "Unexpected recommendation core dependency graph" }
+        artifacts.forEach { artifact ->
+            val hash = MessageDigest.getInstance("SHA-256").digest(artifact.file.readBytes()).joinToString("") { "%02x".format(it) }
+            check(hash == expected.getValue(artifact.file.name)) { "Unexpected core artifact bytes: ${artifact.file.name}" }
+        }
+    }
+}
+tasks.named("preBuild") { dependsOn(verifyRecommendationCore) }

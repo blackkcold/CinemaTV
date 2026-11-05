@@ -24,10 +24,20 @@ jobs:
       matrix:
         include:
           - name: phone
+            api: 33
+            target: default
             size: 1080x2400
             density: 420
             class: dev.cinematv.MobileRecommendationDashboardTest
           - name: tv1080
+            api: 33
+            target: default
+            size: 1920x1080
+            density: 160
+            class: dev.cinematv.TvRecommendationDashboardTest
+          - name: compat26
+            api: 26
+            target: google_apis
             size: 1920x1080
             density: 160
             class: dev.cinematv.TvRecommendationDashboardTest
@@ -56,8 +66,8 @@ jobs:
         run: sudo chmod 666 /dev/kvm
       - uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 33
-          target: default
+          api-level: ${{ matrix.api }}
+          target: ${{ matrix.target }}
           arch: x86_64
           profile: pixel_2
           emulator-build: '15004761'

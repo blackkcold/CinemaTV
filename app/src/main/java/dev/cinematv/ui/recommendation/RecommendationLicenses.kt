@@ -3,6 +3,8 @@ package dev.cinematv.ui.recommendation
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
@@ -12,6 +14,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
@@ -23,11 +30,8 @@ import dev.cinematv.ui.tv.components.CinemaGlassSurface
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.util.zip.ZipEntry
-import java.util.zip.ZipOutputStream
-
-private val licenseFiles = listOf("THIRD-PARTY.txt", "MPL-2.0.txt", "Apache-2.0.txt")
-private val sourceFiles = listOf("core", "novdiv", "diversity").map { "sources/RankSys-$it-0.4.3-sources.jar" }
+import dev.cinematv.data.recommendation.recommendationLicenseFiles
+import dev.cinematv.data.recommendation.writeRecommendationSourceArchive
 
 /** Only public library sources/notices are exported. No profile, title, URL, account or history data. */
 @Composable
@@ -35,6 +39,7 @@ fun RecommendationLicensesDialog(tv: Boolean, onDismiss: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val close = remember { FocusRequester() }
+    val licenseScroll = rememberScrollState()
     var text by remember { mutableStateOf("正在读取随 APK 附带的开源声明…") }
     var notice by remember { mutableStateOf("") }
     val export = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
@@ -42,13 +47,7 @@ fun RecommendationLicensesDialog(tv: Boolean, onDismiss: () -> Unit) {
             try {
                 withContext(Dispatchers.IO) {
                     val stream = requireNotNull(context.contentResolver.openOutputStream(uri))
-                    ZipOutputStream(stream).use { zip ->
-                        (licenseFiles + sourceFiles).forEach { name ->
-                            zip.putNextEntry(ZipEntry(name))
-                            context.assets.open("recommendation-third-party/$name").use { it.copyTo(zip) }
-                            zip.closeEntry()
-                        }
-                    }
+                    writeRecommendationSourceArchive(stream) { name -> context.assets.open(name) }
                 }
                 notice = "已导出开源源码和声明；不包含任何个人数据。"
             } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
@@ -56,11 +55,14 @@ fun RecommendationLicensesDialog(tv: Boolean, onDismiss: () -> Unit) {
         }
     }
     LaunchedEffect(Unit) {
-        text = withContext(Dispatchers.IO) {
-            licenseFiles.joinToString("\n\n") { name ->
-                context.assets.open("recommendation-third-party/$name").bufferedReader().use { it.readText() }
+        try {
+            text = withContext(Dispatchers.IO) {
+                recommendationLicenseFiles.joinToString("\n\n") { name ->
+                    context.assets.open("recommendation-third-party/$name").bufferedReader().use { it.readText() }
+                }
             }
-        }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+        catch (_: Exception) { text = "无法读取此安装包的开源声明，请重新安装经过验证的 CinemaTV APK。" }
     }
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         CinemaGlassSurface(Modifier.fillMaxWidth(if (tv) .85f else .96f).fillMaxHeight(.9f), radius = 24.dp) {
@@ -75,7 +77,19 @@ fun RecommendationLicensesDialog(tv: Boolean, onDismiss: () -> Unit) {
                 }
                 if (notice.isNotEmpty()) Text(notice, color = Color.LightGray, fontSize = 14.sp)
                 Text(text, color = Color.LightGray, fontSize = if (tv) 16.sp else 13.sp,
-                    modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()))
+                    modifier = Modifier.weight(1f).verticalScroll(licenseScroll).testTag("recommendation-license-text")
+                        .onPreviewKeyEvent { event ->
+                            if (!tv || event.type != KeyEventType.KeyDown) false
+                            else when {
+                                event.key == Key.DirectionDown && licenseScroll.canScrollForward -> {
+                                    scope.launch { licenseScroll.animateScrollBy(240f) }; true
+                                }
+                                event.key == Key.DirectionUp && licenseScroll.canScrollBackward -> {
+                                    scope.launch { licenseScroll.animateScrollBy(-240f) }; true
+                                }
+                                else -> false
+                            }
+                        }.focusable(tv))
             }
         }
         if (tv) LaunchedEffect(Unit) { withFrameNanos { }; close.requestFocus() }

@@ -4,6 +4,7 @@ import androidx.activity.ComponentActivity
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -68,7 +69,16 @@ private fun recommendationDashboard(rule: ComposeContentTestRule, activity: Comp
         }
         rule.onNodeWithTag("recommendation-licenses-open").performClick()
         rule.onNodeWithTag("recommendation-licenses").assertIsDisplayed()
-        if (tv) rule.onNodeWithTag("recommendation-licenses-close").assertIsFocused()
+        rule.waitUntil(10_000) { rule.onAllNodesWithText("fastutil 7.0.6", substring = true).fetchSemanticsNodes().isNotEmpty() }
+        if (tv) {
+            rule.onNodeWithTag("recommendation-licenses-close").assertIsFocused()
+            val licenseText = rule.onNodeWithTag("recommendation-license-text")
+            licenseText.performSemanticsAction(SemanticsActions.RequestFocus) { it() }
+            licenseText.performKeyInput { pressKey(Key.DirectionDown) }
+            rule.waitUntil(5_000) {
+                licenseText.fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange].value() > 0f
+            }
+        }
         rule.onNodeWithTag("recommendation-licenses-close").performClick()
         rule.onNodeWithTag("recommendation-licenses").assertDoesNotExist()
         if (tv) rule.onNodeWithTag("recommendation-licenses-open").assertIsFocused()

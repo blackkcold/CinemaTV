@@ -94,7 +94,7 @@ public final class GuardedRankSys {
             return new GuardedUser(input, maxLength);
         }
         final class GuardedUser extends UserMMR {
-            final Map<String, Decision> current = new HashMap<>();
+            final Map<String, Double> current = new HashMap<>();
             GuardedUser(Recommendation<String, String> input, int maxLength) { super(input, maxLength); }
             @Override protected double norm(double score, Stats stats) {
                 double mean = stats.getMean();
@@ -109,15 +109,17 @@ public final class GuardedRankSys {
                 checkCancelled.run();
                 double actual = super.value(item);
                 if (!Double.isFinite(actual)) throw new IllegalStateException("Nonfinite selection score");
-                double relZ = norm(item.v2, relStats), meanDistance = novMap.getDouble(item.v1), divZ = norm(meanDistance, novStats);
-                current.put(item.v1, new Decision(item.v1, decisions.size() + 1, item.v2, relZ, meanDistance, divZ,
-                    (1 - lambda) * relZ, lambda * divZ, actual));
+                // Save the actual selection value; allocate detailed traces only for chosen items.
+                current.put(item.v1, actual);
                 return actual;
             }
             @Override protected void update(Tuple2od<String> selected) {
-                Decision decision = current.get(selected.v1);
-                if (decision == null) throw new IllegalStateException("Selected item was not scored");
-                decisions.add(decision); current.clear();
+                Double actual = current.get(selected.v1);
+                if (actual == null) throw new IllegalStateException("Selected item was not scored");
+                double relZ = norm(selected.v2, relStats), meanDistance = novMap.getDouble(selected.v1), divZ = norm(meanDistance, novStats);
+                decisions.add(new Decision(selected.v1, decisions.size() + 1, selected.v2, relZ, meanDistance, divZ,
+                    (1 - lambda) * relZ, lambda * divZ, actual));
+                current.clear();
                 super.update(selected);
             }
         }
