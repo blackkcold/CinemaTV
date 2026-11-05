@@ -21,7 +21,7 @@ Native LibreTV client with separate TV and touch interfaces.
 
 CinemaTV 连接你自建的 [LibreTV](https://github.com/LibreSpark/LibreTV)，把浏览、搜索、选集、播放和本地片库放在同一个应用里。使用 Kotlin、Jetpack Compose 和 Media3，电视与手机各有适合自己的界面。
 
-**当前稳定版为 [v0.8.0](https://github.com/blackkcold/CinemaTV/releases/tag/v0.8.0)。** 本次只发布 stable，使用固定生产签名，包含新的原生玻璃、电视卡片动效与通道订阅设置。开发通道等待后续候选，dev11未公开，channel-dev未启用本次发布。豆瓣个人账户与片单同步不在本次稳定版中。发布采用下方明确列出的自动化和最终签名包验收范围，不代表实体电视或性能认证。
+**稳定版为 [v0.8.0](https://github.com/blackkcold/CinemaTV/releases/tag/v0.8.0)，实验版为 [v0.8.0-dev.2](https://github.com/blackkcold/CinemaTV/releases/tag/v0.8.0-dev.2)。** 两者使用同一生产签名，包含原生玻璃、电视卡片动效与通道订阅设置。Stable 更新清单已公开；Dev 暂需手动下载，channel-dev 尚未公开。Dev 新增默认关闭的豆瓣个人账号实验；Stable 与 main 不含该账号模块。发布采用下方明确列出的验收范围，不代表实体电视或性能认证。
 
 应用不附带公共片源、账号或影视内容。使用前需要配置自己的服务和有权访问的内容来源。本项目与 LibreTV、DpadTV 及下列第三方服务均无隶属关系。
 
@@ -82,6 +82,14 @@ CinemaTV 连接你自建的 [LibreTV](https://github.com/LibreSpark/LibreTV)，�
 - 离线打包 Noto 字体，按内容语言与地区选择中日韩字形，不转换简繁内容。
 - 原创 A1 品牌与静态启动图标；应用内简短品牌动态不阻塞操作。
 
+### Dev：豆瓣个人账号实验
+
+仅 [0.8.0-dev.2 / code 12](https://github.com/blackkcold/CinemaTV/releases/tag/v0.8.0-dev.2) 提供：官方扫码登录入口、本机加密会话存储，以及手动读取个人片单、评分和按豆瓣作品 ID 导入片库的实现。真实账号登录、完整同步与真实会话清理尚未验收。
+
+- TV：设置 → 连接与账户 → 开发者选项 · Dev；手机：设置 → 开发者选项 · Dev。
+- 默认关闭。点击「开启豆瓣账号实验」并确认「开启实验」后才显示「豆瓣个人账号与片单」。开启入口不等于授权账号访问，不会自动登录、同步或开启局域网服务。
+- 切回 Stable 前先选择「关闭并清理豆瓣账号」，确认清理完成；已导入片库保留。安装 Dev code 12 后需等待更高 code 的 Stable，不能直接覆盖降级到当前 code 10，也不要先卸载。
+
 ## v0.8 的玻璃与电视动效
 
 新的原生玻璃与电视卡片动效已包含在 v0.8.0 stable 中。**上方画廊仍是 v0.7.0-preview 截图，不能当成本版截图。**
@@ -107,7 +115,7 @@ CinemaTV 连接你自建的 [LibreTV](https://github.com/LibreSpark/LibreTV)，�
 
 完整配置、遥控器操作和设备测试范围见 [安装指南](docs/INSTALL.md)。
 
-**发布与更新：** 本次公开包为 stable `0.8.0 / code 10`，只发布 stable 更新清单；开发通道待后续候选，dev11仅用于未公开的升级验收。设置中的订阅选择不会立即换包或改图标，更新只接受更大的versionCode。正式包已启用显式检查更新，APK或清单可下载不等于线上更新全链路已验收。stable清单有效期至2026年11月12日14:40:12 UTC，到期需续签，只影响获取更新，不影响已安装APK使用。豆瓣个人账户与片单同步留待后续dev验证。
+**发布与更新：** Stable `0.8.0 / code 10` 与 Dev `0.8.0-dev.2 / code 12` 为同包名、同签名，不能并排安装。订阅选择不会立即换包或改图标，只接受更大的 versionCode。Stable 未明确保存渠道选择时，升级 Dev 后默认渠道变为 Dev；不能据此宣称所有渠道偏好已迁移。正式包支持显式检查更新，APK 或清单可下载不等于生产更新全链路已验收。Stable 清单有效期至 2026年11月12日14:40:12 UTC，到期需续签，只影响获取更新，不影响已安装 APK 使用。详见 [更新通道](docs/UPDATE_CHANNELS.md)。
 
 ## 数据与隐私
 
@@ -138,7 +146,7 @@ npm --prefix backend/tv-bff test
 
 ## 当前边界
 
-本版的模拟器测试不能替代实体电视认证。最终生产签名包已在 API26 隔离模拟器完成 stable→未公开dev11验收目标的覆盖升级，并保留一条通过实际界面写入的收藏/想看记录、服务器设置和通道订阅。该结果不代表所有数据库迁移、历史进度或线上更新全链路通过。低内存盒子、实体4K电视、四小时播放、HDR/编解码器覆盖与硬件帧率仍未验证。当前不提供跨设备同步、扫码配对或额外播放内核。详见 [本版验收范围](docs/RELEASE_CHECKLIST.md)。
+模拟器测试不能替代实体电视认证。最终签名包已在 API26 完成 Stable code 10 → Dev code 12 覆盖升级，一条通过实际界面创建的收藏/想看记录和测试服务器设置在升级、重启后保留；默认关闭与空账号开关流程已验。Dev 内明确选择 Stable 后重启仍保留，但升级前明确渠道偏好的迁移、完整数据库迁移、历史进度和生产更新全链路均未验证。低内存盒子、实体4K电视、四小时播放、HDR/编解码器覆盖与硬件帧率仍未验证。当前不提供跨设备同步、扫码配对或额外播放内核。详见 [本版验收范围](docs/RELEASE_CHECKLIST.md)。
 
 功能与验收范围集中维护在本文及对应文档中；逐版变更请查看 [发布记录](https://github.com/blackkcold/CinemaTV/releases)。
 

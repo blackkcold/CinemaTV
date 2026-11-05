@@ -1,12 +1,14 @@
 # CinemaTV release acceptance scope
 
 Status: **v0.8.0 stable released with the evidence and limits below.**
-Dev11 is an unpublished signed acceptance target. It is not distributed in this
-release; channel-dev publication is frozen pending a later candidate.
+Dev **0.8.0-dev.2 / code12** is a separate published prerelease with its scoped
+acceptance below. The stable feed is public; Dev12 requires manual APK download
+while channel-dev remains unpublished. Dev11 remains unpublished. Stable and main
+exclude the account module.
 This is not physical Android TV, codec/HDR or hardware-performance certification.
 A stable channel label does not mean every possible device or workflow was tested.
 
-## Release identity and source
+## Stable release identity and source
 
 | Item | Recorded value |
 |---|---|
@@ -63,6 +65,44 @@ as app success. No CinemaTV fatal exception or app ANR was found in the captured
 final API26 chain logs. Emulator launch timings are diagnostic observations, not
 physical-device performance benchmarks. No real media playback was exercised in
 that final-package retention run.
+
+A later production stable10 UI check failed closed while the emulator could not
+resolve `github.com`; a separate HTTPS retrieval returned the official stable feed
+successfully. No in-app feed acceptance, download or installation was established,
+and no Dev feed was requested. This environment blocker is not evidence of an
+app or published-feed defect; production updater end-to-end remains unverified.
+
+## Dev 0.8.0-dev.2 scope
+
+[Dev release](https://github.com/blackkcold/CinemaTV/releases/tag/v0.8.0-dev.2) includes the default-OFF Douban personal-account
+experiment, with source and detailed acceptance attachments. It does not change
+the stable APK or add account code to main.
+
+- Actual build commit: `5a076b0b715750a4de43253726fa66c205aa9b32`;
+  dev merge: `553d37076ba0f9989ad5d24942f82638cf722478`;
+  both trees: `c1efb18c945034e51c03ab940875cc98ea2fb743`.
+- Final APK: `CinemaTV-0.8.0-dev.2-code12-dev.apk`, 43,328,036 bytes;
+  SHA-256 `83ffa9aef559dded9454adb9fdb5f9864a37341ea18bb8b4961660434dcd92f9`.
+  Same production certificate as stable; v2/v3 signatures and 16KB alignment passed.
+- [Android build/lint/tests](https://github.com/blackkcold/CinemaTV/actions/runs/42063468515),
+  [channel safety](https://github.com/blackkcold/CinemaTV/actions/runs/42063468145) and
+  [API26/API33 synthetic tests](https://github.com/blackkcold/CinemaTV/actions/runs/42063468193)
+  passed; the last suite ran 17 cases per device, with no failures or skips.
+- API26 final-signed stable10 → dev12 `adb install -r` passed without uninstall or
+  clearing data; retrieved installed bytes match. One UI-created synthetic
+  Favorite/Want record and a test server survived upgrade and restart.
+- Default-OFF, cancel/confirm enable, empty-account disable/cleanup and OFF after
+  restart passed. A Stable channel preference selected on dev12 survived restart.
+  The stable baseline had no saved channel preference, so the default became Dev;
+  pre-upgrade explicit preference migration was **not** tested.
+- Real login, complete sync and real-session cleanup, all-table/history migration,
+  Dev → Stable migration, fresh dev12 install, API33 final-APK installation,
+  production updater end-to-end, hardware and four-hour playback remain unverified.
+  Synthetic instrumentation and `adb install -r` do not cover these gaps.
+
+Dev code12 cannot downgrade to stable code10. Before a future higher-code stable
+upgrade, explicitly disable and confirm account cleanup in dev; preserve the
+installation rather than uninstalling. See [installation instructions](INSTALL.md).
 
 ## Future release checks
 

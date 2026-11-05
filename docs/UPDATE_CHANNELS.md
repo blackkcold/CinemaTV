@@ -1,16 +1,17 @@
 # Stable / dev updates
 
-This publication contains only production-signed stable **0.8.0 / code 10**
-and the stable channel manifest. Dev11 is an unpublished, same-certificate
-acceptance target, not a downloadable release. The dev channel publication is
-frozen pending a later reviewed candidate. Stable uses the public identity in
+Published APKs are [stable **0.8.0 / code 10**](https://github.com/blackkcold/CinemaTV/releases/tag/v0.8.0)
+and [dev **0.8.0-dev.2 / code 12**](https://github.com/blackkcold/CinemaTV/releases/tag/v0.8.0-dev.2). Dev11 remains an unpublished
+acceptance target. The stable feed is public; Dev12 currently requires a manual
+APK download because channel-dev has not been published. Dev12 includes a
+default-OFF personal-account experiment;
+`main` and stable do not contain that module. Both use the public identity in
 `release/signing-identity.json`; private signing material remains outside GitHub.
 This release APK explicitly enables user-initiated update checks. Ordinary builds
 still default to disabled network updates, and debug APKs always disable them.
 
-APK publication and active feed verification are separate records. Verify the stable
-endpoint and manifest expiry before describing its feed as live; channel-dev
-is not activated by this publication. The
+APK publication and active feed verification are separate records. Verify each
+endpoint and manifest expiry before describing its feed as live. The
 final production APKs have not yet completed a remote feed/download/installer
 end-to-end acceptance run. Existing preview pipelines remain unchanged. The
 obsolete production workflow is a fail-closed notice with no signing-secret
@@ -24,7 +25,8 @@ references or publication permissions.
   retains the existing reviewed icon. Selecting a subscription does not pretend that
   a different APK is installed: the icon changes only after the actual update.
 - Both channels use `dev.cinematv` and the **same fixed production signing key**.
-  They cannot be installed side by side. Updates retain Room data and preferences.
+  They cannot be installed side by side. Same-key, higher-code upgrades do not
+  guarantee complete Room or preference migration; verified retention is scoped below.
 - Only a strictly higher versionCode can install. Switching from a newer dev build
   to stable waits for a later stable release. No uninstall, downgrade flag, database
   rollback, data deletion or silent install is attempted.
@@ -35,11 +37,33 @@ references or publication permissions.
   an in-place upgrade to the fixed key**. Do not recommend uninstalling as a seamless
   migration: it loses the current local library, and export/import is not implemented.
 
+## Dev account experiment and channel switching
+
+Dev12 starts with its personal-account experiment OFF. On TV, use Settings →
+Connections and accounts → Developer options · Dev; on phones, use Settings →
+Developer options · Dev. The Chinese labels are「设置 → 连接与账户 → 开发者选项 · Dev」
+and「设置 → 开发者选项 · Dev」respectively. Confirming「开启豆瓣账号实验」then
+「开启实验」only exposes「豆瓣个人账号与片单」; it does not authorize account access
+or automatically log in, sync or start the LAN service. Official login and saving
+an encrypted local session require separate explicit confirmation.
+
+Before returning to stable, select「关闭并清理豆瓣账号」in dev and verify cleanup
+completed. Imported library entries remain. Empty-account cleanup was tested;
+real-session cleanup was not. Selecting another update channel does not itself
+clear a session or establish data compatibility. Dev code12 cannot downgrade to
+stable code10: wait for a higher-code stable APK, without uninstalling.
+
+If stable has no explicitly saved channel preference, upgrading to dev12 changes
+the build default to Dev. Only a Stable preference explicitly selected on dev12
+was verified to survive restart; pre-upgrade explicit preference migration was
+not tested. This distinction must not be reported as universal preference retention.
+
 ## Trust and transport
 
 1. Fixed HTTPS endpoints:
    `https://github.com/blackkcold/CinemaTV/releases/download/channel-dev/update.json`
-   and `.../channel-stable/update.json`. These are the fixed channel locations.
+   and `.../channel-stable/update.json`. These are the fixed channel locations;
+   only the stable feed is published. The dev location is reserved, not an active feed.
    A release APK alone does not prove a feed is present, current or valid; verify
    the actual response, signature, payload identity and expiry independently.
 2. Envelope: `{ "schema": 1, "payload": "<base64 UTF-8 JSON>", "signature": "<base64>" }`.
@@ -64,10 +88,11 @@ references or publication permissions.
    read permission. There is no storage permission, DownloadManager, trust-all TLS,
    unsigned fallback, untrusted URL setting, background polling or silent install.
 
-The first stable manifest expires at **2026-11-12 14:40:12 UTC**. Its exact
-payload-byte signature was verified locally with OpenSSL; publication and remote
-retrieval verification are separate. Expiry blocks obtaining updates from that
-manifest, not use of an already installed APK.
+The public stable manifest expires at **2026-11-12 14:40:12 UTC**. Its exact
+payload-byte signature and publicly downloaded bytes were independently verified.
+The prepared Dev manifest is not public and has no active feed validity period
+to report. Expiry blocks obtaining updates from a manifest, not use of an already
+installed APK; remote retrieval checks are not the final-APK installer workflow.
 
 Expired feeds need a newly signed manifest, even if the latest APK is unchanged.
 First-ever install still needs an independently verified download and certificate.
@@ -127,7 +152,7 @@ overwrite an existing output. It is not called by any workflow in this PR.
   and installer probes use debug or disposable test identities as documented below.
 - Final stable/code10 and the unpublished dev/code11 acceptance target passed an API26
   isolated-emulator `adb install -r` chain. APKs pulled from the installed package
-  match their recorded signed hashes; only stable is published. One actual synthetic Favorite/Want to Watch
+  match their recorded signed hashes; dev11 was not published. One actual synthetic Favorite/Want to Watch
   record, server setting and subscription preference persisted through upgrade and
   restart. This is not complete Room/schema/history migration coverage.
 - API33 final-APK installation is infrastructure-unverified: Android booted, but
@@ -144,6 +169,13 @@ overwrite an existing output. It is not called by any workflow in this PR.
 - Low storage, interrupted download, process death, missing installer, real low-end
   TV/4K hardware, four-hour playback, codec/HDR breadth and hardware frame rates
   remain outside this release's verified final-byte coverage.
+
+- Final stable code10 → dev12 signed-byte upgrade passed on API26 with one
+  UI-created synthetic Favorite/Want record and a test server retained after restart.
+  Default-OFF and empty-account enable/cancel/disable flows passed. Real account
+  login/sync/cleanup, complete migration, a fresh dev12 install and API33 final-APK
+  installation remain unverified. API26/API33 synthetic tests are separate evidence.
+  See the [Dev release acceptance attachment](https://github.com/blackkcold/CinemaTV/releases/tag/v0.8.0-dev.2).
 
 See [release acceptance scope](RELEASE_CHECKLIST.md) and the versioned release
 notes for exact hashes, source provenance and the distinction between test-key
@@ -166,7 +198,7 @@ This is a source-presence guard, not a hidden runtime toggle. Existing public
 catalogue ratings/Top250 are unrelated and remain supported. Dev may integrate
 that branch independently; do not merge its unaccepted code into `main`.
 
-A stable label is not hardware certification. Each publication records:
+A stable label is not hardware certification. Each stable publication records:
 
 1. A reserved globally increasing versionCode, clean approved source commit/tree,
    stable channel, and no unaccepted personal-account sources.
@@ -201,7 +233,12 @@ export/import migration needs to exist before offering a data-preserving move.
 
 ## Public unsigned candidate transfer
 
-`build-unsigned-candidate.sh` supports the two reserved entries in one global
+The following is the main-branch candidate path for stable10 and unpublished
+dev11, not the Dev12 download/build path. Dev12 was built separately from the
+dev branch with the account-candidate workflow; its source and build receipt are
+linked in the [Dev12 release](https://github.com/blackkcold/CinemaTV/releases/tag/v0.8.0-dev.2).
+
+`build-unsigned-candidate.sh` supports these two reserved entries in one global
 versionCode sequence:
 
 | Invocation | Channel | Version | Code | Output |
