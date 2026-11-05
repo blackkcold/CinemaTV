@@ -63,14 +63,14 @@ jobs:
           emulator-build: '15004761'
           disable-animations: false
           emulator-options: '-no-window -no-audio -gpu lavapipe -feature -Vulkan -no-snapshot -no-boot-anim -memory 2048'
-          script: bash scripts/run-device-qa.sh '${{ matrix.size }}' '${{ matrix.density }}' 'dev.cinematv.DoubanAccountUiTest,dev.cinematv.data.DoubanDeviceSecurityTest'
+          script: bash scripts/run-device-qa.sh '${{ matrix.size }}' '${{ matrix.density }}' 'dev.cinematv.DoubanAccountUiTest,dev.cinematv.TvDoubanAccountUiTest,dev.cinematv.data.DoubanDeviceSecurityTest'
       - name: Require all synthetic safety cases executed
         run: |
           python3 - <<'PY'
           from pathlib import Path
           import xml.etree.ElementTree as ET
           cases = [c for p in Path('app/build/outputs/androidTest-results').rglob('TEST-*.xml') for c in ET.parse(p).getroot().iter('testcase')]
-          expected = {'accountEntryAndCancelledOfficialLoginReturnToNativePanel', 'keystoreRoundTripTamperAndDelete', 'importPreservesConflictsFavoritesAndEpisodeProgress'}
+          expected = {'accountEntryAndCancelledOfficialLoginReturnToNativePanel', 'keystoreRoundTripTamperAndDelete', 'importPreservesConflictsFavoritesAndEpisodeProgress', 'nativeTvPanelRestoresRemoteFocusAfterBack'}
           actual = [c for c in cases if c.get('name') in expected]
           assert {c.get('name') for c in actual} == expected, 'Missing device test'
           assert all(c.find('failure') is None and c.find('error') is None and c.find('skipped') is None for c in actual), 'Device test did not pass'
