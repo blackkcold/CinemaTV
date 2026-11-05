@@ -22,8 +22,11 @@ class BrandResourcesTest(unittest.TestCase):
 
     def test_manifest_launcher_contract(self):
         app = ET.parse(ROOT / 'app/src/main/AndroidManifest.xml').getroot().find('application')
-        self.assertEqual(app.get(A + 'banner'), '@drawable/tv_banner')
-        self.assertEqual(app.get(A + 'icon'), '@mipmap/ic_launcher')
+        self.assertEqual(app.get(A + 'banner'), '${channelBanner}')
+        self.assertEqual(app.get(A + 'icon'), '${channelIcon}')
+        build = (ROOT / 'app/build.gradle.kts').read_text()
+        self.assertIn('if (updateChannel == "dev") "@mipmap/ic_launcher_dev" else "@mipmap/ic_launcher"', build)
+        self.assertIn('if (updateChannel == "dev") "@drawable/tv_banner_dev" else "@drawable/tv_banner"', build)
         categories = {x.get(A + 'name') for x in app.findall('.//category')}
         self.assertTrue({'android.intent.category.LAUNCHER', 'android.intent.category.LEANBACK_LAUNCHER'} <= categories)
         for name in ('ic_launcher', 'ic_launcher_round'):

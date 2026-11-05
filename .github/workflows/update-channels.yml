@@ -1,0 +1,276 @@
+name: Update channel safety
+on:
+  pull_request:
+    paths:
+      - 'app/src/**/update/**'
+      - 'app/src/androidTest/**/UpdateSettingsUiTest.kt'
+      - 'app/src/updateAcceptance/**'
+      - 'app/src/main/AndroidManifest.xml'
+      - 'app/build.gradle.kts'
+      - 'app/src/main/res/**'
+      - 'scripts/updates/**'
+      - 'scripts/tests/test_update_channels.py'
+      - 'scripts/tests/test_update_pipeline.py'
+      - '.github/workflows/update-channels.yml'
+      - '.github/workflows/release.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: update-channels-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  safety:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        channel: [dev, stable]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+      - name: Install Android SDK
+        run: |
+          SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -1)
+          "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0"
+      - uses: actions/cache@v4
+        with:
+          path: .cache/cinematv-noto-fonts
+          key: noto-fonts-v2-${{ hashFiles('scripts/fonts/noto-fonts.lock.json') }}
+      - name: Validate channel and compile signing helper without using a key
+        run: |
+          python3 -m unittest discover -s scripts/tests -v
+          javac -d "$RUNNER_TEMP/signing-helper" scripts/updates/SignUpdateManifest.java
+          bash scripts/generate-test-media.sh
+          gradle --no-daemon -PcinematvChannel=${{ matrix.channel }} :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug
+      - name: Check packaged channel, icon, signature and disabled live updater
+        run: |
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$APK"
+          ANALYZER=$(find "$ANDROID_HOME/cmdline-tools" -type f -name apkanalyzer | head -1)
+          "$ANALYZER" manifest print "$APK" > "$RUNNER_TEMP/manifest.xml"
+          python3 - "$RUNNER_TEMP/manifest.xml" '${{ matrix.channel }}' <<'PY'
+          import sys, xml.etree.ElementTree as ET
+          root = ET.parse(sys.argv[1]).getroot()
+          app = root.find('application')
+          a = '{http://schemas.android.com/apk/res/android}'
+          assert root.get('package') == 'dev.cinematv'
+          assert any(x.get(a + 'name') == 'dev.cinematv.UPDATE_CHANNEL' and x.get(a + 'value') == sys.argv[2] for x in app.findall('meta-data'))
+          assert app.get(a + 'label') == ('CinemaTV Dev' if sys.argv[2] == 'dev' else 'CinemaTV')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: update-channel-${{ matrix.channel }}-debug-evidence
+          path: |
+            app/build/outputs/apk/debug/*.apk
+            app/build/outputs/apk/androidTest/debug/*.apk
+            app/build/test-results/
+            app/build/reports/lint-results-debug.*
+          if-no-files-found: error
+  settings-ui:
+    needs: safety
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - api: 30
+            target: google_apis
+            viewport: 1080x1920
+            density: 420
+            test: MobileUpdateSettingsTest
+            evidence: phone
+          - api: 33
+            target: default
+            viewport: 1920x1080
+            density: 320
+            test: TvUpdateSettingsTest
+            evidence: tv
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/download-artifact@v4
+        with:
+          name: update-channel-dev-debug-evidence
+          path: artifacts
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          target: ${{ matrix.target }}
+          arch: x86_64
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -memory 2048
+          script: |
+            adb shell wm size ${{ matrix.viewport }}
+            adb shell wm density ${{ matrix.density }}
+            adb install -r "$(find artifacts -name app-debug.apk | head -1)"
+            adb install -r "$(find artifacts -name app-debug-androidTest.apk | head -1)"
+            adb shell am instrument -w -r -e class dev.cinematv.${{ matrix.test }} dev.cinematv.test/androidx.test.runner.AndroidJUnitRunner | tee update-ui-result.txt
+            grep -q 'OK (1 test)' update-ui-result.txt
+            ! grep -Eq 'FAILURES!!!|INSTRUMENTATION_FAILED|Process crashed' update-ui-result.txt
+            mkdir -p update-evidence
+            adb exec-out run-as dev.cinematv cat files/update-evidence/${{ matrix.evidence }}.png > update-evidence/${{ matrix.evidence }}.png
+            python3 -c "from pathlib import Path; p=Path('update-evidence/${{ matrix.evidence }}.png').read_bytes(); assert p[:8] == b'\x89PNG\r\n\x1a\n' and len(p) > 10000"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: update-ui-${{ matrix.test }}
+          path: |
+            update-ui-result.txt
+            update-evidence/
+          if-no-files-found: warn
+
+  installer-fixtures:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+      - name: Install Android SDK
+        run: |
+          SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -1)
+          "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0"
+      - uses: actions/cache@v4
+        with:
+          path: .cache/cinematv-noto-fonts
+          key: noto-fonts-v2-${{ hashFiles('scripts/fonts/noto-fonts.lock.json') }}
+      - name: Build disposable release-signed installer and repository fixtures
+        run: bash scripts/updates/build-installer-fixtures.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TEST-ONLY-update-installer-fixtures
+          path: ${{ runner.temp }}/update-fixtures/
+          retention-days: 1
+          if-no-files-found: error
+  installer-upgrades:
+    needs: installer-fixtures
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [26, 35]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: TEST-ONLY-update-installer-fixtures
+          path: fixtures
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -memory 2048
+          script: bash scripts/updates/test-installer-upgrades.sh fixtures installer-evidence
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: update-installer-api-${{ matrix.api }}
+          path: installer-evidence/
+          if-no-files-found: error
+
+  repository-acceptance:
+    needs: installer-fixtures
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [26, 35]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: TEST-ONLY-update-installer-fixtures
+          path: fixtures
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -memory 2048
+          script: bash scripts/updates/test-update-repository.sh fixtures repository-evidence
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: update-repository-api-${{ matrix.api }}
+          path: repository-evidence/
+          if-no-files-found: error
+
+  unsigned-stable-candidate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+      - name: Install Android SDK
+        run: |
+          SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -1)
+          "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0"
+      - uses: actions/cache@v4
+        with:
+          path: .cache/cinematv-noto-fonts
+          key: noto-fonts-v2-${{ hashFiles('scripts/fonts/noto-fonts.lock.json') }}
+      - name: Prepare unsigned stable candidate without credentials
+        env:
+          CANDIDATE_SOURCE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: bash scripts/updates/build-unsigned-candidate.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: UNSIGNED-stable-candidate-NOT-FOR-INSTALLATION
+          path: candidate/
+          if-no-files-found: error

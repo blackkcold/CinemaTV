@@ -14,15 +14,70 @@ apply(from = "noto-fonts.gradle")
 // Keep AGP wiring in the plugin-owning script; the downloader stays plugin-independent.
 tasks.named("preBuild") { dependsOn("prepareNotoFonts") }
 
+// Channels share package/signing identity so switching is an ordinary forward upgrade.
+// Properties avoid renaming existing Debug/Release tasks or preview artifact paths.
+val updateChannel = providers.gradleProperty("cinematvChannel").getOrElse("dev")
+require(updateChannel in setOf("stable", "dev")) { "cinematvChannel must be stable or dev" }
+// Personal-account experiments stay on their dev branch. Refuse mislabelled stable builds
+// even if someone accidentally merges or builds that branch with the stable property.
+if (updateChannel == "stable") {
+    val devOnlyAccountSources = listOf("src/main/java/dev/cinematv/data/douban", "src/main/java/dev/cinematv/ui/douban")
+    require(devOnlyAccountSources.none { path -> file(path).walkTopDown().any { it.isFile && it.extension == "kt" } }) {
+        "Unaccepted Douban personal-account sources may only be built for dev, never stable"
+    }
+}
+val updatesEnabled = providers.gradleProperty("cinematvUpdatesEnabled").getOrElse("false").toBooleanStrict()
+// CI prepares public unsigned bytes. Only the authorized external signer may finish them.
+val unsignedCandidate = providers.gradleProperty("cinematvUnsignedCandidate").getOrElse("false").toBooleanStrict()
+// Explicit test-only source selection. Never pull the debug UI hosts into release tests.
+val updateAcceptance = providers.gradleProperty("cinematvUpdateAcceptance").getOrElse("false").toBooleanStrict()
+if (updateAcceptance) {
+    require(unsignedCandidate && updatesEnabled && updateChannel == "dev") {
+        "Update acceptance requires an unsigned, update-enabled dev release candidate"
+    }
+    require(providers.gradleProperty("cinematvVersionCode").orNull == "100") {
+        "Update acceptance must target the disposable version-100 base fixture"
+    }
+}
+val externalSigningNames = listOf("CINEMATV_KEYSTORE_PATH", "CINEMATV_KEYSTORE_PASSWORD", "CINEMATV_KEY_ALIAS", "CINEMATV_KEY_PASSWORD")
+require(System.getenv("GITHUB_ACTIONS") != "true" || externalSigningNames.none { !System.getenv(it).isNullOrBlank() }) {
+    "Private production signing credentials must never be configured in GitHub Actions"
+}
+if (unsignedCandidate) {
+    require(externalSigningNames.none { !System.getenv(it).isNullOrBlank() }) {
+        "Unsigned candidates must not receive signing credentials"
+    }
+}
+if (updatesEnabled) {
+    require(unsignedCandidate || externalSigningNames.all { !System.getenv(it).isNullOrBlank() }) {
+        "Updates require external signing or an explicitly unsigned candidate for external signing"
+    }
+    require(providers.gradleProperty("cinematvVersionCode").isPresent && providers.gradleProperty("cinematvVersionName").isPresent) {
+        "Update-enabled builds require explicit globally increasing version information"
+    }
+}
+
 android {
     namespace = "dev.cinematv"
+    if (updateAcceptance) testBuildType = "release"
     compileSdk = 36
     defaultConfig {
         applicationId = "dev.cinematv"
         minSdk = 26
         targetSdk = 35
+        // Preserve literal preview defaults for the existing immutable provenance reader.
         versionCode = 9
         versionName = "0.8.0-preview"
+        providers.gradleProperty("cinematvVersionCode").orNull?.let { versionCode = it.toInt() }
+        providers.gradleProperty("cinematvVersionName").orNull?.let { versionName = it }
+        require(versionCode!! in 1..2_100_000_000)
+        buildConfigField("String", "UPDATE_CHANNEL", "\"$updateChannel\"")
+        buildConfigField("boolean", "UPDATES_ENABLED", updatesEnabled.toString())
+        manifestPlaceholders["updateChannel"] = updateChannel
+        manifestPlaceholders["channelIcon"] = if (updateChannel == "dev") "@mipmap/ic_launcher_dev" else "@mipmap/ic_launcher"
+        manifestPlaceholders["channelRoundIcon"] = if (updateChannel == "dev") "@mipmap/ic_launcher_dev" else "@mipmap/ic_launcher_round"
+        manifestPlaceholders["channelLabel"] = if (updateChannel == "dev") "CinemaTV Dev" else "CinemaTV"
+        manifestPlaceholders["channelBanner"] = if (updateChannel == "dev") "@drawable/tv_banner_dev" else "@drawable/tv_banner"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     signingConfigs {
@@ -47,6 +102,7 @@ android {
             signingConfig = signingConfigs.getByName("debug")
             isDebuggable = false
             applicationIdSuffix = ".glassbenchmark"
+            buildConfigField("boolean", "UPDATES_ENABLED", "false")
             matchingFallbacks += listOf("release")
         }
     }
@@ -59,7 +115,11 @@ android {
     // Keep fonts mmap-eligible; avoid inflating a ~19 MB collection for asset buffer access.
     androidResources { noCompress += listOf("ttc", "ttf") }
     sourceSets["main"].assets.srcDir(layout.buildDirectory.dir("generated/notoAssets"))
-    sourceSets["androidTest"].assets.srcDir("$projectDir/schemas")
+    if (updateAcceptance) {
+        sourceSets["androidTest"].setRoot("src/updateAcceptance")
+    } else {
+        sourceSets["androidTest"].assets.srcDir("$projectDir/schemas")
+    }
     sourceSets["glassBenchmark"].res.srcDir("src/debug/res")
     packaging { resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" } }
 }
@@ -78,6 +138,7 @@ dependencies {
     implementation(composeBom)
     androidTestImplementation(composeBom)
     implementation("androidx.activity:activity-compose:1.11.0")
+    implementation("androidx.core:core-ktx:1.17.0")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.animation:animation")
@@ -102,8 +163,11 @@ dependencies {
     kapt("androidx.room:room-compiler:$room")
     androidTestImplementation("androidx.room:room-testing:$room")
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
+    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:runner:1.6.2")
+    if (updateAcceptance) androidTestImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
