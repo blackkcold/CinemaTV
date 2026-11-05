@@ -1,0 +1,23 @@
+CinemaTV Dev personal-account experiment: third-party software
+
+jsoup 1.18.3, MIT License
+Copyright (c) 2009-2024 Jonathan Hedley
+https://jsoup.org/
+The unmodified license from org.jsoup:jsoup:1.18.3 (META-INF/LICENSE)
+is included as jsoup-1.18.3-MIT.txt.
+
+NanoHTTPD 2.3.1, BSD 3-Clause License
+Copyright (c) 2012 - 2016, nanohttpd
+https://github.com/NanoHttpd/nanohttpd
+The unmodified license from org.nanohttpd:nanohttpd:2.3.1 (LICENSE.txt)
+is included as nanohttpd-2.3.1-BSD.txt.
+
+ZXing core 3.5.3, Apache License 2.0
+https://github.com/zxing/zxing/tree/zxing-3.5.3
+The original LICENSE and NOTICE from that upstream release are included
+as zxing-3.5.3-LICENSE.txt and zxing-3.5.3-NOTICE.txt. The upstream LICENSE
+also retains notices for portions of code under additional permissive licenses.
+
+These complete notices are packaged in every personal-account APK under
+assets/douban-third-party/. An APK is a ZIP archive and these files can
+be read or extracted directly. No library author endorses CinemaTV.

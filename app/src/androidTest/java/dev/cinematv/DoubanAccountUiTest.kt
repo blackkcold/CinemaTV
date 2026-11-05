@@ -14,13 +14,13 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.pressKey
 import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
-import androidx.test.espresso.Espresso
 import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.action.ViewActions.click
 import androidx.test.espresso.assertion.ViewAssertions.matches
@@ -47,7 +47,21 @@ private fun <R : TestRule, A : ComponentActivity> AndroidComposeTestRule<R, A>.w
     waitUntil(10_000) {
         onAllNodesWithTag(tag).fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty()
     }
+    // Mobile settings are a scrollable Column; existence alone does not put an entry on screen.
+    // Keep TV focus assertions independent of scrolling/requesting focus from test code.
+    if (activity !is TvTestActivity && tag in setOf("developer-options-entry", "douban-account-entry")) {
+        onNodeWithTag(tag).performScrollTo()
+    }
     onNodeWithTag(tag).assertIsDisplayed()
+}
+
+private fun <R : TestRule, A : ComponentActivity> AndroidComposeTestRule<R, A>.waitForOptionsToClose() {
+    waitUntil(10_000) {
+        listOf("douban-experiment-confirm", "douban-experiment-toggle").all {
+            onAllNodesWithTag(it).fetchSemanticsNodes(atLeastOneRootRequired = false).isEmpty()
+        }
+    }
+    waitUntil(10_000) { runOnIdle { activity.window.decorView.hasWindowFocus() } }
 }
 
 private fun <R : TestRule, A : ComponentActivity> AndroidComposeTestRule<R, A>.settings() {
@@ -69,20 +83,27 @@ private fun <R : TestRule, A : ComponentActivity> AndroidComposeTestRule<R, A>.s
     onNodeWithTag("douban-experiment-confirm").performClick()
     waitUntil(10_000) { options.access.isEnabled == enabled && !options.busy.value }
     onNodeWithText("返回").performClick()
+    waitForOptionsToClose()
     waitForIdle()
     waitForTag("developer-options-entry")
     if (enabled) waitForTag("douban-account-entry")
 }
 
 private fun <R : TestRule, A : ComponentActivity> AndroidComposeTestRule<R, A>.resetExperiment() {
-    // Recover UI state even if a test failed while a native account/options dialog was open.
+    // Recover failed-test dialogs with an actual Back key directed to the focused window.
+    // Default Espresso.pressBack can select the unfocused activity behind a Compose dialog.
     repeat(3) {
-        if (listOf("douban-experiment-confirm", "douban-experiment-toggle", "douban-account-status")
-                .any { onAllNodesWithTag(it).fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty() }) {
-            Espresso.pressBack()
-            waitForIdle()
+        val topTag = listOf("douban-experiment-confirm", "douban-experiment-toggle", "douban-account-status")
+            .firstOrNull { onAllNodesWithTag(it).fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty() }
+        if (topTag != null) {
+            waitUntil(10_000) { !DoubanDeveloperOptions.get(activity).busy.value }
+            InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+            waitUntil(10_000) {
+                onAllNodesWithTag(topTag).fetchSemanticsNodes(atLeastOneRootRequired = false).isEmpty()
+            }
         }
     }
+    waitForOptionsToClose()
     setExperiment(false)
 }
 
@@ -112,6 +133,7 @@ class DoubanAccountUiTest {
         rule.onNodeWithTag("douban-experiment-confirm").performClick()
         rule.waitUntil(10_000) { DoubanDeveloperOptions.get(rule.activity).access.isEnabled }
         rule.onNodeWithText("返回").performClick()
+        rule.waitForOptionsToClose()
         rule.waitForTag("douban-account-entry")
         rule.onNodeWithTag("douban-account-entry").assertExists()
     }
