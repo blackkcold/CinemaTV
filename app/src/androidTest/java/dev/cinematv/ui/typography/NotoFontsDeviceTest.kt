@@ -25,6 +25,21 @@ class NotoFontsDeviceTest {
         requireNotNull(activity)
     }
 
+    @Test fun fontSpecimenDisablesOnlyItsOwnStartingPreview() {
+        val preview = compose.activity.obtainStyledAttributes(intArrayOf(android.R.attr.windowDisablePreview))
+        try {
+            assertTrue("The font host must not be covered by the system splash exit", preview.getBoolean(0, false))
+        } finally { preview.recycle() }
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val productInfo = context.packageManager.getActivityInfo(
+            android.content.ComponentName(context, dev.cinematv.MainActivity::class.java), 0)
+        val productTheme = android.view.ContextThemeWrapper(context, productInfo.themeResource)
+        val productPreview = productTheme.obtainStyledAttributes(intArrayOf(android.R.attr.windowDisablePreview))
+        try {
+            assertFalse("Product startup preview must stay unchanged", productPreview.getBoolean(0, false))
+        } finally { productPreview.recycle() }
+    }
+
     @Test fun drawEpochFenceRejectsUnarmedAndStaleFrameMetrics() {
         val tracker = NotoCompositorCapture.DrawEpochTracker()
         tracker.recordDraw(7) // Unarmed draws cannot become evidence.

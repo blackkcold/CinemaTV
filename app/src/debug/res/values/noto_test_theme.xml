@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Only the non-exported debug host (fonts and isolated protocol tests), never product startup. -->
+    <style name="NotoSpecimenTheme" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:windowDisablePreview">true</item>
+    </style>
+</resources>

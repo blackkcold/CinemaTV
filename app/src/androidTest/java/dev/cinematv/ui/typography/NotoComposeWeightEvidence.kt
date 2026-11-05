@@ -30,6 +30,7 @@ import androidx.compose.ui.text.font.createFontFamilyResolver
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.test.platform.app.InstrumentationRegistry
+import dev.cinematv.NotoTestActivity
 import java.io.File
 import java.security.MessageDigest
 import java.util.concurrent.atomic.AtomicReference
@@ -176,6 +177,8 @@ internal object NotoComposeWeightEvidence {
                 .put("firstDrawFrameTimeNanos", frameEvidence.draw.frameTimeNanos)
                 .put("matchedActualVsyncNanos", frameEvidence.matchedVsyncNanos)
                 .put("frameFenceScope", "app frame metrics; not a physical presentation fence")
+                .put("specimenLaunch", "font-only theme disables starting preview; product startup unchanged")
+                .put("splashExitRemovals", (activity as? NotoTestActivity)?.splashExitRemovals ?: JSONObject.NULL)
                 .put("specimenBounds", rectangles)
                 .put("backgroundGuardArgb", JSONObject(backgroundGuards.mapValues { (_, pixels) ->
                     JSONArray(pixels.map { "%08x".format(it) })

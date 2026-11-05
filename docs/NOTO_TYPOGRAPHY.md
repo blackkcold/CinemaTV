@@ -161,6 +161,37 @@ matched actual-vsync timestamp. This proves the app-frame ordering, **not** phys
 SurfaceFlinger presentation; display readback and black-background guards remain
 separate requirements. Exact-candidate full device execution is still required.
 
+### Android 12+ starting-window isolation
+
+Run `41967681737` kept the strict TV1080 black guard failing (RGB 4), despite
+NO_ANIMATION and the corrected epoch fence. Phone/API30 and API26 passed all ten
+font specimens. The TV failure had black 0 → 4, white 255 → 238, and background
+48 → 48, matching an approximately 8% gray-48 overlay. Its device log records a
+`Splash Screen dev.cinematv` starting window for `NotoTestActivity`, followed by
+`SPLASHSCREEN_EXIT_ANIM`. The system splash exit is separate from the Activity
+entry callback/NO_ANIMATION request. Those earlier changes alone did not solve it.
+
+The non-exported font host now has a debug-only theme inheriting the unchanged
+Material.NoActionBar parent with `android:windowDisablePreview=true`. AOSP13
+`ActivityRecord.validateStartingWindowTheme` honors this for app-origin launches;
+the recorded instrumentation launch is from the app UID, not Launcher/SystemUI.
+A defensive API31 public `SplashScreen` exit listener immediately removes any
+transferred splash instead of animating it and is cleared on destroy. It does not
+persist a global splash theme. No unconditional splash-callback wait is used,
+because that callback is only issued when a splash exists. The capture provenance
+records this isolation and any exit removals. A device test verifies both the
+font-host override and the unchanged MainActivity effective theme. This isolates a debug test host, not product startup/splash transitions. The
+isolated OfficialLibreTvPlaybackAcceptanceTest also reuses NotoTestActivity, so
+its phone/TV runs must be revalidated with this host change. Product activities,
+brand behavior and their tests remain unchanged. The exact black, native-weight, raw-hash,
+foreground and frame-epoch assertions are still mandatory, with no image retry.
+
+Sources:
+- https://android.googlesource.com/platform/frameworks/base/+/android-13.0.0_r1/services/core/java/com/android/server/wm/ActivityRecord.java
+- https://developer.android.com/reference/android/R.attr#windowDisablePreview
+- https://developer.android.com/reference/android/window/SplashScreen#setOnExitAnimationListener(android.window.SplashScreen.OnExitAnimationListener)
+- https://developer.android.com/reference/android/window/SplashScreenView#remove()
+
 ### API26 readback compatibility
 
 API26 has a narrow test-only readback route. In main `5576a10` run `41887458013`,

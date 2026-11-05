@@ -88,7 +88,8 @@ class NotoTypographyContractTest(unittest.TestCase):
         self.assertNotIn('onResume', host)
         self.assertNotIn('Thread.sleep', host)
         manifest = (ROOT / 'app/src/debug/AndroidManifest.xml').read_text()
-        self.assertIn('<activity android:name=".NotoTestActivity" android:exported="false" />', manifest)
+        self.assertIn('<activity android:name=".NotoTestActivity" android:exported="false"', manifest)
+        self.assertIn('android:theme="@style/NotoSpecimenTheme"', manifest)
         self.assertNotIn('NotoTestActivity', (ROOT / 'app/src/main/AndroidManifest.xml').read_text())
         test = (ROOT / 'app/src/androidTest/java/dev/cinematv/ui/typography/NotoFontsDeviceTest.kt').read_text()
         self.assertIn('val compose = AndroidComposeTestRule(', test)
@@ -127,6 +128,23 @@ class NotoTypographyContractTest(unittest.TestCase):
         test = (source / 'NotoFontsDeviceTest.kt').read_text()
         self.assertIn('drawEpochFenceRejectsUnarmedAndStaleFrameMetrics', test)
         self.assertIn('Redraws must not move the first-draw fence', test)
+
+    def test_starting_preview_is_isolated_to_font_host_not_product(self):
+        theme = (ROOT / 'app/src/debug/res/values/noto_test_theme.xml').read_text()
+        self.assertIn('parent="android:style/Theme.Material.NoActionBar"', theme)
+        self.assertIn('<item name="android:windowDisablePreview">true</item>', theme)
+        host = (ROOT / 'app/src/debug/java/dev/cinematv/NotoTestActivity.kt').read_text()
+        self.assertIn('Build.VERSION.SDK_INT >= 31', host)
+        self.assertIn('splashScreen.setOnExitAnimationListener', host)
+        self.assertIn('view.remove()', host)
+        self.assertIn('splashScreen.clearOnExitAnimationListener()', host)
+        self.assertNotIn('setSplashScreenTheme', host)  # Never persist an app-wide override.
+        main_manifest = (ROOT / 'app/src/main/AndroidManifest.xml').read_text()
+        self.assertNotIn('NotoSpecimenTheme', main_manifest)
+        self.assertIn('android:theme="@android:style/Theme.Material.NoActionBar"', main_manifest)
+        test = (ROOT / 'app/src/androidTest/java/dev/cinematv/ui/typography/NotoFontsDeviceTest.kt').read_text()
+        self.assertIn('fontSpecimenDisablesOnlyItsOwnStartingPreview', test)
+        self.assertIn('Product startup preview must stay unchanged', test)
 
     def test_ci_font_cache_uses_only_exact_lock_and_asset_path(self):
         expected_key = "noto-fonts-v2-${{ hashFiles('scripts/fonts/noto-fonts.lock.json') }}"
