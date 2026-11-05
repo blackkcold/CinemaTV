@@ -14,7 +14,7 @@ from test_log import TestLogBoundary
 
 ROOT = Path(__file__).resolve().parents[2]
 CLASSES = ("TvUiRegressionTest", "GlassActionLayoutTest", "FocusMediaCardMotionTest", "ContentRailVisibilityTest")
-VIEWPORTS = {"tv1080": ("1920x1080", 320, 700), "tv4k": ("3840x2160", 640, 1060)}
+VIEWPORTS = {"tv1080": ("1920x1080", 320, 700), "tv4k": ("3840x2160", 640, 1420)}
 DEVICE_EVIDENCE = "files/visual-review/ui-evidence"
 PURPOSE = "Visual review capture only; not release acceptance, official Media3 acceptance, or physical-device performance evidence"
 

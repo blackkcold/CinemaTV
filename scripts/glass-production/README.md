@@ -29,7 +29,9 @@ supplies immersive window chrome and passive observers. It is not in release.
   viewport crossings, rapid reversal and interrupted/reordered lazy moves.
   Four `ContentRailVisibilityTest` cases cover focused caption safety across
   Reduced Motion changes, native cancellation, route return and oversized rows.
-  Exact execution is required: 42 tests per TV SDK and three on phone.
+  Four `FocusBoundRelocationTest` cases verify per-card in-flight cancellation,
+  native Back disposal, non-focused request forwarding and actual accessibility
+  ShowOnScreen. Exact execution is required: 46 tests per TV SDK and three on phone.
   Interrupted restoration tests pause entry/lazy frame work and inject native
   D-pad events; newer navigation/content wins, cancellation never falls back,
   and ordinary saved-target/fallback behavior remains covered. Native default
@@ -102,3 +104,10 @@ Every exported PNG must pass format verification and full pixel decoding; old
 golden differences are separately labeled review input. No failed/partial run
 becomes a release receipt. New source still needs reviewed raw images and the
 strict full release matrix with unchanged comparison limits/masks.
+
+The review-only 4K pass has a 24-minute whole-process bound (1,420s inner,
+1,430s TERM and 10s kill grace); 1080p stays at 12 minutes. The a488 4K
+pass already took 875.82s while four new visibility tests stopped in setup.
+The bounded allowance covers their full paths plus the new focus-ring pixel
+checks; individual assertions, inputs, image thresholds and release gates are
+unchanged. It is not a performance-test window or frame-rate criterion.

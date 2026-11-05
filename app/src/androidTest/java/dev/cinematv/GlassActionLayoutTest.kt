@@ -408,6 +408,17 @@ class GlassActionLayoutTest {
         val backdrop = mutableStateOf(Color.Black)
         val selected = mutableStateOf(false)
         val clicks = AtomicInteger()
+        // The resized phone emulator still has system bars. Match TvTestActivity
+        // before composition so the compositor's full-window geometry gate holds.
+        compose.runOnUiThread {
+            val window = compose.activity.window
+            androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
+            @Suppress("DEPRECATION")
+            window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_FULLSCREEN or
+                View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
+                View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+        }
         compose.setContent {
             val view = LocalView.current
             val inputMode = LocalInputModeManager.current

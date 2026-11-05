@@ -80,10 +80,10 @@ class VisualInventory(unittest.TestCase):
         native = workflow.split("  visual-review:\n", 1)[1]
         for forbidden in ("gradle/actions", "gradle --", "connectedDebugAndroidTest", "run-device-qa", "android_acceptance.py", "screenrecord"):
             self.assertNotIn(forbidden, native)
-        for required in ("api-level: 33", "target: default", "emulator-build: '15004761'", "disable-animations: false", "timeout: 710s", "timeout: 1070s", "--kill-after=10s"):
+        for required in ("api-level: 33", "target: default", "emulator-build: '15004761'", "disable-animations: false", "timeout: 710s", "timeout: 1430s", "--kill-after=10s"):
             self.assertIn(required, native)
         self.assertEqual(("1920x1080", 320, 700), visual.VIEWPORTS["tv1080"])
-        self.assertEqual(("3840x2160", 640, 1060), visual.VIEWPORTS["tv4k"])
+        self.assertEqual(("3840x2160", 640, 1420), visual.VIEWPORTS["tv4k"])
 
 
 class VisualEvidence(unittest.TestCase):

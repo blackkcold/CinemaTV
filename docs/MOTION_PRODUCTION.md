@@ -25,7 +25,7 @@ The helper supports `FOCUS_ONLY` and `LAYERED` separately from glass quality. Pr
 
 ## Verification and performance boundaries
 
-The pure policy suite has 28 tests. The ten component instrumentation tests cover actual `FocusMediaCard` instances, interrupted focus/press, D-pad reversal and expiry, Back/route reset, reduced motion, stable media identity, loading/error behavior and retained labels/progress, including narrow production-Noto rating captions. Four additional real-rail tests exercise visibility during Reduced Motion changes, native cancellation, route return and oversized font scaling. A test-only monotonic-clock injection makes component timing deterministic; the production-root performance host must keep the real system clock.
+The pure policy suite has 28 tests. The ten component instrumentation tests cover actual `FocusMediaCard` instances, interrupted focus/press, D-pad reversal and expiry, Back/route reset, reduced motion, stable media identity, loading/error behavior and retained labels/progress, including narrow production-Noto rating captions. Four additional real-rail tests exercise visibility during Reduced Motion changes, native cancellation, route return and oversized font scaling. Four relocation instrumentation cases cover cancellation scope, Back disposal, non-focused request forwarding and Android accessibility ShowOnScreen; eight pure lifecycle tests check request ownership. A test-only monotonic-clock injection makes component timing deterministic; the production-root performance host must keep the real system clock.
 
 Compilation and API 26/31/35 functional results must be recorded for the exact integration SHA before release. Do not treat this description or a local policy-test pass as an Android build or device-test pass.
 
@@ -45,3 +45,20 @@ Research checked 2026-11-05. No source code or art from these projects was copie
 - [android/tv-samples, JetStreamCompose](https://github.com/android/tv-samples/tree/15ac8df7df91a07450751a5fe8c6fd17a6a4297f/JetStreamCompose), Apache-2.0, commit `15ac8df7df91a07450751a5fe8c6fd17a6a4297f`, [license](https://github.com/android/tv-samples/blob/15ac8df7df91a07450751a5fe8c6fd17a6a4297f/LICENSE). Native Android focus restoration and navigation-indicator design; its card treatment is not a promise of Apple fidelity. License blob `d645695673349e3947e8e5ae42332d0ac3164cd7`.
 
 The detailed inspected-path lock and original license texts remain in the independent motion-lab branch, under `tools/motion-lab/references.lock.json` and `reference-licenses`. The production implementation does not require merging that experimental application.
+
+
+## Scoped relocation ownership
+
+A transparent modifier on each ContentRail card owns only relocation calls which
+have already entered that node. On focus loss/reset/detach it cancels those child
+coroutine scopes, not a parent scroller, another card, or the caller's larger
+scope. New non-focused requests still pass through with their current transformed
+coordinates. No layout, spring, navigation key, or accessibility action is removed.
+
+The exact Compose 1.10.6 Focusable implementation launches its default request
+with DEFAULT scheduling. A request which starts only after blur cannot be
+identified as stale by the public coordinates/bounds API and is deliberately
+forwarded. A pure late-launch test documents this limitation; this modifier is
+not a general guarantee against all delayed framework requests. The original
+native no-residual-scroll assertion remains unchanged. New tests must actually
+pass on the candidate APK before describing this targeted fix as verified.

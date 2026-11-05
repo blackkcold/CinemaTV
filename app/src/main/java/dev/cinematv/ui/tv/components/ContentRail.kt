@@ -117,6 +117,7 @@ fun ContentRail(title: String, items: List<MediaItem>, model: CinemaViewModel, p
                     portrait = portrait, continueWatching = continueWatching,
                     modifier = Modifier.focusRequester(target)
                         .then(if (entryRequester != null && index == active) Modifier.focusRequester(entryRequester) else Modifier)
+                        .cancelRelocationOnFocusLoss()
                         .onFocusChanged { focus ->
                             if (focus.isFocused) {
                                 focusedKey = item.presentationKey

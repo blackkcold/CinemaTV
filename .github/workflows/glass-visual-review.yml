@@ -93,17 +93,17 @@ jobs:
     name: Capture / ${{ matrix.viewport }} (review only)
     needs: build
     runs-on: ubuntu-24.04
-    timeout-minutes: 26
+    timeout-minutes: 32
     strategy:
       fail-fast: false
       matrix:
         include:
           # Hard bounds include install, setup, tests, PNG export and validation.
-          # TERM plus the 10-second kill grace stays within 12 / 18 minutes.
+          # TERM plus the 10-second kill grace stays within 12 / 24 minutes.
           - viewport: tv1080
             timeout: 710s
           - viewport: tv4k
-            timeout: 1070s
+            timeout: 1430s
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4

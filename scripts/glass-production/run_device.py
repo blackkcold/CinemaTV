@@ -72,8 +72,16 @@ RAIL_VISIBILITY = [("dev.cinematv.ContentRailVisibilityTest", method) for method
 )]
 
 
+FOCUS_RELOCATION = [("dev.cinematv.FocusBoundRelocationTest", method) for method in (
+    "nativeFocusTransferCancelsOnlyEnteredOldCardRequests",
+    "nativeBackDisposalKeepsDestinationRelocationIndependent",
+    "unfocusedInnerAndOuterRequestersStillReachParent",
+    "nativeAccessibilityShowOnScreenRevealsUnfocusedCard",
+)]
+
+
 def expected_for(layout):
-    return [PRODUCTION, BUTTON, BUTTON_EDGE] + ([MATERIAL, *MOTION, *FOCUS_RESTORE, *ACTION_LAYOUT, *RAIL_TRAVERSAL, *RAIL_VISIBILITY] if layout == "tv" else [])
+    return [PRODUCTION, BUTTON, BUTTON_EDGE] + ([MATERIAL, *MOTION, *FOCUS_RESTORE, *ACTION_LAYOUT, *RAIL_TRAVERSAL, *RAIL_VISIBILITY, *FOCUS_RELOCATION] if layout == "tv" else [])
 
 
 ERROR_MARKERS = ("ANR in dev.cinematv", "ANR in com.android", "FATAL EXCEPTION", "Application Not Responding:",
