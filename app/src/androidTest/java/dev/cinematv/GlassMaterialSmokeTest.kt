@@ -145,23 +145,29 @@ class GlassMaterialSmokeTest {
         compose.runOnIdle { if (Build.VERSION.SDK_INT >= 33) assertTrue(diagnostics.successfulLensDraws > beforePress) }
         render("blur") { compose.runOnIdle { mode.value = GlassQuality.BACKDROP; pressed.value = false } }
         compose.runOnIdle { if (Build.VERSION.SDK_INT >= 31) assertTrue(diagnostics.blurDraws > 0) }
-        render("full-return") { compose.runOnIdle { mode.value = GlassQuality.ENHANCED } }
+        render("full-return") { compose.runOnIdle { mode.value = GlassQuality.ENHANCED; pressed.value = true } }
         val beforeReduced = compose.runOnIdle { diagnostics.successfulLensDraws }
-        render("reduced-motion") { compose.runOnIdle { reduced.value = true; phase.value = 14f } }
+        render("reduced-motion") { compose.runOnIdle { reduced.value = true; phase.value = 14f; focused.value = false } }
         compose.runOnIdle {
             // Reduced motion disables geometry animation, not the selected optical material.
             if (Build.VERSION.SDK_INT >= 33) assertTrue(diagnostics.successfulLensDraws > beforeReduced)
         }
         val beforeMissing = compose.runOnIdle { diagnostics.successfulLensDraws }
-        render("missing-art") { compose.runOnIdle { hasScene.value = false; reduced.value = false } }
+        render("missing-art") { compose.runOnIdle {
+            hasScene.value = false; reduced.value = false; pressed.value = false
+        } }
         compose.runOnIdle { assertEquals(beforeMissing, diagnostics.successfulLensDraws) }
+        render("scene-restored") { compose.runOnIdle { hasScene.value = true; focused.value = true } }
+        val beforeFailure = compose.runOnIdle { diagnostics.successfulLensDraws }
         render("latched-failure") { compose.runOnIdle {
+            // Fail an active optical source, rather than an already identical Basic
+            // frame. Press is also a visible native interaction on the API26 tier.
             failure.fail("test", IllegalArgumentException("simulated shader failure"))
-            hasScene.value = true
+            pressed.value = true
         } }
         render("unfocused") { compose.runOnIdle {
             assertTrue(failure.failed)
-            assertEquals(beforeMissing, diagnostics.successfulLensDraws)
+            assertEquals(beforeFailure, diagnostics.successfulLensDraws)
             focused.value = false
         } }
     }

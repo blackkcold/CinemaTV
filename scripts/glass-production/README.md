@@ -55,6 +55,17 @@ python3 -m unittest discover -s scripts/glass-production -p 'test_*.py' -v
 bash scripts/glass-production/run-matrix.sh 35 "$(git rev-parse HEAD)"
 ```
 
+Log checking does not require `logcat -c`, which failed before test startup on
+API26. It continuously reads the explicit main/system/crash buffers from a device
+clock timestamp, then requires unique START and END messages to appear under the
+expected log tag. Only that verified span is checked for crashes/ANRs. Initial
+replay remains in `live-test.log` for diagnosis but cannot fail this test span.
+Missing/duplicate markers, a reader exit, or an unsupported start timestamp fail
+closed. `log-boundary.json` records the strategy, marker verification state and
+command output on failure. Incomplete logs are clearly named `device-partial.log`
+and cannot pass the crash gate. No failed clear is simply ignored and no full
+boot log is substituted for test evidence.
+
 JUnit execution is checked from raw instrumentation status, not `adb` exit code.
 Skipped, unexecuted, failed, crashed, duplicated, or missing tests fail validation.
 The runner leaves native/partial capture metadata, input trace, logs and runtime

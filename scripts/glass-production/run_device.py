@@ -8,6 +8,7 @@ import subprocess
 import sys
 import time
 from evidence import APK_NAMES, verify_build, verify_captures
+from test_log import TestLogBoundary
 
 PACKAGE = "dev.cinematv"
 RUNNER = "dev.cinematv.test/androidx.test.runner.AndroidJUnitRunner"
@@ -69,7 +70,7 @@ def run_layout(args, layout, sdk):
     directory.mkdir(parents=True, exist_ok=True)
     start = time.monotonic()
     result = {"result": "failed", "sdk": sdk, "layout": layout, "sourceSha": args.sha}
-    log = None
+    test_log = None
     try:
         size, density = ("1920x1080", "320") if layout == "tv" else ("1080x2400", "420")
         assert adb("shell", "pm", "clear", PACKAGE).strip() == "Success"
@@ -91,18 +92,19 @@ def run_layout(args, layout, sdk):
         for label, command in (("display", ("shell", "wm", "size")), ("surfaceflinger", ("shell", "dumpsys", "SurfaceFlinger")),
                                ("power", ("shell", "dumpsys", "power")), ("memory", ("shell", "getprop", "dalvik.vm.heapgrowthlimit"))):
             (directory / f"{label}.txt").write_text(adb(*command))
-        adb("logcat", "-c")
-        with (directory / "live-test.log").open("w") as output:
-            log = subprocess.Popen(["adb", "logcat", "-v", "threadtime", "CinemaTVQa:I", "CinemaTVGlassQa:I", "TestRunner:I", "AndroidRuntime:E", "*:S"], stdout=output, stderr=subprocess.STDOUT)
-            expected = [PRODUCTION, BUTTON, BUTTON_EDGE] + ([MATERIAL] if layout == "tv" else [])
-            classes = ",".join(dict.fromkeys(pair[0] for pair in expected))
-            # Budget covers setup + instrumentation; no Gradle or APK rebuild in this job.
-            remaining = max(1, min(520, int(580 - (time.monotonic() - start))))
-            proc = subprocess.run(["adb", "shell", "am", "instrument", "-w", "-r", "-e", "class", classes,
-                                   "-e", "glassLayout", layout, "-e", "glassSourceSha", args.sha, RUNNER],
-                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=remaining)
-            (directory / "instrumentation.txt").write_text(proc.stdout)
-            assert proc.returncode == 0 and passed_instrumentation(proc.stdout, expected), "Expected exact executed passing tests, no skips"
+        test_log = TestLogBoundary(directory, adb)
+        test_log.start()  # Must read our marker back before any test can start.
+        expected = [PRODUCTION, BUTTON, BUTTON_EDGE] + ([MATERIAL] if layout == "tv" else [])
+        classes = ",".join(dict.fromkeys(pair[0] for pair in expected))
+        # Budget covers setup + instrumentation; no Gradle or APK rebuild in this job.
+        remaining = max(1, min(520, int(580 - (time.monotonic() - start))))
+        proc = subprocess.run(["adb", "shell", "am", "instrument", "-w", "-r", "-e", "class", classes,
+                               "-e", "glassLayout", layout, "-e", "glassSourceSha", args.sha, RUNNER],
+                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=remaining)
+        (directory / "instrumentation.txt").write_text(proc.stdout)
+        device_log = test_log.finish()  # Verified END also fences streamed log delivery.
+        reject_errors(device_log)
+        assert proc.returncode == 0 and passed_instrumentation(proc.stdout, expected), "Expected exact executed passing tests, no skips"
         evidence = directory / "native"
         evidence.mkdir(exist_ok=True)
         # run-as exports app-owned fixture files after tests. No screen-capture fallback.
@@ -110,9 +112,6 @@ def run_layout(args, layout, sdk):
         for name in names:
             assert re.fullmatch(r"[a-zA-Z0-9_.-]+", name), "Unexpected evidence filename"
             (evidence / name).write_bytes(adb("exec-out", "run-as", PACKAGE, "cat", f"files/production-glass/{name}", binary=True))
-        device_log = adb("logcat", "-d", "-v", "threadtime")
-        (directory / "device.log").write_text(device_log)
-        reject_errors(device_log)
         windows = adb("shell", "dumpsys", "window")
         (directory / "windows-after.txt").write_text(windows)
         reject_errors(windows)
@@ -130,15 +129,13 @@ def run_layout(args, layout, sdk):
         except Exception:
             pass
     finally:
-        if log is not None:
-            log.terminate()
+        if test_log is not None:
             try:
-                log.wait(timeout=3)
-            except subprocess.TimeoutExpired:
-                log.kill()
-                log.wait(timeout=3)
-        for name, command in (("device.log", ("logcat", "-d", "-v", "threadtime")),
-                               ("activity-after.txt", ("shell", "dumpsys", "activity", "top")),
+                test_log.close()
+            except Exception as error:
+                result["result"] = "failed"
+                result["logCleanupError"] = f"{type(error).__name__}: {error}"
+        for name, command in (("activity-after.txt", ("shell", "dumpsys", "activity", "top")),
                                ("windows-after.txt", ("shell", "dumpsys", "window"))):
             try:
                 (directory / name).write_text(adb(*command, timeout=5))

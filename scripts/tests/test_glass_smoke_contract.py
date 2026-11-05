@@ -18,7 +18,7 @@ class GlassSmokeContractTest(unittest.TestCase):
         self.assertIn('diagnostics.successfulLensDraws > beforePress', source)
         self.assertIn('diagnostics.successfulLensDraws > beforeReduced', source)
         self.assertIn('diagnostics.blurDraws > 0', source)
-        self.assertIn('assertEquals(beforeMissing, diagnostics.successfulLensDraws)', source)
+        self.assertIn('assertEquals(beforeFailure, diagnostics.successfulLensDraws)', source)
 
     def test_hardware_frame_barrier_is_bounded_and_cleaned_up(self):
         source = (ROOT / 'app/src/androidTest/java/dev/cinematv/GlassMaterialSmokeTest.kt').read_text()

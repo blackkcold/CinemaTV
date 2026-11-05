@@ -3,10 +3,13 @@ import copy
 import json
 from pathlib import Path
 import tempfile
+import subprocess
+from unittest.mock import Mock, patch
 import unittest
 import xml.etree.ElementTree as ET
 from evidence import digest, verify_captures
-from run_device import PRODUCTION, BUTTON, BUTTON_EDGE, MATERIAL, passed_instrumentation
+from run_device import PRODUCTION, BUTTON, BUTTON_EDGE, MATERIAL, passed_instrumentation, reject_errors
+from test_log import TestLogBoundary, TAG
 
 ROOT = Path(__file__).resolve().parents[2]
 SHA = "a" * 40
@@ -132,6 +135,108 @@ class EvidenceContract(unittest.TestCase):
             broken["captures"].pop()
             with self.assertRaises(AssertionError):
                 check(broken)
+
+
+class LogBoundaryContract(unittest.TestCase):
+    def reader(self, directory, during="", marker_tag=TAG):
+        calls = []
+        process = Mock()
+        process.poll.return_value = None
+        def adb(*args):
+            calls.append(args)
+            if args[:2] == ("shell", "date"):
+                return "11-05_02:45:30\n"
+            if args[:2] == ("shell", "log"):
+                marker = args[-1]
+                path = directory / "live-test.log"
+                with path.open("a") as stream:
+                    if marker.startswith("START:"):
+                        stream.write("11-05 02:45:29.999 1 1 E OldBoot : FATAL EXCEPTION old startup\n")
+                    else:
+                        stream.write(during)
+                    stream.write(f"11-05 02:45:30.100 100 100 I {marker_tag}: {marker}\n")
+                return ""
+            raise AssertionError(f"Unexpected adb command: {args}")
+        return adb, process, calls
+
+    def test_marker_span_excludes_startup_and_never_clears_buffers(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            adb, process, calls = self.reader(directory)
+            boundary = TestLogBoundary(directory, adb)
+            with patch("test_log.subprocess.Popen", return_value=process) as popen:
+                boundary.start()
+                checked = boundary.finish()
+                boundary.close()
+            reject_errors(checked)
+            self.assertNotIn("old startup", checked)
+            self.assertIn("old startup", (directory / "live-test.log").read_text())
+            self.assertEqual(checked, (directory / "device.log").read_text())
+            self.assertFalse(any("-c" in command for command in calls))
+            args = popen.call_args.args[0]
+            self.assertEqual(["main", "system", "crash"], [args[i + 1] for i, value in enumerate(args) if value == "-b"])
+            self.assertEqual("11-05 02:45:30.000", args[args.index("-T") + 1])
+            self.assertEqual("complete", json.loads((directory / "log-boundary.json").read_text())["state"])
+
+    def test_crash_inside_verified_span_is_rejected(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            adb, process, _ = self.reader(directory, "11-05 02:45:31.100 120 120 E AndroidRuntime: FATAL EXCEPTION main\n")
+            boundary = TestLogBoundary(directory, adb)
+            with patch("test_log.subprocess.Popen", return_value=process):
+                boundary.start()
+                checked = boundary.finish()
+                boundary.close()
+            with self.assertRaises(AssertionError):
+                reject_errors(checked)
+
+    def test_reader_failure_is_recorded_and_not_ignored(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            adb, process, _ = self.reader(directory)
+            process.poll.return_value = 1
+            boundary = TestLogBoundary(directory, adb)
+            with patch("test_log.subprocess.Popen", return_value=process):
+                with self.assertRaisesRegex(RuntimeError, "reader exited"):
+                    boundary.start()
+                boundary.close()
+            receipt = json.loads((directory / "log-boundary.json").read_text())
+            self.assertEqual("failed", receipt["state"])
+            self.assertIn("status 1", receipt["error"])
+            self.assertFalse((directory / "device.log").exists())
+
+    def test_marker_failure_preserves_command_output(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            adb, process, _ = self.reader(directory)
+            def denied(*args):
+                if args[:2] == ("shell", "log"):
+                    raise subprocess.CalledProcessError(1, args, output="log: permission denied")
+                return adb(*args)
+            boundary = TestLogBoundary(directory, denied)
+            with patch("test_log.subprocess.Popen", return_value=process):
+                with self.assertRaises(subprocess.CalledProcessError):
+                    boundary.start()
+                boundary.close()
+            receipt = json.loads((directory / "log-boundary.json").read_text())
+            self.assertEqual("log: permission denied", receipt["commandOutput"])
+            self.assertEqual("failed", receipt["state"])
+
+    def test_quoted_marker_wrong_tag_and_missing_end_cannot_pass(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            boundary = TestLogBoundary(directory, Mock())
+            (directory / "live-test.log").write_text(f"11-05 02:45:30.100 1 1 I OtherTag: {boundary.start_marker}\n")
+            with self.assertRaises(RuntimeError):
+                boundary.scoped(require_end=True)
+            (directory / "live-test.log").write_text(f"11-05 02:45:30.100 1 1 I {TAG}: {boundary.start_marker}\n")
+            with self.assertRaises(RuntimeError):
+                boundary.scoped(require_end=True)
+            boundary.started = True
+            boundary.close()
+            self.assertTrue((directory / "device-partial.log").exists())
+            self.assertFalse((directory / "device.log").exists())
+            self.assertEqual("incomplete", json.loads((directory / "log-boundary.json").read_text())["state"])
 
 
 if __name__ == "__main__":

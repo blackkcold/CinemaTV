@@ -88,7 +88,7 @@ private fun MainNavigationTabs(model: CinemaViewModel) {
                 val interactions = remember { MutableInteractionSource() }
                 Box(Modifier.width(itemWidth).fillMaxHeight()
                     .then(if (index == selected) Modifier.focusRequester(navigation) else Modifier)
-                    .focusProperties { down = content }
+                    .focusProperties { canFocus = true; down = content }
                     .onFocusChanged { if (it.isFocused) focusedIndex = index else if (focusedIndex == index) focusedIndex = null }
                     .selectable(index == selected, interactions, indication = null, role = Role.Tab) { model.navigate(destination) },
                     contentAlignment = Alignment.Center) {
@@ -108,6 +108,6 @@ private fun NavIcon(label: String, icon: CinemaSymbol, model: CinemaViewModel, d
     Box(contentAlignment = Alignment.Center) {
         GlassAction("", Modifier.size(39.dp).semantics { contentDescription = "打开$label" }
             .then(if (selected) Modifier.focusRequester(navigation) else Modifier)
-            .focusProperties { down = content }, selected = selected, icon = icon) { model.navigate(destination) }
+            .focusProperties { canFocus = true; down = content }, selected = selected, icon = icon) { model.navigate(destination) }
     }
 }
