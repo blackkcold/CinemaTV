@@ -2,7 +2,8 @@
 
 This is an **opt-in implementation, not an active production update service**. A
 new fixed production identity has been created on the separately approved signing
-machine. The user retired the first identity and requested release work with the
+machine, with temporary protected retention. Losing this key before a verified
+backup would prevent future same-signature updates. The user retired the first identity and requested release work with the
 new key before deciding its backup destination. **Backup of the new identity is
 pending**, not verified in 1Password. No private material has been uploaded to GitHub.
 No update feed or release is published by the PR. Existing preview pipelines remain
@@ -181,12 +182,28 @@ export/import migration needs to exist before offering a data-preserving move.
 
 ## Public unsigned candidate transfer
 
-For this first stable candidate, `build-unsigned-candidate.sh` reserves version
-`0.8.0` / code `10`. It builds stable release bytes with the updater enabled, but
-with explicit `cinematvUnsignedCandidate=true`. That mode rejects every signing
-credential and outputs an unsigned, non-installable artifact with source commit,
-source tree and SHA-256 receipt. Gradle also rejects production signing variables
-in GitHub Actions. No private key is needed to compile public code.
+`build-unsigned-candidate.sh` supports the two reserved entries in one global
+versionCode sequence:
+
+| Invocation | Channel | Version | Code | Output |
+|---|---|---|---|---|
+| no argument (unchanged default), or `stable` | stable | `0.8.0` | `10` | `candidate/` |
+| `dev` | dev | `0.8.0-dev.1` | `11` | `candidate-dev/` |
+
+Both use the same accepted main app source with no Douban personal-account code.
+Code 11 cannot downgrade to stable code 10; a subsequent stable release needs a
+new globally higher code. These reservations do not change the ordinary Gradle
+defaults or the provenance of earlier public previews.
+
+The dedicated stable and dev CI jobs check out the exact workflow SHA (the tested
+merge commit on a PR), not a moving branch. Each builds release bytes with the
+updater enabled and explicit `cinematvUnsignedCandidate=true`. This mode rejects
+every signing credential and outputs an unsigned, non-installable artifact labeled
+**NOT FOR INSTALLATION**. Its receipt records source commit/tree, originating PR
+head, app/backdrop source trees, app build configuration, workflow run/attempt,
+packaged identity and unsigned APK SHA-256. Existing output is not overwritten.
+Gradle also rejects production signing variables in GitHub Actions. No private
+key is needed to compile public code, and neither candidate job signs or publishes.
 
 The external signer must compare this receipt and APK hash before signing, verify
 the signed APK's package/channel/version/minSdk and approved public certificate,
