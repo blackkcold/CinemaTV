@@ -1,0 +1,76 @@
+{
+  "schema": 1,
+  "scope": "User-requested isolated low-volume public endpoint compatibility probe, not authorization or production activation",
+  "time_utc": "2026-11-04T23:41:00Z",
+  "request_limit": 6,
+  "actual_requests": 3,
+  "minimum_spacing_seconds": 10,
+  "concurrency": 1,
+  "automatic_redirects": false,
+  "retries": 0,
+  "authenticated": false,
+  "user_agent": "CinemaTVCompatibilityProbe/0.1 (limited personal-use compatibility check)",
+  "requests": [
+    {
+      "request": 1,
+      "url": "https://movie.douban.com/robots.txt",
+      "time_utc": "2026-11-04T23:39:53Z",
+      "status": 200,
+      "content_type": "text/plain",
+      "bytes": 895,
+      "sha256": "a44732778690f2f3d6e294188b6024a0105a8192c72978b19f2c6ce39e459db7",
+      "location": null,
+      "retry_after": null,
+      "retry": false,
+      "budget": 6
+    },
+    {
+      "request": 2,
+      "url": "https://movie.douban.com/top250?start=0&filter=",
+      "time_utc": "2026-11-04T23:40:16Z",
+      "status": 200,
+      "content_type": "text/html; charset=utf-8",
+      "bytes": 64354,
+      "sha256": "2e2072dd508ab7f34ef00694d131adb1bea73b79ee1381d1aaf5bed687fb2c69",
+      "location": null,
+      "retry_after": null,
+      "retry": false
+    },
+    {
+      "request": 3,
+      "url": "https://movie.douban.com/subject/1292052/",
+      "time_utc": "2026-11-04T23:40:57Z",
+      "retry": false,
+      "status": 302,
+      "content_type": "text/html",
+      "bytes": 138,
+      "sha256": "753e0dd54f28c4f7009b9c0b18a68aed175416bd8b7d134858264586eaac56f0",
+      "location": "https://sec.douban.com/c",
+      "retry_after": null
+    }
+  ],
+  "parser": {
+    "source_commit": "11cdc20494ce36eb27ed03e516be60819fa3f1e2",
+    "module": "backend/tv-bff/douban-parser.mjs",
+    "page_offset": 0,
+    "entries": 25,
+    "rank_start": 1,
+    "rank_end": 25,
+    "warnings": 0,
+    "page_complete": true,
+    "full_chart_complete": false,
+    "poster_exported": false
+  },
+  "stopped": true,
+  "stop_reason": "HTTP 302 security-verification redirect; not followed; no retry or poster request",
+  "not_verified": [
+    "details",
+    "poster download",
+    "TV/series charts",
+    "all 250 positions",
+    "ongoing reliability",
+    "reuse/redistribution rights"
+  ],
+  "production_acquisition_enabled": false,
+  "raw_responses_published": false
+}

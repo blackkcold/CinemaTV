@@ -1,4 +1,18 @@
-# Reviewed settings baseline refresh · 2026-11-04
+# Reviewed visual baseline refreshes
+
+## Detail refresh · 2026-11-04
+
+Only `tv1080/03-detail.png` and `tv4k/03-detail.png` are refreshed in this change. All other golden bytes, every mask, the mean-error limit (0.020), and the changed-pixel limit (0.08) are unchanged. In particular, the previously reviewed settings baselines below retain their original provenance.
+
+Source: commit `3b2e9842d9efa305f56f1cef0148b0fcd3fe0a45`, [run 41911066064](https://github.com/blackkcold/CinemaTV/actions/runs/41911066064), artifacts `13363940974` (1920×1080) and `13364155858` (3840×2160). Exact raw and normalized PNG SHA-256 values are recorded per screen in the manifests. Both targets completed 14 of 15 instrumentation tests successfully; the main route test failed immediately after the detail capture on its stale expectation that the status dialog initially focuses “想看” rather than the implemented safe default “取消”. That run remains failed. Screens and interactions after that assertion were not certified by this run.
+
+The actual raw screenshots, 960×540 normalizations, and overlays against the old baselines were visually reviewed at both resolutions alongside the source changes. The new local-work-association action occupies its own full-width row. The synthetic fixture's `Synthetic 9.9` provenance and “片源已就绪” status are now explicit. The approved V4 glass, Back/Play/Bookmark icons, and corrected Noto font rendering account for the remaining control and typography differences. Title, metadata, description, primary actions, and the association label remain legible, separated, and within their bounds; the initial Play focus remains distinguishable. Both resolutions have matching normalized geometry. Old-baseline mean/changed errors were 0.049295/0.093636 (1080p) and 0.048176/0.094271 (4K), so accepting the old images would require weakening both gates, which this change does not do.
+
+The source-ready line and association row intentionally move the episode heading down by approximately 97 normalized pixels. Only the top of the first episode row is now visible at the initial viewport edge. This is content continuing below the fold of the existing full-height `LazyColumn`, not text clipped inside a fixed-height control. It is a visible layout trade-off, not evidence that episode navigation passed. A fresh exact-commit device run must verify real D-pad traversal from Play through the association action into a fully visible episode row and restoration upward, in addition to all unchanged acceptance gates. No baseline for a scrolled episode state is inferred from this screenshot.
+
+Raw CI captures remain untouched. Normalization uses the existing comparator's 960×540 RGB/LANCZOS path with no masks baked into the images. The focused provenance regression checks the new detail source/artifacts, both reviewed image hashes and sizes, and unchanged non-detail images and masks. This review does not certify the full UI suite, physical-device performance, a real LibreTV deployment, or preview-release readiness.
+
+## Settings refresh · 2026-11-04
 
 Only `tv1080/11-settings.png` and `tv4k/11-settings.png` are refreshed. Every other golden, mask, mean-error limit (0.020) and changed-pixel limit (0.08) is unchanged.
 

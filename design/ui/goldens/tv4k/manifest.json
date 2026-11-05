@@ -16,7 +16,18 @@
     },
     {
       "file": "03-detail.png",
-      "masks": []
+      "masks": [],
+      "sourceCommit": "3b2e9842d9efa305f56f1cef0148b0fcd3fe0a45",
+      "workflowRun": 41911066064,
+      "artifactId": 13364155858,
+      "rawCaptureSize": [
+        3840,
+        2160
+      ],
+      "rawCaptureSha256": "4449d164e4341c1924a73227944b1b5352fcc4a314d4a08a6ce87a90b0578d7a",
+      "baselineSha256": "749e2176e215464042463eed5c635e71cec1b4e495104d0f4df8db67c8e15f53",
+      "reviewedDate": "2026-11-04",
+      "reviewReason": "Reviewed manual association control, explicit Synthetic score/source-ready status, approved V4 controls, icons and Noto typography. Primary controls remain legible and separate. Added content moves episodes below the initial scroll fold; D-pad traversal still requires the next exact-commit device run."
     },
     {
       "file": "05-movies.png",

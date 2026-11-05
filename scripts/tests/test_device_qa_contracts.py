@@ -65,6 +65,49 @@ class DeviceQaContractTest(unittest.TestCase):
             '10-library', '11-settings', '12-effects', '13-player', '14-player-panel',
         ])
 
+    def test_remote_trace_retains_synchronized_observation_without_duplicate_idle(self):
+        source = (ROOT / 'app/src/androidTest/java/dev/cinematv/TvUiRegressionTest.kt').read_text()
+        key = source.split('private fun key(', 1)[1].split('private fun assertFullyVisible(', 1)[0]
+        self.assertIn('target.performKeyInput { pressKey(composeKey) }', key)
+        self.assertIn('rule.onAllNodes(isFocused()).fetchSemanticsNodes()', key)
+        self.assertIn('File(directory, "focus-trace.txt").appendText(', key)
+        self.assertLess(key.index('target.performKeyInput'), key.index('val trace ='))
+        self.assertLess(key.index('val trace ='), key.index('.appendText('))
+        self.assertNotIn('rule.waitForIdle()', key)
+        # Back still targets the owning window, including modal dialogs.
+        self.assertIn('RootMatchers.isDialog()', key)
+        self.assertIn('ViewActions.pressBack()', key)
+        self.assertIn('Espresso.pressBack()', key)
+
+    def test_capture_settles_fonts_with_one_synchronized_root_fetch(self):
+        source = (ROOT / 'app/src/androidTest/java/dev/cinematv/TvUiRegressionTest.kt').read_text()
+        fonts = source.split('private fun awaitBundledFonts()', 1)[1].split('private fun awaitPlatformImeVisible(', 1)[0]
+        capture = source.split('private fun captureWindow()', 1)[1].split('private fun screenshot(', 1)[0]
+        self.assertIn('rule.waitUntil(15000)', fonts)
+        self.assertIn('assertTrue("Bundled Noto failed:', fonts)
+        self.assertNotIn('rule.waitForIdle()', fonts + capture)
+        markers = ['awaitBundledFonts()', 'rule.onRoot().fetchSemanticsNode()', 'TvWindowCapture.capture(']
+        positions = [capture.index(marker) for marker in markers]
+        self.assertEqual(positions, sorted(positions))
+        self.assertEqual(capture.count('fetchSemanticsNode()'), 1)
+
+    def test_frame_sample_keeps_all_remote_events_and_closes_listener_on_failure(self):
+        source = (ROOT / 'app/src/androidTest/java/dev/cinematv/TvUiRegressionTest.kt').read_text()
+        sample = source.split('private fun recordFrameMetrics()', 1)[1]
+        self.assertEqual(sample.count('repeat(8)'), 1)
+        loop = sample.split('repeat(8) {', 1)[1].split('}', 1)[0]
+        self.assertEqual(re.findall(r'key\(KeyEvent\.(\w+)\)', loop), [
+            'KEYCODE_DPAD_RIGHT', 'KEYCODE_DPAD_DOWN', 'KEYCODE_DPAD_LEFT', 'KEYCODE_DPAD_UP'])
+        self.assertIn('rule.runOnUiThread { rule.activity.window.addOnFrameMetricsAvailableListener(', sample)
+        self.assertIn('rule.runOnUiThread { rule.activity.window.removeOnFrameMetricsAvailableListener(listener) }', sample)
+        self.assertRegex(sample, r'finally\s*\{\s*try\s*\{\s*rule.runOnUiThread')
+        self.assertRegex(sample, r'finally\s*\{\s*thread.quitSafely\(\); thread.join\(2000\)')
+        self.assertNotIn('rule.runOnIdle', sample)
+        self.assertIn('FrameMetrics.TOTAL_DURATION', sample)
+        self.assertIn('assertTrue("Frame evidence must contain rendered frames", values.isNotEmpty())', sample)
+        self.assertIn('software renderer; see emulator launch log for actual GPU', sample)
+        self.assertNotIn('Lavapipe', sample)
+
     def test_capture_requires_fresh_focused_full_resolution_display(self):
         source = (ROOT / 'app/src/androidTest/java/dev/cinematv/TvWindowCapture.kt').read_text()
         test = (ROOT / 'app/src/androidTest/java/dev/cinematv/TvUiRegressionTest.kt').read_text()
@@ -73,8 +116,9 @@ class DeviceQaContractTest(unittest.TestCase):
         self.assertIn('root.size.width, root.size.height', test)
         for contract in ('activity.hasWindowFocus()', 'automation.rootInActiveWindow',
                          'activeRoot.packageName?.toString() == activity.packageName',
-                         'FrameMetrics.INTENDED_VSYNC_TIMESTAMP) >= requestedAt',
-                         'drawn.await(TIMEOUT_SECONDS, TimeUnit.SECONDS)',
+                         'FrameMetrics.VSYNC_TIMESTAMP',
+                         'fence > 0 && drawPasses.get() > 0 && actualVsync >= fence',
+                         'drawn.await(remaining, TimeUnit.MILLISECONDS)',
                          'automation.takeScreenshot()', 'future.get(TIMEOUT_SECONDS, TimeUnit.SECONDS)',
                          'bitmap.width == rootWidth && bitmap.height == rootHeight',
                          'if (!transferred) captured?.recycle()', 'executor.shutdownNow()'):
@@ -88,14 +132,44 @@ class DeviceQaContractTest(unittest.TestCase):
         markers = ['activity.window.addOnFrameMetricsAvailableListener(listener, Handler(thread.looper))',
                    'activity.findViewById<ViewGroup>(android.R.id.content)',
                    'content.getChildAt(0) as? ComposeView',
-                   'val drawHost = composeView.getChildAt(0)',
+                   'drawHost = composeView.getChildAt(0)',
                    'check(drawHost.isAttachedToWindow && drawHost.isShown && drawHost.isHardwareAccelerated)',
-                   'drawHost.postInvalidateOnAnimation()',
-                   'drawn.await(TIMEOUT_SECONDS, TimeUnit.SECONDS)']
+                   'observer = drawHost.viewTreeObserver.also { it.addOnDrawListener(drawListener) }',
+                   'Choreographer.getInstance().also { it.postFrameCallback(requestFrame) }',
+                   'drawn.await(firstWait, TimeUnit.MILLISECONDS)']
         positions = [source.index(marker) for marker in markers]
         self.assertEqual(positions, sorted(positions))
-        self.assertNotIn('decorView.postInvalidateOnAnimation()', source)
-        self.assertIn('FrameMetrics.INTENDED_VSYNC_TIMESTAMP) >= requestedAt', source)
+        request = source.split('val requestFrame = Choreographer.FrameCallback { frameTimeNanos ->', 1)[1].split('val drawListener', 1)[0]
+        self.assertLess(request.index('requestedFrame.compareAndSet(-1, frameTimeNanos)'), request.index('drawHost.invalidate()'))
+        self.assertNotIn('postInvalidateOnAnimation()', source)
+        self.assertNotIn('val requestedAt = System.nanoTime()', source)
+
+    def test_frame_completion_rejects_unarmed_stale_and_draw_only_evidence(self):
+        source = (ROOT / 'app/src/androidTest/java/dev/cinematv/TvWindowCapture.kt').read_text()
+        draw = source.split('val drawListener =', 1)[1].split('val listener =', 1)[0]
+        listener = source.split('val listener = Window.OnFrameMetricsAvailableListener', 1)[1].split('fun frameState()', 1)[0]
+        self.assertIn('if (requestedFrame.get() > 0) drawPasses.incrementAndGet()', draw)
+        self.assertNotIn('drawn.countDown()', draw)
+        self.assertIn('metrics.getMetric(FrameMetrics.VSYNC_TIMESTAMP)', listener)
+        self.assertIn('fence > 0 && drawPasses.get() > 0 && actualVsync >= fence', listener)
+        self.assertEqual(source.count('drawn.countDown()'), 1)
+        self.assertIn('droppedCallbacks.addAndGet(dropped)', listener)
+        for diagnostic in ('requestedFrame=', 'lastVsync=', 'lastIntendedVsync=', 'callbacks=', 'drawPasses=', 'requests='):
+            self.assertIn(diagnostic, source)
+
+    def test_frame_retry_preserves_first_fence_deadline_and_cleans_up(self):
+        source = (ROOT / 'app/src/androidTest/java/dev/cinematv/TvWindowCapture.kt').read_text()
+        self.assertEqual(source.count('val frameDeadline ='), 1)
+        self.assertIn('val remaining = (frameDeadline - SystemClock.uptimeMillis()).coerceAtLeast(0L)', source)
+        self.assertIn('drawn.await(remaining, TimeUnit.MILLISECONDS)', source)
+        self.assertIn('!drawn.await(firstWait, TimeUnit.MILLISECONDS) && SystemClock.uptimeMillis() < frameDeadline', source)
+        self.assertEqual(source.count('postFrameCallback(requestFrame)'), 2)
+        self.assertIn('requestedFrame.compareAndSet(-1, frameTimeNanos)', source)
+        self.assertNotIn('requestedFrame.set(', source)
+        for cleanup in ('removeFrameCallback(requestFrame)', 'removeOnDrawListener(drawListener)',
+                        'removeOnFrameMetricsAvailableListener(listener)', 'thread.quitSafely()', 'thread.join(2000)'):
+            self.assertIn(cleanup, source)
+        self.assertIn('TIMEOUT_SECONDS = 10L', source)
 
     def test_initial_accessibility_root_wait_is_bounded_and_never_bypasses_identity(self):
         source = (ROOT / 'app/src/androidTest/java/dev/cinematv/TvWindowCapture.kt').read_text()
@@ -113,13 +187,14 @@ class DeviceQaContractTest(unittest.TestCase):
     def test_search_submits_visible_ime_and_waits_for_hidden_restored_window(self):
         source = (ROOT / 'app/src/androidTest/java/dev/cinematv/TvUiRegressionTest.kt').read_text()
         search = source.split('performTextReplacement(server.title(0))', 1)[1].split('screenshot("08-search")', 1)[0]
-        markers = ['?.isVisible(WindowInsetsCompat.Type.ime()) == true',
+        markers = ['rule.onNode(hasSetTextAction()).assertIsFocused()',
+                   'awaitPlatformImeVisible("search-submit")',
                    'performImeAction()', '!model.busy && model.results.isNotEmpty()',
                    'awaitHiddenImeAndFullScreen()',
                    'rule.onNodeWithContentDescription(server.title(0)).assertIsDisplayed()']
         positions = [search.index(marker) for marker in markers]
         self.assertEqual(positions, sorted(positions))
-        self.assertEqual(search.count('rule.waitUntil(15000)'), 2)
+        self.assertEqual(search.count('rule.waitUntil(15000)'), 1)
         helper = source.split('private fun awaitHiddenImeAndFullScreen()', 1)[1].split('private fun captureWindow()', 1)[0]
         for marker in ('rule.waitUntil(15000)', '!insets.isVisible(WindowInsetsCompat.Type.ime())',
                        'location.contentEquals(intArrayOf(0, 0))',
@@ -132,6 +207,26 @@ class DeviceQaContractTest(unittest.TestCase):
         self.assertIn('Unexpected window offset ${location.contentToString()}', capture)
         self.assertIn('imeVisible=', capture)
         self.assertIn('softInputMode=', capture)
+
+    def test_visible_ime_wait_observes_platform_without_pumping_compose(self):
+        source = (ROOT / 'app/src/androidTest/java/dev/cinematv/TvUiRegressionTest.kt').read_text()
+        helper = source.split('private fun awaitPlatformImeVisible(', 1)[1].split('private fun awaitHiddenImeAndFullScreen()', 1)[0]
+        for contract in ('val deadline = startedAt + 15000L', 'rule.runOnUiThread {',
+                         'ViewCompat.getRootWindowInsets(decor)',
+                         'insets?.isVisible(WindowInsetsCompat.Type.ime()) == true',
+                         'activity.hasWindowFocus() && visible', 'ready && now <= deadline',
+                         'SystemClock.sleep(minOf(50L, deadline - now))',
+                         'throw AssertionError(diagnostic)', 'ime-wait-failure.txt',
+                         'hardKeyboardHidden=', 'show_ime_with_hard_keyboard'):
+            self.assertIn(contract, helper)
+        # Comments document why the old polling pattern was removed. Executable
+        # code may only observe platform state, never drive rendering or the IME.
+        code = '\n'.join(line for line in helper.splitlines() if not line.strip().startswith('//'))
+        for bypass in ('runOnIdle', 'waitForIdle', 'waitUntil', 'mainClock', 'advanceTime',
+                       '.show()', '.hide()', 'requestFocus(', 'clearFocus(', 'Settings.Secure.put'):
+            self.assertNotIn(bypass, code)
+        self.assertEqual(source.count('awaitPlatformImeVisible("search-submit")'), 1)
+        self.assertEqual(source.count('awaitPlatformImeVisible("search-exit")'), 1)
 
     def test_tv_ime_owner_handles_late_show_without_stealing_destination_focus(self):
         root = (ROOT / 'app/src/main/java/dev/cinematv/ui/tv/TvRootApp.kt').read_text()
@@ -154,7 +249,7 @@ class DeviceQaContractTest(unittest.TestCase):
         source = (ROOT / 'app/src/androidTest/java/dev/cinematv/TvUiRegressionTest.kt').read_text()
         exit_visible = source.split('// Also cover a fully visible keyboard exit', 1)[1].split('search-visible-ime-exit-complete', 1)[0]
         markers = ['model.navigate(Page.SEARCH)', 'rule.onNode(hasSetTextAction()).assertIsFocused()',
-                   '?.isVisible(WindowInsetsCompat.Type.ime()) == true', 'model.navigate(Page.LIVE)',
+                   'awaitPlatformImeVisible("search-exit")', 'model.navigate(Page.LIVE)',
                    'awaitHiddenImeAndFullScreen()',
                    'rule.onNode(hasText(model.channels.first().name) and hasClickAction()).assertIsFocused()',
                    'key(KeyEvent.KEYCODE_DPAD_DOWN)',

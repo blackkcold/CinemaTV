@@ -1,5 +1,6 @@
 package dev.cinematv
 
+import android.view.View
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
@@ -11,6 +12,11 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.MotionDurationScale
+import androidx.compose.ui.input.InputMode
+import androidx.compose.ui.input.InputModeManager
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.platform.LocalInputModeManager
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsFocused
@@ -18,7 +24,9 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performKeyInput
+import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.unit.dp
 import dev.cinematv.ui.shared.BrandMotion
@@ -42,6 +50,8 @@ class CinemaBrandStartupTest {
         override val scaleFactor = 1f
     })
     private lateinit var motion: BrandMotion
+    private lateinit var hostView: View
+    private lateinit var inputModeManager: InputModeManager
     private var clicks = 0
     private val showHeader = mutableStateOf(true)
     private val reduced = mutableStateOf(false)
@@ -49,6 +59,12 @@ class CinemaBrandStartupTest {
     private fun mount(lowCost: Boolean = false, capabilities: BrandMotionCapabilities = BrandMotionCapabilities(false, 256, true)) {
         compose.mainClock.autoAdvance = false
         compose.setContent {
+            val view = LocalView.current
+            val inputMode = LocalInputModeManager.current
+            SideEffect {
+                hostView = view
+                inputModeManager = inputMode
+            }
             CompositionLocalProvider(LocalBrandMotionCapabilities provides capabilities) {
                 CinemaBrandSession(reducedMotion = reduced.value, lowCost = lowCost) {
                     val current = checkNotNull(LocalBrandMotion.current)
@@ -65,14 +81,38 @@ class CinemaBrandStartupTest {
         }
         compose.mainClock.advanceTimeByFrame()
         compose.waitForIdle()
+        // This isolated Material3 host does not run CinemaTvTheme's keyboard-mode
+        // setup. Inherited touch mode makes its buttons deliberately unfocusable,
+        // and RequestFocus alone does not change Android's input mode (API 26 too).
+        compose.waitUntil(10_000) {
+            compose.runOnIdle { hostView.isAttachedToWindow && hostView.isShown && hostView.hasWindowFocus() }
+        }
+        compose.runOnIdle {
+            assertTrue("Could not establish keyboard input mode", inputModeManager.requestInputMode(InputMode.Keyboard))
+        }
+        compose.mainClock.advanceTimeByFrame()
+        compose.runOnIdle { assertEquals(InputMode.Keyboard, inputModeManager.inputMode) }
+    }
+
+    private fun key(key: Key) {
+        compose.onRoot().performKeyInput { pressKey(key) }
+        // The animation clock is intentionally paused; flush focus/press semantics
+        // without relying on autoAdvance or changing the motion assertions.
+        compose.mainClock.advanceTimeByFrame()
+        compose.waitForIdle()
     }
 
     private fun interactWithBothControls() {
-        for (label in listOf("Continue", "Settings")) {
-            compose.onNodeWithText(label).assertIsEnabled().assertHasClickAction()
-                .performSemanticsAction(SemanticsActions.RequestFocus) { it() }
-                .assertIsFocused().performClick()
-        }
+        compose.onNodeWithText("Continue").assertIsEnabled().assertHasClickAction()
+            .performSemanticsAction(SemanticsActions.RequestFocus) {
+                assertTrue("Continue rejected keyboard focus", it())
+            }
+        compose.mainClock.advanceTimeByFrame()
+        compose.onNodeWithText("Continue").assertIsFocused()
+        key(Key.DirectionCenter)
+        key(Key.DirectionDown)
+        compose.onNodeWithText("Settings").assertIsEnabled().assertHasClickAction().assertIsFocused()
+        key(Key.DirectionCenter)
     }
 
     @Test fun originalSweepDoesNotBlockControlsAndStopsWithoutNavigationReplay() {

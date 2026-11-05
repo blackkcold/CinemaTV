@@ -49,6 +49,18 @@ substitution was used. Rerun in an authorized environment that legitimately
 supports ordinary DNS and HTTPS for this immutable URL; keep upstream guards and
 clean child environment unchanged. This module does not provision that environment.
 
+## Verified GitHub runner result
+
+The same unmodified pinned upstream passed all 27 controlled positive checks in
+[run 41905547692](https://github.com/blackkcold/CinemaTV/actions/runs/41905547692),
+at source head `a6fdbda33854b637e3d32ea5fdf93b457573ebf2`. Ordinary runner DNS
+resolved the cloud-only EAI_AGAIN condition without changing source guards, proxy
+configuration or upstream code. The downloaded evidence ZIP matched GitHub's
+SHA-256 `1764e2a316089eff822727b0ea5b6f2768e5b68c020180ca776445af412bd7c8`.
+The redacted result is retained in
+`evidence/positive-static-github-41905547692.json`; historical cloud failure stays
+in its original separate file. This proves only the controlled protocol scope.
+
 ## Claim boundary
 
 See `fixtures/README.md` and the manifest. The file always returns the same record;

@@ -125,11 +125,25 @@ configure_device() {
 run_stage device-setup configure_device "$1" "$2"
 timeout --kill-after=5s 5s free -m > qa/host-memory-before.txt || true
 
+# Same seven tests took 809s in run 41927931286 versus 588s in 41919417173
+# (1.38x software-renderer variance), projecting about 960s for the full 4K
+# suite before removing duplicate synchronization. Bound that target at 18m;
+# keep its trace/heartbeat alive beyond the test deadline. Other targets retain
+# their budgets, and the workflow's 25m emulator / 45m job limits stay unchanged.
+CINEMA_INSTRUMENTATION_BUDGET=12m
+CINEMA_TRACE_BUDGET=14m
+CINEMA_HEARTBEAT_BUDGET=18m
+if [ "$1" = 3840x2160 ]; then
+  CINEMA_INSTRUMENTATION_BUDGET=18m
+  CINEMA_TRACE_BUDGET=20m
+  CINEMA_HEARTBEAT_BUDGET=22m
+fi
+
 # Keep main's continuously captured trace, with a finite lifetime and cleanup.
-timeout --signal=TERM --kill-after=5s 14m adb logcat -v threadtime \
+timeout --signal=TERM --kill-after=5s "$CINEMA_TRACE_BUDGET" adb logcat -v threadtime \
   'CinemaTVQa:I' 'TestRunner:I' 'AndroidRuntime:E' '*:S' > qa/live-test.log 2>&1 &
 QA_LOG_PID=$!
-timeout --signal=TERM --kill-after=5s 18m python3 -u - qa/live-test.log <<'PY' &
+timeout --signal=TERM --kill-after=5s "$CINEMA_HEARTBEAT_BUDGET" python3 -u - qa/live-test.log <<'PY' &
 from collections import deque
 from pathlib import Path
 import sys
@@ -158,19 +172,24 @@ if [[ "$3" == *OfficialLibreTvPlaybackAcceptanceTest* ]]; then
 fi
 
 CINEMA_TEST_STATUS=0
-run_stage instrumentation timeout --signal=TERM --kill-after=30s 12m \
+run_stage instrumentation timeout --signal=TERM --kill-after=30s "$CINEMA_INSTRUMENTATION_BUDGET" \
   gradle --no-daemon --max-workers=2 '-Dorg.gradle.jvmargs=-Xmx1024m -Dfile.encoding=UTF-8' \
   -Pkotlin.compiler.execution.strategy=in-process :app:connectedDebugAndroidTest \
   "-Pandroid.testInstrumentationRunnerArguments.class=$CINEMA_CLASSES" || CINEMA_TEST_STATUS=$?
-if [ "$CINEMA_TEST_STATUS" -eq 0 ] && [[ "$3" == *OfficialLibreTvPlaybackAcceptanceTest* ]]; then
+# Collect the independent official adapter/player result even if ordinary UI assertions
+# failed. Its runner reinstalls exact APKs before transferring a disposable credential.
+# Keep both statuses: a later successful stage must never erase the primary failure.
+CINEMA_OFFICIAL_STATUS=0
+if [[ "$3" == *OfficialLibreTvPlaybackAcceptanceTest* ]]; then
   run_stage official-instrumentation timeout --signal=TERM --kill-after=10s 9m \
-    python3 scripts/libretv-contracts/run_android_test.py || CINEMA_TEST_STATUS=$?
+    python3 scripts/libretv-contracts/run_android_test.py || CINEMA_OFFICIAL_STATUS=$?
 fi
 CINEMA_EXPORT_STATUS=0
 run_stage evidence-export timeout --kill-after=5s 30s python3 scripts/merge-ui-evidence.py \
   --source app/build/outputs/connected_android_test_additional_output \
   --destination qa/ui-evidence || CINEMA_EXPORT_STATUS=$?
 if [ "$CINEMA_TEST_STATUS" -ne 0 ]; then exit "$CINEMA_TEST_STATUS"; fi
+if [ "$CINEMA_OFFICIAL_STATUS" -ne 0 ]; then exit "$CINEMA_OFFICIAL_STATUS"; fi
 if [ "$CINEMA_EXPORT_STATUS" -ne 0 ]; then exit "$CINEMA_EXPORT_STATUS"; fi
 
 if [[ "$3" == *TvUiRegressionTest* ]]; then

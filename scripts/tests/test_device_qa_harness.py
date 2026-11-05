@@ -157,7 +157,7 @@ if name == "sleep":
     sys.exit(0)
 if name == "timeout":
     if os.environ.get("MOCK_REAL_TIMEOUT") == "1" and "gradle" in args:
-        args[args.index("12m")] = "0.1s"
+        args[args.index("gradle") - 1] = "0.1s"
     os.execv(os.environ["REAL_TIMEOUT"], ["timeout", *args])
 if name == "adb":
     if args == ["shell", "getprop", "sys.boot_completed"]:
@@ -217,7 +217,7 @@ if name == "ps":
 class DeviceRunnerTest(unittest.TestCase):
     def run_harness(self, *, gradle=0, evidence=0, goldens=0, setup=0, setup_command="size",
                     diagnostics=0, tv=False, four_k=False, exported=False, device_evidence=False,
-                    real_timeout=False, window=None, conflict_evidence=False):
+                    real_timeout=False, window=None, conflict_evidence=False, official=None, viewport=None):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             binaries = root / "bin"
@@ -248,7 +248,20 @@ class DeviceRunnerTest(unittest.TestCase):
             if window is not None:
                 env["MOCK_WINDOW"] = window
             classes = "dev.cinematv.TvUiRegressionTest" if tv else "dev.cinematv.MobileNavigationSmokeTest"
+            if official is not None:
+                classes += ",dev.cinematv.OfficialLibreTvPlaybackAcceptanceTest"
+                credentials = root / "synthetic-credential.json"
+                credentials.write_text("disposable host fixture; no actual credentials")
+                env["CINEMA_OFFICIAL_CREDENTIAL_FILE"] = str(credentials)
+                official_scripts = scripts / "libretv-contracts"
+                official_scripts.mkdir()
+                (official_scripts / "run_android_test.py").write_text(
+                    'from pathlib import Path\nimport sys\n'
+                    'with Path("official-invocations").open("a") as out: out.write("once\\n")\n'
+                    f'sys.exit({official})\n')
             size, density = ("3840x2160", "640") if four_k else ("1920x1080", "320")
+            if viewport is not None:
+                size = viewport
             result = subprocess.run(["bash", str(scripts / "run-device-qa.sh"), size, density, classes],
                                     cwd=root, env=env, capture_output=True, text=True, timeout=10)
             self.files = {str(path.relative_to(root)): path.read_text()
@@ -294,6 +307,45 @@ class DeviceRunnerTest(unittest.TestCase):
                 self.assertNotIn("goldens\t", stages)
                 self.assertTrue(diagnostics)
                 self.assertIn("live-log-stopped", self.files)
+
+    def test_official_runs_once_after_primary_failure_without_masking_it(self):
+        for primary, official in ((7, 0), (7, 23), (124, 0), (7, 124)):
+            with self.subTest(primary=primary, official=official):
+                code, stages, diagnostics, _ = self.run_harness(gradle=primary, official=official, tv=True)
+                self.assertEqual(code, primary)
+                self.assertEqual(self.files["official-invocations"], "once\n")
+                self.assertEqual(stages.count("official-instrumentation\t"), 1)
+                self.assertIn(f"instrumentation\t{primary}\t", stages)
+                self.assertIn(f"official-instrumentation\t{official}\t", stages)
+                self.assertIn(f"device-total\t{primary}\t", stages)
+                self.assertLess(stages.index("instrumentation\t"), stages.index("official-instrumentation\t"))
+                self.assertNotIn("goldens\t", stages)
+                self.assertTrue(diagnostics)
+                self.assertIn("live-log-stopped", self.files)
+                self.assertIn(["shell", "run-as", "dev.cinematv", "rm", "-f", "files/official-acceptance.json"], self.calls["adb"])
+                self.assertNotIn("OfficialLibreTvPlaybackAcceptanceTest", " ".join(self.calls["gradle"][0]))
+
+    def test_official_failure_blocks_success_after_primary_passes(self):
+        code, stages, diagnostics, _ = self.run_harness(official=23, tv=True)
+        self.assertEqual(code, 23)
+        self.assertIn("instrumentation\t0\t", stages)
+        self.assertIn("official-instrumentation\t23\t", stages)
+        self.assertNotIn("goldens\t", stages)
+        self.assertTrue(diagnostics)
+
+    def test_official_success_does_not_bypass_evidence_gate(self):
+        code, stages, _, _ = self.run_harness(official=0, tv=True, evidence=23)
+        self.assertEqual(code, 23)
+        self.assertIn("official-instrumentation\t0\t", stages)
+        self.assertIn("evidence\t23\t", stages)
+        self.assertNotIn("goldens\t", stages)
+
+    def test_both_test_stages_success_still_require_existing_gates(self):
+        code, stages, _, _ = self.run_harness(official=0, tv=True)
+        self.assertEqual(code, 0)
+        for stage in ("instrumentation", "official-instrumentation", "evidence-export", "evidence", "goldens", "device-total"):
+            self.assertIn(stage + "\t0\t", stages)
+        self.assertEqual(self.files["official-invocations"], "once\n")
 
     def test_real_process_timeout_remains_failure_and_stops_trace(self):
         code, stages, diagnostics, _ = self.run_harness(real_timeout=True)
@@ -389,6 +441,48 @@ class DeviceRunnerTest(unittest.TestCase):
             "-Pkotlin.compiler.execution.strategy=in-process", ":app:connectedDebugAndroidTest",
             "-Pandroid.testInstrumentationRunnerArguments.class=dev.cinematv.MobileNavigationSmokeTest",
         ]])
+
+    def test_only_4k_receives_eighteen_minute_instrumentation_budget(self):
+        for viewport, tv, expected in (("1080x1920", False, "12m"), ("1920x1080", True, "12m"),
+                                       ("1920x1080", False, "12m"), ("3840x2160", True, "18m")):
+            with self.subTest(viewport=viewport, tv=tv):
+                code, _, _, _ = self.run_harness(viewport=viewport, tv=tv)
+                self.assertEqual(code, 0)
+                invocation = [args for args in self.calls["timeout"] if "gradle" in args]
+                self.assertEqual(len(invocation), 1)
+                self.assertEqual(invocation[0][:4], ["--signal=TERM", "--kill-after=30s", expected, "gradle"])
+
+    def test_4k_budget_retains_failure_and_actual_timeout_propagation(self):
+        for status, real_timeout in ((7, False), (124, True)):
+            with self.subTest(status=status, real_timeout=real_timeout):
+                code, stages, diagnostics, _ = self.run_harness(four_k=True, tv=True,
+                    gradle=0 if real_timeout else status, real_timeout=real_timeout)
+                self.assertEqual(code, status)
+                self.assertIn(f"instrumentation\t{status}\t", stages)
+                self.assertIn(f"device-total\t{status}\t", stages)
+                self.assertNotIn("goldens\t", stages)
+                self.assertTrue(diagnostics)
+                self.assertIn("live-log-stopped", self.files)
+                invocation = [args for args in self.calls["timeout"] if "gradle" in args]
+                self.assertEqual(invocation[0][:4], ["--signal=TERM", "--kill-after=30s", "18m", "gradle"])
+
+    def test_4k_trace_and_heartbeat_outlive_instrumentation_and_are_cleaned_up(self):
+        for status in (0, 124):
+            with self.subTest(status=status):
+                code, stages, _, _ = self.run_harness(four_k=True, tv=True, gradle=status)
+                self.assertEqual(code, status)
+                self.assertIn(f"device-total\t{status}\t", stages)
+                calls = self.calls["timeout"]
+                self.assertTrue(any(args[:4] == ["--signal=TERM", "--kill-after=30s", "18m", "gradle"] for args in calls))
+                self.assertTrue(any(args[:4] == ["--signal=TERM", "--kill-after=5s", "20m", "adb"] for args in calls))
+                self.assertTrue(any(args[:4] == ["--signal=TERM", "--kill-after=5s", "22m", "python3"] for args in calls))
+                self.assertIn("live-log-stopped", self.files)
+        source = (SCRIPTS / "run-device-qa.sh").read_text()
+        self.assertIn('kill "$QA_HEARTBEAT_PID"', source)
+        self.assertIn('wait "$QA_HEARTBEAT_PID"', source)
+        workflow = (SCRIPTS.parent / ".github/workflows/tv-smoke.yml").read_text()
+        self.assertIn('timeout-minutes: 25', workflow)
+        self.assertIn('timeout-minutes: 45', workflow)
 
     def test_process_budgets_keep_kill_grace_and_stage_limits(self):
         self.run_harness(tv=True, gradle=7, device_evidence=True)

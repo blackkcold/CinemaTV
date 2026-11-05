@@ -3,6 +3,8 @@ package dev.cinematv
 import android.graphics.Bitmap
 import android.os.Handler
 import android.os.HandlerThread
+import android.os.SystemClock
+import android.provider.Settings
 import android.view.FrameMetrics
 import android.view.KeyEvent
 import android.view.Window
@@ -54,15 +56,65 @@ class TvUiRegressionTest {
             val target = if (rule.onAllNodes(isDialog()).fetchSemanticsNodes().isNotEmpty()) rule.onNode(isDialog()) else rule.onRoot()
             target.performKeyInput { pressKey(composeKey) }
         }
-        rule.waitForIdle()
+        // Semantics fetch already waits for Compose and Android drawing to idle.
+        // A separate wait here repeats that barrier for every remote event.
         val trace = rule.onAllNodes(isFocused()).fetchSemanticsNodes().joinToString { it.config.toString() }
         File(directory, "focus-trace.txt").appendText("key=$code route=${model.focusRoute}\n$trace\n")
     }
+    private fun assertFullyVisible(node: SemanticsNodeInteraction) {
+        node.assertIsDisplayed()
+        // assertIsDisplayed permits partial clipping. Compare the un-clipped
+        // control rectangle with the detail LazyColumn's full-screen viewport.
+        val bounds = node.getUnclippedBoundsInRoot()
+        val viewport = rule.onRoot().getUnclippedBoundsInRoot()
+        assertTrue("Control is clipped by the detail viewport: $bounds outside $viewport",
+            bounds.left >= viewport.left && bounds.top >= viewport.top &&
+                bounds.right <= viewport.right && bounds.bottom <= viewport.bottom)
+    }
+
     private fun awaitBundledFonts() {
         rule.waitUntil(15000) { rule.activity.bundledFontsReady || rule.activity.fontLoadFailures.isNotEmpty() }
         assertTrue("Bundled Noto failed: ${rule.activity.fontLoadFailures}", rule.activity.bundledFontsReady)
-        rule.waitForIdle()
     }
+    private fun awaitPlatformImeVisible(stage: String) {
+        // The editor is already composed/focused before this call. IME startup is
+        // an external Android operation, not Compose work: waitUntil + runOnIdle
+        // would pump an extra app frame on every probe and compete with the cold
+        // keyboard's 4K software renderer. Observe real insets without advancing
+        // the Compose clock, showing a keyboard, or weakening the 15 s deadline.
+        val activity = rule.activity
+        val keyboardConfiguration = rule.runOnUiThread {
+            val config = activity.resources.configuration
+            "keyboard=${config.keyboard}, hardKeyboardHidden=${config.hardKeyboardHidden}, " +
+                "showImeWithHardKeyboard=${Settings.Secure.getString(activity.contentResolver, "show_ime_with_hard_keyboard")}"
+        }
+        val startedAt = SystemClock.uptimeMillis()
+        val deadline = startedAt + 15000L
+        var lastObservation = "not sampled"
+        android.util.Log.i("CinemaTVQa", "ime-wait-start stage=$stage $keyboardConfiguration")
+        while (true) {
+            val ready = rule.runOnUiThread {
+                val decor = activity.window.decorView
+                val insets = ViewCompat.getRootWindowInsets(decor)
+                val visible = insets?.isVisible(WindowInsetsCompat.Type.ime()) == true
+                lastObservation = "route=${activity.model.page}, windowFocus=${activity.hasWindowFocus()}, " +
+                    "imeVisible=$visible, imeInsets=${insets?.getInsets(WindowInsetsCompat.Type.ime())}, $keyboardConfiguration"
+                activity.hasWindowFocus() && visible
+            }
+            val now = SystemClock.uptimeMillis()
+            if (ready && now <= deadline) {
+                android.util.Log.i("CinemaTVQa", "ime-wait-visible stage=$stage elapsedMs=${now - startedAt} $lastObservation")
+                return
+            }
+            if (now >= deadline) break
+            SystemClock.sleep(minOf(50L, deadline - now))
+        }
+        val diagnostic = "IME did not become visible within 15000 ms: stage=$stage $lastObservation"
+        android.util.Log.e("CinemaTVQa", diagnostic)
+        File(directory, "ime-wait-failure.txt").writeText(diagnostic)
+        throw AssertionError(diagnostic)
+    }
+
     private fun awaitHiddenImeAndFullScreen() {
         // Observe production IME ownership. This helper never dismisses it.
         rule.waitUntil(15000) {
@@ -81,7 +133,8 @@ class TvUiRegressionTest {
     }
     private fun captureWindow(): Bitmap {
         awaitBundledFonts()
-        rule.waitForIdle()
+        // This synchronized root fetch also settles any font-driven composition.
+        // TvWindowCapture still requires its own actual rendered-frame fence.
         val root = rule.onRoot().fetchSemanticsNode()
         check(root.positionInWindow.x == 0f && root.positionInWindow.y == 0f) {
             "Expected a full-screen Compose root"
@@ -147,13 +200,58 @@ class TvUiRegressionTest {
         key(KeyEvent.KEYCODE_DPAD_CENTER)
         rule.waitUntil(15000) { model.page == Page.DETAIL && !model.busy && model.selected?.episodes?.size == 36 }
         screenshot("03-detail")
-        rule.onNodeWithText("片库状态").performClick()
-        rule.onNodeWithText("想看").assertIsFocused()
-        key(KeyEvent.KEYCODE_BACK)
+        // This fixture has one source and no work graph. The new full-width
+        // association row must not strand the playlist below the viewport.
+        rule.runOnIdle { assertFalse(model.workNavigation?.visible == true); assertTrue(model.alternatives.isEmpty()) }
+        rule.onNodeWithText("▶ 立即播放").assertIsFocused()
+        key(KeyEvent.KEYCODE_DPAD_DOWN)
+        rule.onNodeWithTag("association-open").assertIsFocused()
+        assertFullyVisible(rule.onNodeWithTag("association-open"))
+        key(KeyEvent.KEYCODE_DPAD_DOWN)
+        val firstEpisode = rule.onNodeWithText(model.episodeLabel(0))
+        firstEpisode.assertIsFocused()
+        assertFullyVisible(firstEpisode)
+        key(KeyEvent.KEYCODE_DPAD_UP)
+        rule.onNodeWithTag("association-open").assertIsFocused()
+        assertFullyVisible(rule.onNodeWithTag("association-open"))
+        key(KeyEvent.KEYCODE_DPAD_UP)
+        rule.onNodeWithText("▶ 立即播放").assertIsFocused()
+        assertFullyVisible(rule.onNodeWithText("▶ 立即播放"))
+        val originalStatus = rule.runOnIdle { model.repo.libraryStatus(model.selected!!) }
+        repeat(3) { key(KeyEvent.KEYCODE_DPAD_RIGHT) }
+        rule.onNodeWithText("片库状态").assertIsFocused()
+        // Restoration must remember a non-primary action too, not always Play.
+        key(KeyEvent.KEYCODE_DPAD_DOWN)
+        rule.onNodeWithTag("association-open").assertIsFocused()
+        key(KeyEvent.KEYCODE_DPAD_UP)
         rule.onNodeWithText("片库状态").assertIsFocused()
         key(KeyEvent.KEYCODE_DPAD_CENTER)
+        // Status removal made Cancel the deliberate safe default. Cover Back AND
+        // center-on-Cancel before deliberately navigating to a mutating status.
+        rule.onNodeWithText("取消").assertIsFocused()
+        key(KeyEvent.KEYCODE_BACK)
+        rule.onNodeWithText("片库状态").assertIsFocused()
+        rule.runOnIdle { assertEquals(originalStatus, model.repo.libraryStatus(model.selected!!)) }
+        key(KeyEvent.KEYCODE_DPAD_CENTER)
+        rule.onNodeWithText("取消").assertIsFocused()
+        key(KeyEvent.KEYCODE_DPAD_CENTER)
+        rule.onNodeWithText("加入片库").assertDoesNotExist()
+        rule.onNodeWithText("片库状态").assertIsFocused()
+        rule.runOnIdle { assertEquals(originalStatus, model.repo.libraryStatus(model.selected!!)) }
+        key(KeyEvent.KEYCODE_DPAD_CENTER)
+        rule.onNodeWithText("取消").assertIsFocused()
+        if (rule.runOnIdle { model.hasLibraryStatus(model.selected!!) }) {
+            key(KeyEvent.KEYCODE_DPAD_UP)
+            rule.onNodeWithText("移除片库状态").assertIsFocused()
+        }
+        LibraryStatus.entries.reversed().forEach { status ->
+            key(KeyEvent.KEYCODE_DPAD_UP)
+            rule.onNodeWithText(status.title).assertIsFocused()
+        }
         key(KeyEvent.KEYCODE_DPAD_CENTER)
         rule.waitUntil(5000) { model.repo.libraryStatus(model.selected!!) == LibraryStatus.WANT_TO_WATCH }
+        rule.onNodeWithText("加入片库").assertDoesNotExist()
+        rule.onNodeWithText("片库状态").assertIsFocused()
         rule.runOnIdle { assertEquals(LibraryStatus.WANT_TO_WATCH, model.repo.libraryStatus(model.selected!!)) }
         key(KeyEvent.KEYCODE_BACK)
         rule.onNodeWithContentDescription(selected).assertIsFocused()
@@ -174,15 +272,10 @@ class TvUiRegressionTest {
 
         rule.onNodeWithContentDescription("打开搜索").performClick()
         rule.onNode(hasSetTextAction()).performTextReplacement(server.title(0))
-        // A cold emulator IME can finish showing after an immediate submission.
         // Exercise the real visible editor before invoking its Search action;
-        // otherwise an early hide can race with Gboard's pending show request.
-        rule.waitUntil(15000) {
-            rule.runOnIdle {
-                ViewCompat.getRootWindowInsets(rule.activity.window.decorView)
-                    ?.isVisible(WindowInsetsCompat.Type.ime()) == true
-            }
-        }
+        // otherwise an early hide can race with the keyboard's pending show.
+        rule.onNode(hasSetTextAction()).assertIsFocused()
+        awaitPlatformImeVisible("search-submit")
         android.util.Log.i("CinemaTVQa", "search-ime-visible; submitting Search action")
         rule.onNode(hasSetTextAction()).performImeAction()
         rule.waitUntil(15000) { !model.busy && model.results.isNotEmpty() }
@@ -213,12 +306,7 @@ class TvUiRegressionTest {
         // Also cover a fully visible keyboard exit, not only a pending show.
         rule.runOnIdle { model.navigate(Page.SEARCH) }
         rule.onNode(hasSetTextAction()).assertIsFocused()
-        rule.waitUntil(15000) {
-            rule.runOnIdle {
-                ViewCompat.getRootWindowInsets(rule.activity.window.decorView)
-                    ?.isVisible(WindowInsetsCompat.Type.ime()) == true
-            }
-        }
+        awaitPlatformImeVisible("search-exit")
         android.util.Log.i("CinemaTVQa", "search-exit-visible-ime; navigating LIVE")
         rule.runOnIdle { model.navigate(Page.LIVE) }
         awaitHiddenImeAndFullScreen()
@@ -294,20 +382,28 @@ class TvUiRegressionTest {
             val value = metrics.getMetric(FrameMetrics.TOTAL_DURATION) / 1000000.0
             if (value > 0) frames.add(value)
         }
-        rule.runOnIdle { rule.activity.window.addOnFrameMetricsAvailableListener(listener, Handler(thread.looper)) }
-        repeat(8) {
-            key(KeyEvent.KEYCODE_DPAD_RIGHT)
-            key(KeyEvent.KEYCODE_DPAD_DOWN)
-            key(KeyEvent.KEYCODE_DPAD_LEFT)
-            key(KeyEvent.KEYCODE_DPAD_UP)
+        // The preceding focus assertion and each key's focus trace synchronize
+        // the UI. Listener bookkeeping needs only the UI thread, not extra frames.
+        try {
+            rule.runOnUiThread { rule.activity.window.addOnFrameMetricsAvailableListener(listener, Handler(thread.looper)) }
+            repeat(8) {
+                key(KeyEvent.KEYCODE_DPAD_RIGHT)
+                key(KeyEvent.KEYCODE_DPAD_DOWN)
+                key(KeyEvent.KEYCODE_DPAD_LEFT)
+                key(KeyEvent.KEYCODE_DPAD_UP)
+            }
+        } finally {
+            try {
+                rule.runOnUiThread { rule.activity.window.removeOnFrameMetricsAvailableListener(listener) }
+            } finally {
+                thread.quitSafely(); thread.join(2000)
+            }
         }
-        rule.runOnIdle { rule.activity.window.removeOnFrameMetricsAvailableListener(listener) }
-        thread.quitSafely(); thread.join(2000)
         val values = synchronized(frames) { frames.toList().sorted() }
         android.util.Log.i("CinemaTVQa", "frame sample complete: ${values.size} frames")
         assertTrue("Frame evidence must contain rendered frames", values.isNotEmpty())
         File(directory, "frames.json").writeText(JSONObject().put("frames", values.size)
             .put("p95Ms", values[((values.size - 1) * .95).toInt()]).put("p99Ms", values[((values.size - 1) * .99).toInt()])
-            .put("over16_7ms", values.count { it > 16.7 }).put("renderer", "Android emulator / Lavapipe (CI configuration; runtime GPU not queried); informational, not hardware certification").toString(2))
+            .put("over16_7ms", values.count { it > 16.7 }).put("renderer", "Android emulator / software renderer; see emulator launch log for actual GPU; informational, not hardware certification").toString(2))
     }
 }
