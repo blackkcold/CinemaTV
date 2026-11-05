@@ -10,35 +10,65 @@ from pathlib import Path
 import re
 import subprocess
 import time
+import uuid
 from evidence import APK_NAME, PACKAGE, sha256, verify_build
 from protocol import CYCLE, ORDERS, QUALITY
 
 ACTIVITY = PACKAGE + "/dev.cinematv.GlassBenchmarkActivity"
 TAG = "ProductionGlassBenchmark"
+CONTROL_TRACE = []
+
+
+class ControlHandshakeError(AssertionError):
+    """Infrastructure failure: abort repeated launches, not a render-tier fallback."""
+
 
 
 def adb(*args, timeout=25, binary=False):
     return subprocess.check_output(["adb", *args], text=not binary, timeout=timeout)
 
 
-def control(key):
-    adb("shell", "am", "start", "-W", "-n", ACTIVITY, "-f", "0x20000000", "--ez", key, "true")
+def control(key, nonce=None):
+    command = ["shell", "am", "start", "-W", "-n", ACTIVITY, "-f", "0x20000000", "--ez", key, "true"]
+    if nonce is not None:
+        command += ["--es", "benchmark_status_nonce", nonce]
+    try:
+        output = adb(*command)
+    except (subprocess.TimeoutExpired, subprocess.CalledProcessError) as error:
+        partial = error.output or ""
+        if isinstance(partial, bytes):
+            partial = partial.decode("utf-8", errors="replace")
+        CONTROL_TRACE.append({"flag": key, "requestNonce": nonce, "hostTimeNs": time.time_ns(),
+                              "output": partial, "error": f"{type(error).__name__}: {error}"})
+        raise ControlHandshakeError(f"Activity control {key} failed: {type(error).__name__}: {error}; output={partial}") from error
+    CONTROL_TRACE.append({"flag": key, "requestNonce": nonce, "hostTimeNs": time.time_ns(), "output": output})
+    if "Error:" in output or "Exception" in output:
+        raise ControlHandshakeError("Activity control failed: " + output)
+    return output
 
 
 def logs():
     return adb("logcat", "-d", "-v", "brief", "-s", TAG + ":I")
 
 
-def records(kind, run_id):
+def parse_records(text, kind, run_id):
     result = []
-    for line in logs().splitlines():
-        match = re.search(r"\): " + re.escape(kind) + r" (\{.*\})$", line)
+    # Explicitly support adb -v brief, and threadtime format retained in artifacts.
+    # The observed API35 threadtime form is "... I ProductionGlassBenchmark: ...".
+    pattern = re.compile(r"(?:[VDIWEF]/" + re.escape(TAG) + r"\(\s*\d+\)|\b[VDIWEF]\s+" +
+                         re.escape(TAG) + r")\s*:\s*" + re.escape(kind) + r" (\{.*\})$")
+    for line in text.splitlines():
+        match = pattern.search(line)
         if match:
             value = json.loads(match[1])
             identity = value.get("runId") or value.get("after", {}).get("runId")
             if identity == run_id:
                 result.append(value)
     return result
+
+
+def records(kind, run_id):
+    return parse_records(logs(), kind, run_id)
 
 
 def foreground():
@@ -58,10 +88,20 @@ def wait_text(text, timeout=15):
 
 
 def status(run_id):
-    control("benchmark_status")
-    values = records("status", run_id)
-    assert values, "No native status receipt"
-    return values[-1]
+    # am start -W waits for launch bookkeeping, not for onNewIntent/logcat delivery.
+    # A unique echoed nonce binds this response to this exact request and run.
+    nonce = uuid.uuid4().hex
+    control_output = control("benchmark_status", nonce=nonce)
+    deadline = time.monotonic() + 15
+    while time.monotonic() < deadline:
+        values = records("status", run_id)
+        matching = [value for value in values if value.get("runId") == run_id and value.get("requestNonce") == nonce]
+        if matching:
+            return matching[-1]
+        time.sleep(.2)
+    controls = [value for value in records("control", run_id) if value.get("requestNonce") == nonce]
+    raise ControlHandshakeError("No matching native status receipt within 15s; " +
+                         f"nonce={nonce}; nativeControlReceived={bool(controls)}; am={control_output.strip()}")
 
 
 def wait_ready(run_id):
@@ -132,6 +172,7 @@ def warmup(run_id, pid):
 def run_one(out, run_id, tier, build):
     directory = out / run_id
     directory.mkdir(parents=True, exist_ok=True)
+    CONTROL_TRACE.clear()
     result = {"runId": run_id, "tier": tier, "sourceSha": build["sourceSha"],
               "apkSha256": build["apkSha256"], "screenrecordConcurrent": False, "result": "blocked"}
     steps = []
@@ -175,6 +216,7 @@ def run_one(out, run_id, tier, build):
         result["result"] = "collected"
     except Exception as error:
         result["error"] = f"{type(error).__name__}: {error}"
+        result["failureClass"] = "control_infrastructure" if isinstance(error, ControlHandshakeError) else "tier_or_measurement"
     finally:
         # Preserve partial raw samples when a real key/route assertion blocks the run.
         if started and not stopped:
@@ -187,7 +229,9 @@ def run_one(out, run_id, tier, build):
             except Exception as error:
                 result["partialExportError"] = str(error)
         (directory / "inputs.json").write_text(json.dumps(steps, indent=2))
+        (directory / "control-requests.json").write_text(json.dumps(CONTROL_TRACE, indent=2))
         for name, args in (("logcat.txt", ("logcat", "-d", "-v", "threadtime")),
+                           ("benchmark-logcat-brief.txt", ("logcat", "-d", "-v", "brief", "-s", TAG + ":I")),
                            ("window.txt", ("shell", "dumpsys", "window")),
                            ("meminfo.txt", ("shell", "dumpsys", "meminfo", PACKAGE)),
                            ("gfxinfo-after.txt", ("shell", "dumpsys", "gfxinfo", PACKAGE)),
@@ -250,13 +294,23 @@ def execute(args):
     installed.unlink()
     (args.out / "build-receipt.json").write_text(json.dumps(build, indent=2))
     (args.out / "setup.json").write_text(json.dumps({"sourceSha": args.sha, "status": "ready"}, indent=2))
+    results = collect_runs(args.out, build)
+    return len(results) == 9 and all(r["result"] == "collected" for r in results)
+
+
+def collect_runs(out, build):
     results = []
     for round_index, order in enumerate(ORDERS, start=1):
         for tier in order:
             run_id = f"r{round_index}-{tier.lower()}"
-            results.append(run_one(args.out, run_id, tier, build))
-            (args.out / "runs.json").write_text(json.dumps(results, indent=2))
-    return all(r["result"] == "collected" for r in results)
+            result = run_one(out, run_id, tier, build)
+            results.append(result)
+            (out / "runs.json").write_text(json.dumps(results, indent=2))
+            if result.get("failureClass") == "control_infrastructure":
+                # An absent control receipt is not a tier measurement. Preserve the
+                # first failure instead of repeating the same broken handshake 8x.
+                return results
+    return results
 
 
 def main():

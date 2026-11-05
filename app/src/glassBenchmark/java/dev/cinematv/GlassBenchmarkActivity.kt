@@ -156,7 +156,15 @@ class GlassBenchmarkActivity : ComponentActivity() {
     }
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        if (intent.getBooleanExtra("benchmark_status", false)) Log.i(TAG, "status ${status()}")
+        val statusRequested = intent.getBooleanExtra("benchmark_status", false)
+        val statusNonce = intent.getStringExtra("benchmark_status_nonce").orEmpty()
+        Log.i(TAG, "control ${JSONObject().put("runId", runId).put("requestNonce", statusNonce)
+            .put("statusRequested", statusRequested)
+            .put("startRequested", intent.getBooleanExtra("benchmark_start", false))
+            .put("stopRequested", intent.getBooleanExtra("benchmark_stop", false))}")
+        if (statusRequested && statusNonce.matches(Regex("[0-9a-f]{32}"))) {
+            Log.i(TAG, "status ${status().put("requestNonce", statusNonce)}")
+        }
         if (intent.getBooleanExtra("benchmark_start", false) && recorder == null) {
             startStatus = status()
             val expectedDraws = when (expected) {

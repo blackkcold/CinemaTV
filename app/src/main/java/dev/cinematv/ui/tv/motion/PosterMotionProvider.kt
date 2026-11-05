@@ -10,13 +10,26 @@ import dev.cinematv.ui.tv.design.LocalTvEffects
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 
-@Stable
-internal class PosterMotionInput {
-    private var state by mutableStateOf(PosterMotionInputState())
-    val generation: Long get() = state.generation
+private object UptimePosterMotionClock : PosterMotionClock {
+    override fun nowMillis(): Long = SystemClock.uptimeMillis()
+    override suspend fun awaitHintExpiry(issuedAtMillis: Long) {
+        var remaining = posterHintRemainingMillis(issuedAtMillis, nowMillis())
+        while (remaining > 0L) {
+            delay(remaining)
+            remaining = posterHintRemainingMillis(issuedAtMillis, nowMillis())
+        }
+    }
+}
 
-    fun direction(nowMillis: Long = SystemClock.uptimeMillis()): PosterDirection = state.directionAt(nowMillis)
-    fun keyDown(keyCode: Int) { state = state.keyDown(keyCode, SystemClock.uptimeMillis()) }
+internal val LocalPosterMotionClock = staticCompositionLocalOf<PosterMotionClock> { UptimePosterMotionClock }
+
+@Stable
+internal class PosterMotionInput(private val clock: PosterMotionClock) {
+    private var state by mutableStateOf(PosterMotionInputState())
+    val hintState: PosterMotionInputState get() = state
+
+    fun direction(): PosterDirection = state.directionAt(clock.nowMillis())
+    fun keyDown(keyCode: Int) { state = state.keyDown(keyCode, clock.nowMillis()) }
     fun clear() { state = state.clear() }
     fun expire(expectedGeneration: Long) { state = state.expire(expectedGeneration) }
 }
@@ -30,15 +43,19 @@ internal val LocalPosterMotionInput = staticCompositionLocalOf<PosterMotionInput
  */
 @Composable
 fun PosterMotionProvider(resetKey: Any?, content: @Composable (Modifier) -> Unit) {
-    val input = remember { PosterMotionInput() }
+    val clock = LocalPosterMotionClock.current
+    val input = remember(clock) { PosterMotionInput(clock) }
     val enabled = !LocalTvEffects.current.reducedMotion
     val windowFocused = LocalWindowInfo.current.isWindowFocused
     LaunchedEffect(input) {
         // The timer subscribes outside composition. A D-pad hint never invalidates
         // the whole root (only the currently focused card reads its direction).
-        snapshotFlow { input.generation }.collectLatest { generation ->
-            delay(PosterMotionTokens.DIRECTION_HINT_MILLIS)
-            input.expire(generation)
+        snapshotFlow { input.hintState }.collectLatest { hint ->
+            if (hint.direction != PosterDirection.None) {
+                // Deadline starts at native key receipt, not collector scheduling.
+                clock.awaitHintExpiry(hint.issuedAtMillis)
+                input.expire(hint.generation)
+            }
         }
     }
     LaunchedEffect(resetKey, enabled, windowFocused) { input.clear() }

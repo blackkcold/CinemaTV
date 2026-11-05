@@ -21,6 +21,7 @@ MOTION = [("dev.cinematv.FocusMediaCardMotionTest", method) for method in (
     "touchPressWithoutFocusReturnsToIdentityOnCancel",
     "reducedMotionDisablesGeometryEvenMidSpringAndWhilePressed",
     "rootHintTransfersToNewFocusReversesAndSettlesWithoutLoop",
+    "oneTestClockOwnsBothExactFreshnessAndScheduledExpiry",
     "backAndRouteResetCancelHintWithoutConsumingNavigation",
     "animationFramesDoNotRecomposeTheWholeCardAndGlassTierDoesNotChangeMotion",
     "identityCaptionsSelectionProgressAndLoadingSurviveImageFailure",

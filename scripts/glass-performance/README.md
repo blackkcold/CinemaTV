@@ -36,14 +36,22 @@ user library, public media provider, account credential or playable stream.
 
 The `.github/workflows/production-glass-performance.yml` builds one
 release-inherited, nondebuggable, debug-signed APK. It does not repeat the media/QA matrix.
-It runs manually or on this feature branch when a coherent commit explicitly includes
-`[glass-performance]`; unrelated source pushes do not repeat this matrix.
+Push-triggered sampling runs only on the dedicated `feature/production-glass-perf`
+branch when a coherent commit explicitly includes `[glass-performance]`. An approved
+manual dispatch is also supported. Pushing the same commit to the UI branch does not
+repeat this performance matrix; unrelated pushes do not repeat it either.
 The device job downloads the APK, checks its SHA-256 and source receipt, verifies installed
 APK bytes, package isolation and absence of the debuggable flag. No build runs beside the
 emulator. The benchmark does not run on the user's Mac.
 
 - API35 cloud emulator, 1920×1080 at **320 dpi** (960×540 dp production layout).
 - Same binary, 3 interleaved rounds: Full/Blur/Basic, Blur/Basic/Full, Basic/Full/Blur.
+- Each status request carries a unique nonce echoed with runId by the native activity.
+  A bounded 15-second wait accepts only that exact response, not stale status or the
+  return of `am start -W`. Control stdout, native callback receipts and raw tag logs
+  distinguish delayed delivery, missing native handling and parsing failures. A missing
+  handshake aborts later launches with an incomplete report; a genuine tier fallback
+  can still allow the remaining tiers to be examined.
 - Every run starts a clean isolated package, loads the synthetic catalog/art/fonts, then
   performs an unmeasured native-input warmup cycle. No startup or shader warmup is timed.
 - 22 real `adb shell input keyevent` presses per measured run, two identical cycles:

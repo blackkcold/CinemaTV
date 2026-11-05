@@ -3,13 +3,18 @@ import importlib.util
 import json
 from pathlib import Path
 import tempfile
+import subprocess
 import unittest
+from unittest.mock import patch
 from analyze import analyze, frame_summary, percentile
 from evidence import verify_build, sha256, APK_NAME, PACKAGE
 from protocol import CYCLE, EXPECTED_RUNS, QUALITY, WARMUP_COUNT
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
+DRIVER_SPEC = importlib.util.spec_from_file_location("glass_performance_driver", HERE / "drive-performance.py")
+DRIVER = importlib.util.module_from_spec(DRIVER_SPEC)
+DRIVER_SPEC.loader.exec_module(DRIVER)
 
 
 def fixture():
@@ -203,6 +208,60 @@ class ProtocolTest(unittest.TestCase):
         self.assertNotIn("super.dispatchKeyEvent", source)
         self.assertNotIn('@SuppressLint("RestrictedApi")', source)
         self.assertIn("KeyEvent.KEYCODE_BACK", source)
+
+    def test_status_waits_for_exact_async_nonce_and_rejects_stale(self):
+        nonce = "a" * 32
+        previous = {"runId": "r1-basic", "requestNonce": "b" * 32, "ready": True}
+        wrong_run = {"runId": "r2-basic", "requestNonce": nonce, "ready": True}
+        fresh = {"runId": "r1-basic", "requestNonce": nonce, "ready": True}
+        with patch.object(DRIVER.uuid, "uuid4") as uid, \
+             patch.object(DRIVER, "records", side_effect=[[previous], [wrong_run], [previous, fresh]]), \
+             patch.object(DRIVER, "control", return_value="intent delivered to running top") as control, \
+             patch.object(DRIVER.time, "sleep") as sleep:
+            uid.return_value.hex = nonce
+            self.assertIs(fresh, DRIVER.status("r1-basic"))
+            control.assert_called_once_with("benchmark_status", nonce=nonce)
+            self.assertEqual(2, sleep.call_count)
+
+    def test_status_timeout_reports_whether_native_callback_arrived(self):
+        nonce = "a" * 32
+        with patch.object(DRIVER.uuid, "uuid4") as uid, \
+             patch.object(DRIVER, "records", return_value=[{"runId": "r1-basic", "requestNonce": nonce}]), \
+             patch.object(DRIVER, "control", return_value="delivered"), \
+             patch.object(DRIVER.time, "monotonic", side_effect=[0, 16]):
+            uid.return_value.hex = nonce
+            with self.assertRaisesRegex(AssertionError, "nativeControlReceived=True"):
+                DRIVER.status("r1-basic")
+
+    def test_native_receipt_parser_handles_brief_and_observed_threadtime(self):
+        data = {"runId": "r1-basic", "requestNonce": "a" * 32, "ready": True}
+        for prefix in ("I/ProductionGlassBenchmark( 2561): ", "11-05 03:40:34.324  2561  2561 I ProductionGlassBenchmark: "):
+            self.assertEqual([data], DRIVER.parse_records(prefix + "status " + json.dumps(data), "status", "r1-basic"))
+            self.assertEqual([], DRIVER.parse_records(prefix + "status " + json.dumps(data), "status", "r2-basic"))
+        self.assertEqual([], DRIVER.parse_records("I/OtherTag( 2561): status " + json.dumps(data), "status", "r1-basic"))
+
+    def test_control_failure_stops_matrix_but_tier_fallback_does_not(self):
+        with tempfile.TemporaryDirectory() as temp:
+            out = Path(temp)
+            blocked = {"runId": "r1-full", "tier": "FULL", "result": "blocked", "failureClass": "control_infrastructure"}
+            with patch.object(DRIVER, "run_one", return_value=blocked) as run:
+                self.assertEqual(1, len(DRIVER.collect_runs(out, {})))
+                self.assertEqual(1, run.call_count)
+            blocked["failureClass"] = "tier_or_measurement"
+            with patch.object(DRIVER, "run_one", return_value=blocked) as run:
+                self.assertEqual(9, len(DRIVER.collect_runs(out, {})))
+                self.assertEqual(9, run.call_count)
+
+    def test_control_adb_failure_keeps_partial_output_and_aborts(self):
+        errors = [subprocess.TimeoutExpired(["adb"], 25, output=b"partial timeout output"),
+                  subprocess.CalledProcessError(1, ["adb"], output="partial failure output")]
+        for error in errors:
+            DRIVER.CONTROL_TRACE.clear()
+            with patch.object(DRIVER, "adb", side_effect=error):
+                with self.assertRaises(DRIVER.ControlHandshakeError):
+                    DRIVER.control("benchmark_status", nonce="a" * 32)
+            self.assertIn("partial", DRIVER.CONTROL_TRACE[-1]["output"])
+            self.assertIn(type(error).__name__, DRIVER.CONTROL_TRACE[-1]["error"])
 
     def test_percentile(self):
         self.assertIsNone(percentile([], .95))

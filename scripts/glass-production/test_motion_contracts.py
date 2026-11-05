@@ -9,9 +9,9 @@ class MotionInstrumentationContract(unittest.TestCase):
         root = Path(__file__).resolve().parents[2]
         source = (root / "app/src/androidTest/java/dev/cinematv/FocusMediaCardMotionTest.kt").read_text()
         methods = re.findall(r"@Test\s+fun\s+(\w+)\(", source)
-        self.assertEqual(8, len(methods))
+        self.assertEqual(9, len(methods))
         self.assertEqual(set(methods), {method for _, method in MOTION})
-        self.assertEqual(12, len(expected_for("tv")))
+        self.assertEqual(13, len(expected_for("tv")))
         for pair in [PRODUCTION, BUTTON, BUTTON_EDGE, MATERIAL, *MOTION]:
             self.assertEqual(1, expected_for("tv").count(pair))
 

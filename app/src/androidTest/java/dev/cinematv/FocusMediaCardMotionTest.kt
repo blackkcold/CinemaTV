@@ -69,6 +69,7 @@ class FocusMediaCardMotionTest {
     private var sourceAbsentOnApi26 = false
     @Volatile private var windowFocused = false
     private lateinit var nativeView: View
+    private lateinit var motionInput: PosterMotionInput
 
     private fun card(index: Int = 0) = rule.onNodeWithTag("card-$index")
     private fun frame(index: Int = 0): PosterMotionObservation = checkNotNull(frames[if (index == 0) first.value.presentationKey else second.presentationKey])
@@ -82,9 +83,9 @@ class FocusMediaCardMotionTest {
         card(index).assertIsFocused()
     }
     private fun key(key: Key) {
-        // Dispatch synchronously, then advance Compose time immediately. Production
-        // freshness uses real uptime, not mainClock: do not spend an idle wait
-        // between key delivery and the first target composition of a 110 ms hint.
+        // Native input still traverses the real provider/card. This component
+        // harness explicitly uses mainClock for both hint time and animation;
+        // these assertions are deterministic geometry tests, not device timing.
         rule.runOnUiThread {
             nativeView.dispatchKeyEvent(AndroidKeyEvent(AndroidKeyEvent.ACTION_DOWN, key.nativeKeyCode))
             nativeView.dispatchKeyEvent(AndroidKeyEvent(AndroidKeyEvent.ACTION_UP, key.nativeKeyCode))
@@ -109,14 +110,28 @@ class FocusMediaCardMotionTest {
                     }
                 }
             }
+            val motionClock = remember {
+                object : PosterMotionClock {
+                    override fun nowMillis(): Long = rule.mainClock.currentTime
+                    override suspend fun awaitHintExpiry(issuedAtMillis: Long) {
+                        while (posterHintRemainingMillis(issuedAtMillis, nowMillis()) > 0L) {
+                            withFrameNanos { /* Same mainClock that advances the springs. */ }
+                        }
+                    }
+                }
+            }
             val content: @Composable () -> Unit = {
-                CompositionLocalProvider(LocalPosterMotionObserver provides observer) {
+                CompositionLocalProvider(
+                    LocalPosterMotionObserver provides observer,
+                    LocalPosterMotionClock provides motionClock,
+                ) {
                     if (realReducedProvider) {
                         val scene = rememberProductionGlassScene()
                         SideEffect { sourceAbsentOnApi26 = Build.VERSION.SDK_INT >= 31 || scene == null }
                     }
                     PosterMotionProvider(route.value) { posterInput ->
-                        SideEffect { rootCompositions.incrementAndGet() }
+                        val currentInput = checkNotNull(LocalPosterMotionInput.current)
+                        SideEffect { motionInput = currentInput; rootCompositions.incrementAndGet() }
                         val requesters = remember { List(2) { FocusRequester() } }
                         Row(Modifier.padding(20.dp).then(posterInput).onKeyEvent {
                             if (it.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_BACK) {
@@ -231,6 +246,24 @@ class FocusMediaCardMotionTest {
         val settledCompositions = compositions.getValue(first.value.presentationKey).get()
         step(2_000)
         assertEquals("No perpetual motion/composition loop", settledCompositions, compositions.getValue(first.value.presentationKey).get())
+    }
+
+    @Test fun oneTestClockOwnsBothExactFreshnessAndScheduledExpiry() {
+        mount()
+        focus()
+        step()
+        key(Key.DirectionRight)
+        val issuedAt = rule.runOnUiThread { motionInput.hintState.issuedAtMillis }
+        assertEquals(rule.mainClock.currentTime, issuedAt)
+        // Ignore frame rounding only for the exact policy boundary. Drawing and
+        // the scheduled expiry still use the very same mainClock frame source.
+        rule.mainClock.advanceTimeBy(109, ignoreFrameDuration = true)
+        rule.runOnUiThread { assertEquals(PosterDirection(x = 1f), motionInput.direction()) }
+        rule.mainClock.advanceTimeBy(1, ignoreFrameDuration = true)
+        rule.runOnUiThread { assertEquals(PosterDirection.None, motionInput.direction()) }
+        rule.mainClock.advanceTimeByFrame()
+        rule.waitForIdle()
+        rule.runOnUiThread { assertEquals(PosterDirection.None, motionInput.hintState.direction) }
     }
 
     @Test fun backAndRouteResetCancelHintWithoutConsumingNavigation() {

@@ -152,6 +152,34 @@ class PosterMotionPolicyTest {
         assertFalse(posterHintIsFresh(1000L, 999L))
     }
 
+    @Test fun hintRemainingTimeUsesOriginalKeyDeadline() {
+        assertEquals(110L, posterHintRemainingMillis(1000L, 1000L))
+        assertEquals(1L, posterHintRemainingMillis(1000L, 1109L))
+        assertEquals(0L, posterHintRemainingMillis(1000L, 1110L))
+    }
+
+    @Test fun expiredBackwardAndExtremeHintDeadlinesHaveNoRemainingTime() {
+        for ((issued, now) in listOf(
+            1000L to 1111L,
+            1000L to 10000L,
+            1000L to 999L,
+            Long.MIN_VALUE to Long.MAX_VALUE,
+            Long.MAX_VALUE to Long.MIN_VALUE,
+            Long.MIN_VALUE to 0L,
+            0L to Long.MAX_VALUE,
+        )) {
+            assertEquals("issued=$issued now=$now", 0L, posterHintRemainingMillis(issued, now))
+        }
+    }
+
+    @Test fun hintRemainingTimePreservesValidDeadlinesAtLongBoundaries() {
+        for (issued in listOf(Long.MIN_VALUE, Long.MAX_VALUE - 110L)) {
+            assertEquals(110L, posterHintRemainingMillis(issued, issued))
+            assertEquals(1L, posterHintRemainingMillis(issued, issued + 109L))
+            assertEquals(0L, posterHintRemainingMillis(issued, issued + 110L))
+        }
+    }
+
     @Test fun directionFreshnessHandlesLongBoundaryWithoutOverflow() {
         assertTrue(posterHintIsFresh(Long.MAX_VALUE - 109L, Long.MAX_VALUE))
         assertFalse(posterHintIsFresh(Long.MAX_VALUE - 110L, Long.MAX_VALUE))

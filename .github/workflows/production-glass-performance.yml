@@ -3,7 +3,7 @@ on:
   # Branch-local execution without adding an unreviewed workflow to main. An
   # explicit commit marker avoids repeating the matrix on unrelated UI fixes.
   push:
-    branches: [feature/production-glass-v2, feature/production-glass-perf]
+    branches: [feature/production-glass-perf]
   workflow_dispatch:
 permissions:
   contents: read
