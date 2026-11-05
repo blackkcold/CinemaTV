@@ -40,6 +40,15 @@ android {
             isMinifyEnabled = false
             signingConfig = signingConfigs.findByName("production")
         }
+        // Isolated performance host. It inherits production optimizations but is
+        // debug-signed for cloud installation, never shipped as a release artifact.
+        create("glassBenchmark") {
+            initWith(getByName("release"))
+            signingConfig = signingConfigs.getByName("debug")
+            isDebuggable = false
+            applicationIdSuffix = ".glassbenchmark"
+            matchingFallbacks += listOf("release")
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -51,6 +60,7 @@ android {
     androidResources { noCompress += listOf("ttc", "ttf") }
     sourceSets["main"].assets.srcDir(layout.buildDirectory.dir("generated/notoAssets"))
     sourceSets["androidTest"].assets.srcDir("$projectDir/schemas")
+    sourceSets["glassBenchmark"].res.srcDir("src/debug/res")
     packaging { resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" } }
 }
 

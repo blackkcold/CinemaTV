@@ -124,12 +124,49 @@ class ProductionGlassUiTest {
         File(directory, "focus-trace.txt").appendText("$action route=${model.page}\n$focused\n")
     }
 
+    private fun recordRenderer(stage: String, expected: GlassRenderMode) {
+        val actual = observation()
+        val draws = counts()
+        val snapshot = JSONObject().put("stage", stage).put("route", model.page.name)
+            .put("expected", expected.name).put("requested", actual.requested.name)
+            .put("policyMode", actual.actualMode.name).put("reason", actual.decision.reason.name)
+            .put("failed", actual.failed).put("windowReady", actual.environment.windowReady)
+            .put("hardwareAccelerated", actual.environment.hardwareAccelerated)
+            .put("decodedScene", rule.activity.decodedScene ?: JSONObject.NULL)
+            .put("draws", JSONObject().put("full", draws[0]).put("blur", draws[1]).put("basic", draws[2]))
+        File(directory, "renderer-trace.jsonl").appendText(snapshot.toString() + "\n")
+        android.util.Log.i("CinemaTVGlassQa", snapshot.toString())
+    }
+
+    private fun phonePressUntilMaterialDraw(label: String, expected: GlassRenderMode) {
+        val button = rule.onNodeWithText(label).assertIsDisplayed().assertHasClickAction()
+        val before = counts()[counter(expected)]
+        recordRenderer("$label before-down", expected)
+        button.performTouchInput { down(center) }
+        var drawn = false
+        try {
+            // Scrollable parents delay PressInteraction while deciding whether this is
+            // a scroll. waitForIdle alone does not guarantee that delayed press fired;
+            // cancelling then can produce no material change at all. Keep the genuine
+            // pointer down until its production material actually draws, then cancel.
+            // No fixed sleep, source remount, forced redraw or policy override is used.
+            rule.waitUntil(10_000) { counts()[counter(expected)] > before }
+            drawn = true
+        } finally {
+            recordRenderer("$label held-draw=$drawn", expected)
+            button.performTouchInput { cancel() }
+        }
+        rule.waitForIdle()
+        recordRenderer("$label cancelled", expected)
+    }
+
     @Test fun actualProductionRootsRenderRequestedTiersAndKeepNativeInput() {
         writeManifest(false)
         for (requested in modes) {
             rule.runOnIdle { model.updateGlassQuality(requested) }
             awaitPolicy(requested)
             awaitScene()
+            if (!rule.activity.isTv) recordRenderer("home-${requested.name} before-reset", observation().actualMode)
             resetCounts()
             // Real focus/press changes repaint existing production controls, even when API26
             // correctly resolves all three preferences to BASIC. No remount/forceRedraw hook.
@@ -139,9 +176,7 @@ class ProductionGlassUiTest {
                 key(Key.DirectionDown)
                 assertHomeControl()
             } else {
-                rule.onNodeWithText("查看影片").performTouchInput { down(center) }
-                rule.waitForIdle()
-                rule.onNodeWithText("查看影片").performTouchInput { cancel() }
+                phonePressUntilMaterialDraw("查看影片", observation().actualMode)
             }
             awaitPolicy(requested)
             val effective = observation().actualMode
@@ -198,9 +233,7 @@ class ProductionGlassUiTest {
         awaitScene()
         rule.onNodeWithText("播放 / 续播").assertIsDisplayed().assertHasClickAction()
         resetCounts()
-        rule.onNodeWithText("播放 / 续播").performTouchInput { down(center) }
-        rule.waitForIdle()
-        rule.onNodeWithText("播放 / 续播").performTouchInput { cancel() }
+        phonePressUntilMaterialDraw("播放 / 续播", GlassRenderMode.BASIC)
         // Detail has no local glass recording. It must not inherit the disposed Home hero.
         rule.waitUntil(10_000) { counts()[2] > 0 }
         assertEquals(0, counts()[0])
