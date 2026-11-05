@@ -5,7 +5,7 @@ CinemaTV's TV poster cards use an independently written Android/Compose adaptati
 ## Runtime boundary
 
 - `TvRootApp` installs `PosterMotionProvider` inside the existing theme and production glass provider. Its modifier observes preview key events and always returns `false`. Native Android focus traversal, click activation, route ownership and Back restoration remain authoritative.
-- Only `FocusMediaCard` and small helpers under `ui/tv/motion` change. Glass source recording, optical rendering, navigation selection policy and video surfaces are not replaced.
+- Poster animation lives in `FocusMediaCard` and helpers under `ui/tv/motion`; the root observes direction input without consuming it. `ContentRail` and `ui/tv/focus` handle visibility and request ownership. These motion/focus helpers do not replace glass source recording, optical rendering, navigation selection policy or video surfaces.
 - A D-pad provides a discrete direction, not a continuous Siri Remote touch position. Each direction is a short 110 ms hint, then settles to neutral. A newer direction supersedes the previous one; Back, activation, route changes, window-focus loss and reduced motion clear stale hints.
 - Focus/press/depth states are read in graphics-layer or draw callbacks. Unfocused cards do not subscribe to every direction event. Bitmaps are not wrapped in an extra Offscreen cache, and there is no perpetual motion loop.
 

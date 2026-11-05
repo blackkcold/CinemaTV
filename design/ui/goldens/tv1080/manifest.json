@@ -12,22 +12,33 @@
   "screens": [
     {
       "file": "01-home.png",
-      "masks": []
-    },
-    {
-      "file": "03-detail.png",
       "masks": [],
-      "sourceCommit": "3b2e9842d9efa305f56f1cef0148b0fcd3fe0a45",
-      "workflowRun": 41911066064,
-      "artifactId": 13363940974,
+      "sourceCommit": "80a91e3ae7605a96717c7a238b37cefd81264104",
+      "workflowRun": 41993059313,
+      "artifactId": 13398969985,
       "rawCaptureSize": [
         1920,
         1080
       ],
-      "rawCaptureSha256": "e7f9ff92d5bc57b5e44c8af6d2dcd34d10487fc63e337cb56cc12d7468e7b1c1",
-      "baselineSha256": "54fcdb4ab13acaeb4896879dc9895e27149f4194d0307be9c26b0438a5ab6d84",
-      "reviewedDate": "2026-11-04",
-      "reviewReason": "Reviewed manual association control, explicit Synthetic score/source-ready status, approved V4 controls, icons and Noto typography. Primary controls remain legible and separate. Added content moves episodes below the initial scroll fold; D-pad traversal still requires the next exact-commit device run."
+      "rawCaptureSha256": "1af2ee36b836e7ee6d317af6ebb747eba28af4ef1e98310a84b7083be2c118ac",
+      "baselineSha256": "384697bdfee784beb9bbe662524195fea49ffc0fb20ea1f74685693541d0ffa3",
+      "reviewedDate": "2026-11-05",
+      "reviewReason": "Reviewed production glass navigation, approved CinemaTV identity and Noto typography. The foreground two-tone focus ring clearly identifies View Details without clipping or covering the label; hero actions and rail geometry remain separate and legible."
+    },
+    {
+      "file": "03-detail.png",
+      "masks": [],
+      "sourceCommit": "80a91e3ae7605a96717c7a238b37cefd81264104",
+      "workflowRun": 41993059313,
+      "artifactId": 13398969985,
+      "rawCaptureSize": [
+        1920,
+        1080
+      ],
+      "rawCaptureSha256": "0f52259bb6cfef6731bf5c49f896868cba6fbb37c118dde915b4ee86f5e5bfb8",
+      "baselineSha256": "e98299b0a1b190a9ecb1c4fea5e434907ef4d3460bfb5109ba12088e4637596b",
+      "reviewedDate": "2026-11-05",
+      "reviewReason": "Reviewed foreground two-tone Play focus ring with Reduced Motion enabled; focus is now distinct without relying on scaling or backdrop brightness. Play icon and label, sibling actions and association row remain unclipped. The existing episode row continues below the scroll fold."
     },
     {
       "file": "05-movies.png",
@@ -38,7 +49,18 @@
           555,
           530
         ]
-      ]
+      ],
+      "sourceCommit": "80a91e3ae7605a96717c7a238b37cefd81264104",
+      "workflowRun": 41993059313,
+      "artifactId": 13398969985,
+      "rawCaptureSize": [
+        1920,
+        1080
+      ],
+      "rawCaptureSha256": "40916671a76b97c3afdc1c400731defa56ab1c6637cfb32d37004237e89f4905",
+      "baselineSha256": "405adfd5d58a5deab709b856b00fbdce5ebfb7c484302eb6388b08609ec8bacb",
+      "reviewedDate": "2026-11-05",
+      "reviewReason": "Reviewed independent selected underline and foreground focus ring on All; both remain distinguishable without covering the label. Narrow portrait captions retain the valid numeric rating and Synthetic source before intentional trailing metadata ellipsis. Filter and poster geometry remain intact."
     },
     {
       "file": "06-series.png",
@@ -49,7 +71,18 @@
           555,
           530
         ]
-      ]
+      ],
+      "sourceCommit": "80a91e3ae7605a96717c7a238b37cefd81264104",
+      "workflowRun": 41993059313,
+      "artifactId": 13398969985,
+      "rawCaptureSize": [
+        1920,
+        1080
+      ],
+      "rawCaptureSha256": "c11dd2ba0c122f5815f9f2b5864d903a4d3734584bd20566d1d1bdb75e376c67",
+      "baselineSha256": "29095fc4533d38cf7a3ef2f6daa4c1df89c06baf5fb6400a459b68e7934bef6b",
+      "reviewedDate": "2026-11-05",
+      "reviewReason": "Reviewed independent selected underline and foreground focus ring on All, with clear label spacing. Wide card captions show the numeric rating, Synthetic source, year and category; navigation, card spacing and the next-row scroll continuation remain intact."
     },
     {
       "file": "07-discovery.png",
@@ -60,7 +93,18 @@
           555,
           530
         ]
-      ]
+      ],
+      "sourceCommit": "80a91e3ae7605a96717c7a238b37cefd81264104",
+      "workflowRun": 41993059313,
+      "artifactId": 13398969985,
+      "rawCaptureSize": [
+        1920,
+        1080
+      ],
+      "rawCaptureSha256": "d99e1bc153c5df83278bea408ef0088b786e78b13938ad7c7b694c2da2e00be4",
+      "baselineSha256": "9e7a6c4c1f8d55ee5e89405dc2a9ab99ad58e2a856eced30abca8f78e278352a",
+      "reviewedDate": "2026-11-05",
+      "reviewReason": "Reviewed production glass navigation, centered focused poster outline, Noto labels and the Catalog and Loading action. The title, Synthetic score provenance and action remain readable and separate, with no new clipping or overlap."
     },
     {
       "file": "11-settings.png",
@@ -78,17 +122,17 @@
           235
         ]
       ],
-      "sourceCommit": "5576a108ee44f15d86adc2f215567cfeb79a31fb",
-      "workflowRun": 41887458013,
-      "artifactId": 13353160716,
+      "sourceCommit": "80a91e3ae7605a96717c7a238b37cefd81264104",
+      "workflowRun": 41993059313,
+      "artifactId": 13398969985,
       "rawCaptureSize": [
         1920,
         1080
       ],
-      "rawCaptureSha256": "f7d5cff8d2acaa509c22aaa4f112f96c3385286391f2c031044f38a9060068a6",
-      "baselineSha256": "f4113041908110f04eb9c28cfe331076b829a17b7ce744310c2a76d7fafce58c",
-      "reviewedDate": "2026-11-04",
-      "reviewReason": "Approved V4 controls, V3 Back icon and corrected Noto typography. Focus and scroll-panel geometry reviewed; no new clipping or overlap."
+      "rawCaptureSha256": "2574fa628d8fb3f3baceba7aaed604d5c439fa72dc4f6948cb564bf894dfa8cd",
+      "baselineSha256": "e63a35a868615d95b9c0f0cd924e37882ad4047a3aa0146c00a952e5e49ad2cd",
+      "reviewedDate": "2026-11-05",
+      "reviewReason": "Reviewed foreground two-tone sidebar focus ring and independent selected underline on Connection and Account. Labels, panel bounds and input spacing remain intact; the partially visible bottom field is the existing scroll-panel boundary, not a new crop."
     }
   ],
   "provenanceNotes": "Per-screen sourceCommit/workflowRun override the original manifest defaults. See ../REVIEW.md; masks and thresholds are unchanged."
