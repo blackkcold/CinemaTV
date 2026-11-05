@@ -549,6 +549,7 @@ private fun MobileSettings(model: CinemaViewModel) {
         Text("CinemaTV 设置", fontSize = 27.sp, fontWeight = FontWeight.Bold)
         dev.cinematv.ui.update.UpdateSettings(tv = false)
         HorizontalDivider(color = stroke)
+        dev.cinematv.ui.douban.DoubanDeveloperOptionsEntry(model, tv = false)
         MobileGlassOutlinedButton(onClick = { recommendationOpen = true }, modifier = Modifier.testTag("recommendation-dashboard-open")) {
             Text("本地推荐看板")
         }
