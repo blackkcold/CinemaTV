@@ -1,11 +1,8 @@
 # Stable / dev updates
 
-This is an **opt-in implementation, not an active production update service**. A
-new fixed production identity has been created on the separately approved signing
-machine, with temporary protected retention. Losing this key before a verified
-backup would prevent future same-signature updates. The user retired the first identity and requested release work with the
-new key before deciding its backup destination. **Backup of the new identity is
-pending**, not verified in 1Password. No private material has been uploaded to GitHub.
+This is an **opt-in implementation, not an active production update service**.
+The current public signing identity is recorded in `release/signing-identity.json`.
+Private signing material remains outside GitHub.
 No update feed or release is published by the PR. Existing preview pipelines remain
 unchanged. The obsolete production workflow is now a fail-closed safety notice;
 it has no signing-secret references or publication permissions. Network updates are disabled by default and always disabled in debug APKs.
@@ -79,30 +76,19 @@ A compromised signing key is outside this v1 mechanism's recovery capability.
 
 ## Signing and private storage
 
-The user's policy is **no private signing material on GitHub**, including Actions
+Keep **all private signing material outside GitHub**, including Actions
 Secrets, logs, artifacts, caches and repository history. Public APKs, detached
 signatures and certificate fingerprints are intended to be public.
 
-Key creation, private storage and any new persistent access require explicit
-per-action approval. The replacement identity was created under specific approval;
-the retired identity's backup is not a backup of this new key. The user explicitly
-requested release first and a backup-location decision afterward. Do not claim
-that the new identity has a verified 1Password backup or inspect a vault to choose
-one before that decision. Keep future operations within their approved scope:
+Maintainers must retain the same signing identity across both channels and future
+updates. Losing the key without a recoverable backup prevents future same-signature
+updates. Keep encrypted recovery copies and restore instructions separate from
+the repository, build artifacts and signing machine, and verify recovery through
+a controlled process. Key creation and successful signing do not prove recovery.
 
-1. Use the approved new identity only on the selected trusted signing machine.
-   Record its public certificate fingerprint and keep all private material out of
-   GitHub and chat. Creation or signing does not establish recoverability.
-2. After release, confirm the backup destination with the user. If 1Password is
-   selected, confirm the specific vault/item before saving the keystore, password
-   and alias. Verify encrypted backup/recovery and record that result separately.
-3. If ongoing 1Password access or a service account is later needed, approve its
-   exact vault/read scope and destination separately. Prefer existing interactive
-   access; do not invent a service token.
-
-Deferring backup does not waive APK acceptance: validate dev→stable→dev upgrades
-on API 26 and current Android/TV with test keys, then perform the applicable final
-signed-artifact gates before authorizing real publication.
+Recovery status is tracked separately from APK acceptance. Validate
+dev→stable→dev upgrades on API 26 and current Android/TV with test keys, then
+perform the applicable final signed-artifact gates before publication.
 
 The old `.github/workflows/release.yml` signing path has been retired. It now fails
 with a safety notice, has read-only permissions, accepts no signing credentials
@@ -150,10 +136,8 @@ A stable label is not certification. Production publication additionally needs:
 
 1. A reserved globally increasing versionCode, clean approved source commit/tree,
    stable channel, and no unaccepted personal-account sources.
-2. The approved fixed externally held production key and an explicit recovery
-   status. The new identity's backup is pending at the user's requested ordering
-   (release first, storage decision afterward), not a passed backup gate. Existing
-   disposable debug certificates and the retired key are not that identity.
+2. The fixed externally held production key matching the published certificate
+   fingerprint. Disposable debug certificates and retired keys are not that identity.
 3. Build/lint/unit/backend checks plus complete phone/API26/TV1080/TV4K UI evidence
    for the candidate source. Do not reuse a debug APK hash for a release APK.
 4. Acceptance tied to the **final signed APK bytes and certificate**: explicit
@@ -217,14 +201,11 @@ The active production identity's **public** certificate SHA-256 is
 `07:98:f1:68:6a:28:ae:4a:38:6a:37:6e:fc:ab:ba:3a:4c:4b:b5:47:de:76:02:10:d9:44:a5:84:55:09:2e:8c`.
 Machine-readable public metadata is in `release/signing-identity.json`. The private
 key remains outside GitHub; this file contains no private key or password.
-The first identity, public SHA-256
-`1fe6e987572fc368c2bd1b8dedccc6df9529d8c598bf44bafa2cd456c15574f6`, is retired
-at the user's explicit request. Its earlier backup verification does not apply
-to the active identity. **Backup of the new identity is pending** until the
-post-release storage decision and subsequent verification. Key creation alone
-does not certify an APK. No previously distributed debug build is claimed to
-share this signing identity. An APK signed with the retired key cannot be silently
-upgraded to the new key; v1 has no key-rotation or data-preserving migration bypass.
+The previous unpublished identity is retired. **Backup/recovery verification is
+pending for this identity**; no verified backup is claimed. Key creation alone
+does not certify an APK. No previously distributed debug build is claimed to share
+this signing identity. An APK signed with another key cannot be silently upgraded
+to this key; v1 has no key-rotation or data-preserving migration bypass.
 
 
 ## Real updater instrumentation (TEST ONLY)

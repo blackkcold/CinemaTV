@@ -149,10 +149,14 @@ class UpdateChannelsTest(unittest.TestCase):
         active = identity['certificateSha256']
         self.assertEqual(active, '0798f1686a28ae4a386a376efcabba3a4c4bb547de760210d944a58455092e8c')
         self.assertIn(':'.join(active[i:i + 2] for i in range(0, 64, 2)), docs)
-        self.assertIn('Backup of the new identity is pending', docs)
+        self.assertIn('Backup/recovery verification is\npending for this identity', docs)
         self.assertIn('is retired', docs)
         self.assertNotIn('The current key and encrypted backup were created', docs)
         self.assertNotIn('its encrypted backup verified on', docs)
+        for private_context in ('the user requested', 'The user explicitly', 'specific approval',
+                                'per-action approval', 'temporary protected retention',
+                                'post-release storage decision'):
+            self.assertNotIn(private_context, docs)
 
     def test_candidate_and_fixture_environment_guards_do_not_pipe_secrets(self):
         import os
