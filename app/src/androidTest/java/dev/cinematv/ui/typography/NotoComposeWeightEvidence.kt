@@ -30,9 +30,9 @@ import androidx.compose.ui.text.font.createFontFamilyResolver
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.test.platform.app.InstrumentationRegistry
+import dev.cinematv.NotoTestActivity
 import java.io.File
 import java.security.MessageDigest
-import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.ceil
 import kotlin.math.floor
@@ -48,7 +48,7 @@ internal object NotoComposeWeightEvidence {
         val region = mutableStateOf(NotoRegion.SC)
         val tv = mutableStateOf(false)
         val epoch = mutableIntStateOf(0)
-        val drawnEpoch = AtomicInteger(-1)
+        val drawTracker = NotoCompositorCapture.DrawEpochTracker()
         val host = AtomicReference<View>()
         compose.setContent {
             val view = LocalView.current
@@ -59,7 +59,7 @@ internal object NotoComposeWeightEvidence {
                     Column(Modifier.background(Color.Black).drawWithContent {
                         val currentEpoch = epoch.intValue
                         drawContent()
-                        drawnEpoch.set(currentEpoch)
+                        drawTracker.recordDraw(currentEpoch)
                     }) {
                         for ((tag, weight, synthesis) in listOf(
                             Triple("regular", FontWeight.Normal, FontSynthesis.All),
@@ -94,7 +94,7 @@ internal object NotoComposeWeightEvidence {
             assertFalse("${selected.name} ignored FontSynthesis.None", noSynthesis.isBold)
             compose.waitForIdle()
             val nextEpoch = epoch.intValue + 1
-            NotoCompositorCapture.settleFreshFrame(activity, { drawnEpoch.get() == nextEpoch }) {
+            val frameEvidence = NotoCompositorCapture.settleFreshFrame(activity, drawTracker, nextEpoch) {
                 region.value = selected; tv.value = useTv; epoch.intValue = nextEpoch
             }
             compose.waitForIdle()
@@ -173,7 +173,13 @@ internal object NotoComposeWeightEvidence {
                 .put("hostScreenX", location.screenX).put("hostScreenY", location.screenY)
                 .put("hostWindowX", location.windowX).put("hostWindowY", location.windowY)
                 .put("windowOriginX", location.windowOriginX).put("windowOriginY", location.windowOriginY)
-                .put("freshDrawEpoch", nextEpoch).put("specimenBounds", rectangles)
+                .put("freshDrawEpoch", nextEpoch)
+                .put("firstDrawFrameTimeNanos", frameEvidence.draw.frameTimeNanos)
+                .put("matchedActualVsyncNanos", frameEvidence.matchedVsyncNanos)
+                .put("frameFenceScope", "app frame metrics; not a physical presentation fence")
+                .put("specimenLaunch", "font-only theme disables starting preview; product startup unchanged")
+                .put("splashExitRemovals", (activity as? NotoTestActivity)?.splashExitRemovals ?: JSONObject.NULL)
+                .put("specimenBounds", rectangles)
                 .put("backgroundGuardArgb", JSONObject(backgroundGuards.mapValues { (_, pixels) ->
                     JSONArray(pixels.map { "%08x".format(it) })
                 } as Map<*, *>))

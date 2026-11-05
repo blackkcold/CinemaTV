@@ -75,6 +75,38 @@ class UpdateChannelsTest(unittest.TestCase):
         self.assertIsNotNone(re.search(r'versionName = "([^\"]+)"', build))
         self.assertIn('providers.gradleProperty("cinematvVersionName").orNull?.let', build)
 
+    def test_stable_refuses_unaccepted_personal_account_sources(self):
+        build = (ROOT / "app/build.gradle.kts").read_text()
+        self.assertIn('if (updateChannel == "stable")', build)
+        self.assertIn('src/main/java/dev/cinematv/data/douban', build)
+        self.assertIn('src/main/java/dev/cinematv/ui/douban', build)
+        self.assertIn('it.isFile && it.extension == "kt"', build)
+        # Public catalogue ratings are independent of the personal-account experiment.
+        self.assertNotIn('contains("douban")', build)
+
+    def test_obsolete_workflow_cannot_receive_keys_or_publish(self):
+        source = (ROOT / ".github/workflows/release.yml").read_text()
+        self.assertIn('contents: read', source)
+        self.assertIn('exit 1', source)
+        self.assertNotIn('${{ secrets.', source)
+        self.assertNotIn('gh release create', source)
+        self.assertNotIn('assembleRelease', source)
+
+    def test_benchmark_cannot_inherit_enabled_updater(self):
+        build = (ROOT / "app/build.gradle.kts").read_text()
+        benchmark = build.split('create("glassBenchmark")')[1].split('compileOptions')[0]
+        self.assertIn('buildConfigField("boolean", "UPDATES_ENABLED", "false")', benchmark)
+
+    def test_fixture_keys_are_disposable_and_probe_is_outside_app(self):
+        source = (ROOT / "scripts/updates/build-installer-fixtures.sh").read_text()
+        self.assertIn('TEST ONLY disposable CI fixture', source)
+        self.assertIn("trap 'rm -rf \"$KEYDIR\"' EXIT", source)
+        self.assertIn('Refusing fixture build with external signing credentials', source)
+        workflow = (ROOT / ".github/workflows/update-channels.yml").read_text()
+        self.assertNotIn('update-test-keys/', workflow)
+        self.assertIn('api: [26, 35]', workflow)
+        self.assertFalse((ROOT / 'app/src/main/java/dev/cinematv/updateprobe').exists())
+
     def test_signing_tool_cannot_run_on_github_or_use_repo_key(self):
         source = (ROOT / "scripts/updates/SignUpdateManifest.java").read_text()
         self.assertIn('System.getenv("GITHUB_ACTIONS")', source)

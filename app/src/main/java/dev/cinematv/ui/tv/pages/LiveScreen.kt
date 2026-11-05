@@ -110,7 +110,7 @@ fun LiveScreen(model: CinemaViewModel) {
 @Composable
 private fun GuideProgram(program: TvProgram, current: Boolean) {
     var focused by remember { mutableStateOf(false) }
-    Row(Modifier.fillMaxWidth().onFocusChanged { focused = it.isFocused }.focusable()
+    Row(Modifier.fillMaxWidth().trackTvContentFocus().onFocusChanged { focused = it.isFocused }.focusable()
         .background(if (focused) TvColors.Text.copy(alpha = .13f) else TvColors.Background.copy(alpha = .15f), RoundedCornerShape(10.dp))
         .border(1.dp, TvColors.Text.copy(alpha = if (focused) .6f else 0f), RoundedCornerShape(10.dp)).padding(12.dp),
         horizontalArrangement = Arrangement.spacedBy(15.dp)) {

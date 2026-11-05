@@ -19,7 +19,11 @@ jobs:
       - name: Validate device QA harness without an emulator
         run: |
           bash -n scripts/run-device-qa.sh
+          python3 -m pip install --disable-pip-version-check 'Pillow==11.3.0'
+          python3 backdrop/scripts/verify-production-source.py
           python3 -m unittest discover -s scripts/tests -v
+          python3 -m unittest discover -s scripts/glass-production -p 'test_*.py' -v
+          python3 -m unittest discover -s scripts/glass-performance -p 'test_*.py' -v
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -44,13 +48,21 @@ jobs:
       - name: Build, lint and test
         run: |
           bash scripts/generate-test-media.sh
-          gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug
+          gradle --no-daemon --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process :backdrop:testDebugUnitTest :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest :app:compileGlassBenchmarkKotlin :backdrop:lintDebug :app:lintDebug
           npm --prefix backend/tv-bff test
       - name: Verify exact Noto font bytes before further gates
         run: python3 scripts/fonts/verify-noto-fonts.py
       - name: Require executed Android JUnit tests
         run: |
-          find app/build/test-results/testDebugUnitTest -name 'TEST-*.xml' -print -quit | grep -q . || { echo "Android tests absent (NO-SOURCE)"; exit 1; }
+          python3 - <<'PYTEST'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          for module in ('app', 'backdrop'):
+              paths = list(Path(module, 'build/test-results/testDebugUnitTest').glob('TEST-*.xml'))
+              cases = [case for path in paths for case in ET.parse(path).getroot().iter('testcase')]
+              assert cases, f'{module}: absent executed tests (NO-SOURCE)'
+              assert all(case.find(tag) is None for case in cases for tag in ('failure', 'error', 'skipped'))
+          PYTEST
       - name: Validate APK archive and signature
         shell: bash
         run: |
@@ -77,6 +89,8 @@ jobs:
             app/schemas/
             app/build/test-results/
             app/build/reports/lint-results-debug.*
+            backdrop/build/test-results/
+            backdrop/build/reports/lint-results-debug.*
           if-no-files-found: warn
   ui-qa:
     needs: apk

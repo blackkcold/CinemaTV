@@ -12,6 +12,8 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material3.*
 import dev.cinematv.ui.typography.cinemaUiFontFamily
 import dev.cinematv.ui.typography.withCinemaNoto
@@ -20,8 +22,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Movie
 import androidx.compose.material.icons.outlined.LiveTv
 import dev.cinematv.ui.tv.design.GlassQuality
-import dev.cinematv.ui.tv.design.TvEffects
 import dev.cinematv.ui.tv.design.LocalTvEffects
+import dev.cinematv.ui.tv.components.LocalGlassStatus
+import dev.cinematv.ui.tv.components.LocalProductionGlassScene
+import dev.cinematv.ui.tv.components.ProductionGlassProvider
+import dev.cinematv.ui.tv.components.recordProductionGlass
+import dev.cinematv.ui.tv.components.rememberProductionGlassScene
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Alignment
@@ -34,6 +40,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -66,7 +73,7 @@ private val stroke = Color(0xFF424650)
 @Composable
 fun MobileRootApp(model: CinemaViewModel) {
     val page = model.page
-    CompositionLocalProvider(LocalTvEffects provides TvEffects(model.reducedMotion, GlassQuality.BASIC)) {
+    ProductionGlassProvider(model.glassQuality, model.reducedMotion) {
     MaterialTheme(typography = MaterialTheme.typography.withCinemaNoto(cinemaUiFontFamily()), colorScheme = darkColorScheme(
         background = Ink, surface = surface, primary = Ivory, onPrimary = Ink,
         onBackground = Ivory, onSurface = Ivory, secondary = Accent
@@ -203,24 +210,28 @@ private fun MobileHome(model: CinemaViewModel) {
     LazyColumn(verticalArrangement = Arrangement.spacedBy(22.dp),
         contentPadding = PaddingValues(bottom = 26.dp)) {
         item {
-            Box(Modifier.fillMaxWidth().height(390.dp)) {
-                CinemaBackdrop(hero)
-                Column(
-                    Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(24.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Text("CINEMA TV", color = Accent, fontWeight = FontWeight.Bold,
-                        letterSpacing = 3.sp, fontSize = 12.sp)
-                    Text(hero?.title ?: "CinemaTV", color = Ivory,
-                        fontSize = 35.sp, fontWeight = FontWeight.Bold, maxLines = 2)
-                    Text(listOfNotNull(hero?.year, hero?.category)
-                        .filter(String::isNotBlank).joinToString(" · "), color = Muted)
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        MobileGlassButton(onClick = {
-                            if (hero != null) model.open(hero) else model.navigate(Page.SETTINGS)
-                        }) { Text("查看影片") }
-                        MobileGlassOutlinedButton(onClick = { model.navigate(Page.SEARCH) }) {
-                            Text("搜索")
+            val heroScene = rememberProductionGlassScene()
+            CompositionLocalProvider(LocalProductionGlassScene provides heroScene) {
+                Box(Modifier.fillMaxWidth().height(390.dp)) {
+                    // Record the real scene only. Labels and glass consumers are drawn afterward.
+                    CinemaBackdrop(hero, Modifier.recordProductionGlass(heroScene))
+                    Column(
+                        Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(24.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text("CINEMA TV", color = Accent, fontWeight = FontWeight.Bold,
+                            letterSpacing = 3.sp, fontSize = 12.sp)
+                        Text(hero?.title ?: "CinemaTV", color = Ivory,
+                            fontSize = 35.sp, fontWeight = FontWeight.Bold, maxLines = 2)
+                        Text(listOfNotNull(hero?.year, hero?.category)
+                            .filter(String::isNotBlank).joinToString(" · "), color = Muted)
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            MobileGlassButton(onClick = {
+                                if (hero != null) model.open(hero) else model.navigate(Page.SETTINGS)
+                            }) { Text("查看影片") }
+                            MobileGlassOutlinedButton(onClick = { model.navigate(Page.SEARCH) }) {
+                                Text("搜索")
+                            }
                         }
                     }
                 }
@@ -583,6 +594,25 @@ private fun MobileSettings(model: CinemaViewModel) {
             Text("减少动态效果", Modifier.weight(1f))
             Switch(checked = model.reducedMotion, onCheckedChange = model::updateReducedMotion)
         }
+        Text("玻璃材质", fontWeight = FontWeight.SemiBold, fontSize = 18.sp)
+        Column(Modifier.fillMaxWidth().selectableGroup()) {
+            GlassQuality.entries.forEach { quality ->
+                Row(Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                    .testTag("mobile-glass-quality-${quality.name}")
+                    .selectable(selected = model.glassQuality == quality, role = Role.RadioButton,
+                        onClick = { model.updateGlassQuality(quality) }),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    RadioButton(selected = model.glassQuality == quality, onClick = null)
+                    Text(quality.title, Modifier.padding(start = 10.dp))
+                }
+            }
+        }
+        Text("设备策略：${LocalTvEffects.current.glass.title}。${LocalGlassStatus.current}",
+            color = Muted, fontSize = 13.sp)
+        Text("首页头图区可使用实时 Compose 背景材质。本页及其他未接入背景采样的区域、独立弹窗和视频控件使用基础材质。",
+            color = Muted, fontSize = 12.sp)
+        Text("普通模糊需 Android 12 及以上，完整光学需 Android 13 及以上并手动选择。省电、低内存、热压或效果失败时可临时回落，不改保存选择；减少动态只停用动效。",
+            color = Muted, fontSize = 12.sp)
         if (model.metadataAddress.isNotBlank()) TmdbLogo()
         TextButton(onClick = { uriHandler.openUri("https://www.themoviedb.org") }) { Text("TMDB 官网") }
         Text("TMDB 元数据与图像（配置后）。This product uses the TMDB API but is not endorsed or certified by TMDB.", color = Muted, fontSize = 12.sp)

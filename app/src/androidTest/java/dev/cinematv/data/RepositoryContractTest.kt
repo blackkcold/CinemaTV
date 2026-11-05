@@ -25,6 +25,7 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.time.Instant
 import java.util.Locale
+import java.util.UUID
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -37,15 +38,17 @@ class RepositoryContractTest {
     private lateinit var repositoryContext: Context
     private lateinit var db: CinemaLibraryDatabase
     private lateinit var server: ContractServer
-    private val preferencesName = "repository-contract-settings"
+    private val preferencesName = "repository-contract-settings-${UUID.randomUUID()}"
+    private lateinit var fixturePreferences: SharedPreferences
 
     @Before fun before() {
         appContext = ApplicationProvider.getApplicationContext()
-        appContext.deleteSharedPreferences(preferencesName)
+        fixturePreferences = appContext.getSharedPreferences(preferencesName, Context.MODE_PRIVATE)
+        assertTrue("Repository fixture preferences must start empty", fixturePreferences.all.isEmpty())
         // Repository configuration must never change the UI tests' cinema_settings file.
         repositoryContext = object : ContextWrapper(appContext) {
             override fun getSharedPreferences(name: String, mode: Int): SharedPreferences =
-                appContext.getSharedPreferences(preferencesName, mode)
+                fixturePreferences
         }
         db = Room.inMemoryDatabaseBuilder(appContext, CinemaLibraryDatabase::class.java).build()
         server = ContractServer()
@@ -55,8 +58,14 @@ class RepositoryContractTest {
         try {
             if (::server.isInitialized) server.close()
         } finally {
-            if (::db.isInitialized) db.close()
-            if (::appContext.isInitialized) appContext.deleteSharedPreferences(preferencesName)
+            try {
+                if (::db.isInitialized) db.close()
+            } finally {
+                if (::fixturePreferences.isInitialized) {
+                    assertTrue("Repository fixture cleanup must persist", fixturePreferences.edit().clear().commit())
+                }
+                if (::appContext.isInitialized) appContext.deleteSharedPreferences(preferencesName)
+            }
         }
     }
 

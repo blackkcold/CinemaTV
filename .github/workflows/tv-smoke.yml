@@ -105,7 +105,8 @@ jobs:
       - name: Enable KVM
         run: sudo chmod 666 /dev/kvm
       - uses: reactivecircus/android-emulator-runner@v2
-        timeout-minutes: 25
+        # 4K's bounded functional suite needs renderer variance plus setup/export.
+        timeout-minutes: ${{ matrix.name == 'tv4k' && 30 || 25 }}
         with:
           api-level: ${{ matrix.api }}
           # TV hosts use AOSP: prior Google-image evidence is a different
@@ -119,7 +120,10 @@ jobs:
           disable-animations: false
           # Lavapipe passed the isolated API 33 public phone run (41859160272);
           # this motivates the renderer choice, but full matrix acceptance is pending.
-          emulator-options: '-no-window -no-audio -gpu lavapipe -feature -Vulkan -no-snapshot -no-boot-anim -memory 2048'
+          # API26 SurfaceFlinger checks the physical framebuffer width, not only
+          # wm size. Match the native-capture lane's landscape skin; keep actual
+          # compositor readback and every pixel/geometry assertion unchanged.
+          emulator-options: "-no-window -no-audio -gpu lavapipe -feature -Vulkan -no-snapshot -no-boot-anim -memory 2048 ${{ matrix.api == 26 && '-skin 1920x1080' || '' }}"
           # The action executes each script line independently via sh -c.
           script: bash scripts/run-device-qa-target.sh '${{ matrix.name }}' '${{ matrix.size }}' '${{ matrix.density }}' '${{ matrix.classes }}'
 

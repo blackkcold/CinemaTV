@@ -114,8 +114,8 @@ fun SettingsScreen(model: CinemaViewModel) {
                                         GlassAction(quality.title, Modifier.width(102.dp).height(40.dp), selected = model.glassQuality == quality) { model.updateGlassQuality(quality) }
                                     }
                                 } }
-                                item { Text("当前生效：${LocalTvEffects.current.glass.title}", color = TvColors.Secondary, fontSize = 14.sp) }
-                                item { Text("自动模式按系统版本和内存分级。镜片折射仅作用于焦点按钮后的静态剧照，需 Android 13 及以上；低内存、减少动态、无剧照或效果失败时降级。视频不参与采样。", color = TvColors.Secondary, fontSize = 13.sp, lineHeight = 21.sp) }
+                                item { Text("当前生效：${LocalTvEffects.current.glass.title}。${dev.cinematv.ui.tv.components.LocalGlassStatus.current}", color = TvColors.Secondary, fontSize = 14.sp) }
+                                item { Text("自动优先普通模糊，完整光学需 Android 13 及以上并手动选择；Android 12 支持普通模糊，更低版本使用基础材质。省电、低内存、热压或绘制失败可临时回落，不改保存偏好。减少动态只停用动效。仅采样实际 Compose 背景；视频与独立弹窗不参与。", color = TvColors.Secondary, fontSize = 13.sp, lineHeight = 21.sp) }
                             }
                             else -> {
                                 item { SettingTitle("CinemaTV", "版本 ${BuildConfig.VERSION_NAME}") }
@@ -127,7 +127,7 @@ fun SettingsScreen(model: CinemaViewModel) {
                                 if (model.metadataAddress.isNotBlank()) item { TmdbLogo() }
                                 item { GlassAction("TMDB 官网", Modifier.width(140.dp).height(36.dp)) { uriHandler.openUri("https://www.themoviedb.org") } }
                                 item { Text("元数据与图像：TMDB（配置高清剧照服务后）。\nThis product uses the TMDB API but is not endorsed or certified by TMDB.\nhttps://www.themoviedb.org", color = TvColors.Secondary, fontSize = 13.sp, lineHeight = 22.sp) }
-                                item { Text("开源组件：Kotlin、AndroidX Compose、Media3、Coil。CinemaTV 源代码采用 MIT 许可。\n仅添加你有权访问的服务器和内容源。", color = TvColors.Secondary, fontSize = 13.sp, lineHeight = 22.sp) }
+                                item { Text("开源组件：Kotlin、AndroidX Compose、Media3、Coil、Kyant Backdrop（Apache-2.0）。CinemaTV 原创代码采用 MIT 许可；第三方许可与修改说明随 APK 提供。\n仅添加你有权访问的服务器和内容源。", color = TvColors.Secondary, fontSize = 13.sp, lineHeight = 22.sp) }
                             }
                         }
                     }

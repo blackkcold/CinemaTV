@@ -3,7 +3,8 @@
 This is an **opt-in implementation, not an active production update service**. No
 production key has been created, read from 1Password, or uploaded by this change.
 No update feed or release is published by the PR. Existing preview pipelines remain
-unchanged. Network updates are disabled by default and always disabled in debug APKs.
+unchanged. The obsolete production workflow is now a fail-closed safety notice;
+it has no signing-secret references or publication permissions. Network updates are disabled by default and always disabled in debug APKs.
 
 ## User behavior
 
@@ -90,9 +91,9 @@ Before production activation, obtain per-action approval for:
    sign a candidate and validate dev→stable→dev upgrades on API 26 and current
    Android/TV with test keys before authorizing real publication.
 
-The old `.github/workflows/release.yml` refers to GitHub keystore Secrets. **Do not
-configure or run that signing path under this policy.** It must be retired/replaced
-before production activation; this PR does not modify or run existing release jobs.
+The old `.github/workflows/release.yml` signing path has been retired. It now fails
+with a safety notice, has read-only permissions, accepts no signing credentials
+and cannot publish. Do not restore a GitHub-keystore signing path.
 
 `scripts/updates/prepare-manifest.py` inspects a signed APK with official Android
 `apksigner` and `apkanalyzer`, requiring an expected public signing fingerprint.
@@ -122,3 +123,44 @@ Official references:
 [SigningInfo](https://developer.android.com/reference/android/content/pm/SigningInfo),
 [FileProvider](https://developer.android.com/reference/androidx/core/content/FileProvider),
 [download security](https://developer.android.com/privacy-and-security/risks/unsafe-download-manager).
+
+## Stable isolation and release acceptance
+
+Until the personal-account integration is accepted, `main` and stable candidates
+must exclude `feature/douban-personal-account`. Its account data/UI directories
+(`data/douban` and `ui/douban`) cause any `cinematvChannel=stable` build to fail.
+This is a source-presence guard, not a hidden runtime toggle. Existing public
+catalogue ratings/Top250 are unrelated and remain supported. Dev may integrate
+that branch independently; do not merge its unaccepted code into `main`.
+
+A stable label is not certification. Production publication additionally needs:
+
+1. A reserved globally increasing versionCode, clean approved source commit/tree,
+   stable channel, and no unaccepted personal-account sources.
+2. A fixed externally held production key and a verified encrypted 1Password
+   backup. Existing disposable debug certificates are not that identity.
+3. Build/lint/unit/backend checks plus complete phone/API26/TV1080/TV4K UI evidence
+   for the candidate source. Do not reuse a debug APK hash for a release APK.
+4. Acceptance tied to the **final signed APK bytes and certificate**: explicit
+   installer permissions/cancel/return, same-key channel upgrades, real library
+   data preservation, API26/current Android and physical TV. Run those checks on
+   the signed artifact, then publish those unchanged bytes. Do not re-sign or
+   rebuild after acceptance and call it the tested binary.
+5. Public APK hash, certificate fingerprint, source commit/tree and acceptance
+   evidence recorded together. Feed payload preparation is not a substitute for
+   this review, and no current workflow automatically publishes stable.
+
+`update-channels.yml` builds disposable, non-debug release fixtures with a clearly
+marked test-only key outside the checkout. The key is deleted and never uploaded.
+An isolated, separately packaged instrumentation probe checks private preferences
+and a private SQLite sentinel across dev(100) → stable(101) → dev(102), verifies
+wrong-certificate and downgrade rejection on API26/35, and retains public hashes
+and test logs. The fixture APK artifact is explicitly TEST ONLY and expires after
+one day. This checks Android PackageManager via adb, **not** the user-facing
+installer permission screens, a real production key, all library migrations, or
+physical TV. These remaining production gates must not be reported as passed.
+
+If an existing preview has a different signing certificate, stop: there is no
+same-package in-place migration to the new key. Do not uninstall, clear data or
+suggest that a channel toggle bypasses Android signing. A separate, tested
+export/import migration needs to exist before offering a data-preserving move.

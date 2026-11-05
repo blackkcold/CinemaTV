@@ -7,6 +7,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.SystemClock
+import android.view.Choreographer
 import android.view.FrameMetrics
 import android.view.PixelCopy
 import android.view.WindowManager
@@ -17,6 +18,8 @@ import dev.cinematv.NotoTestActivity
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicInteger
 
 /** Bounded display compositor readback for a non-fullscreen Compose test activity. */
@@ -75,29 +78,97 @@ internal object NotoCompositorCapture {
         error("Noto foreground did not become ready: windowReady=$windowReady package=$lastPackage")
     }
 
-    /** Arm before changing the draw-observed state; do not force Compose redraw/readback. */
-    fun settleFreshFrame(activity: Activity, rendered: () -> Boolean, requestFrame: () -> Unit) {
+    data class DrawStamp(val epoch: Int, val frameTimeNanos: Long)
+    data class FrameEvidence(val draw: DrawStamp, val matchedVsyncNanos: Long)
+
+    /** One armed epoch at a time; later redraws must not move its first-draw fence. */
+    internal class DrawEpochTracker {
+        internal class Epoch(val target: Int) {
+            val frameTime = AtomicLong(-1)
+            val firstDraw = AtomicReference<DrawStamp?>(null)
+
+            fun recordDraw(epoch: Int) {
+                val timestamp = frameTime.get()
+                if (epoch == target && timestamp > 0) {
+                    firstDraw.compareAndSet(null, DrawStamp(epoch, timestamp))
+                }
+            }
+        }
+        private val active = AtomicReference<Epoch?>(null)
+        fun arm(target: Int): Epoch = Epoch(target).also {
+            check(active.compareAndSet(null, it)) { "Noto draw tracker is already armed" }
+        }
+        fun recordDraw(epoch: Int) { active.get()?.recordDraw(epoch) }
+        fun disarm(epoch: Epoch) { check(active.compareAndSet(epoch, null)) }
+    }
+
+    /** Observe app frame completion, not a claim of physical/SF presentation. */
+    fun settleFreshFrame(activity: Activity, tracker: DrawEpochTracker, targetEpoch: Int,
+                         requestFrame: () -> Unit): FrameEvidence {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         foreground(activity, waitForRoot = true)
-        val thread = HandlerThread("Noto-evidence-frame").apply { start() }
+        val epoch = tracker.arm(targetEpoch)
+        val thread = HandlerThread("Noto-evidence-frame")
         val latch = CountDownLatch(1)
-        val requestedAt = System.nanoTime()
+        val lastVsync = AtomicLong(-1)
+        val matched = AtomicReference<FrameEvidence?>(null)
+        var choreographer: Choreographer? = null
+        var requested = false
+        val frameCallback = object : Choreographer.FrameCallback {
+            override fun doFrame(frameTimeNanos: Long) {
+                // Public callback timestamp precedes this frame's traversal. Keep
+                // tracking until the target epoch has actually drawn, not just set.
+                epoch.frameTime.set(frameTimeNanos)
+                if (!requested) {
+                    requested = true
+                    requestFrame()
+                }
+                choreographer?.postFrameCallback(this)
+            }
+        }
         val listener = Window.OnFrameMetricsAvailableListener { _, metrics, _ ->
-            if (rendered() && metrics.getMetric(FrameMetrics.INTENDED_VSYNC_TIMESTAMP) >= requestedAt) {
+            val actualVsync = metrics.getMetric(FrameMetrics.VSYNC_TIMESTAMP)
+            lastVsync.set(actualVsync)
+            val draw = epoch.firstDraw.get()
+            if (isFrameAtOrAfterDraw(draw, targetEpoch, actualVsync) &&
+                matched.compareAndSet(null, FrameEvidence(checkNotNull(draw), actualVsync))) {
                 latch.countDown()
             }
         }
         try {
+            thread.start()
             instrumentation.runOnMainSync {
                 activity.window.addOnFrameMetricsAvailableListener(listener, Handler(thread.looper))
-                requestFrame()
+                choreographer = Choreographer.getInstance()
+                choreographer!!.postFrameCallback(frameCallback)
             }
-            check(latch.await(TIMEOUT_SECONDS, TimeUnit.SECONDS)) { "No fresh Noto specimen frame before deadline" }
+            check(latch.await(TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+                "No fresh Noto specimen frame before deadline: target=$targetEpoch, " +
+                    "draw=${epoch.firstDraw.get()}, actualVsync=${lastVsync.get()}"
+            }
+            return checkNotNull(matched.get())
         } finally {
-            instrumentation.runOnMainSync { activity.window.removeOnFrameMetricsAvailableListener(listener) }
-            thread.quitSafely()
+            try {
+                instrumentation.runOnMainSync {
+                    try {
+                        choreographer?.removeFrameCallback(frameCallback)
+                    } finally {
+                        try {
+                            activity.window.removeOnFrameMetricsAvailableListener(listener)
+                        } finally {
+                            tracker.disarm(epoch)
+                        }
+                    }
+                }
+            } finally {
+                thread.quitSafely()
+            }
         }
     }
+
+    internal fun isFrameAtOrAfterDraw(draw: DrawStamp?, targetEpoch: Int, metricsVsyncNanos: Long): Boolean =
+        draw != null && draw.epoch == targetEpoch && draw.frameTimeNanos > 0 &&
+            metricsVsyncNanos >= draw.frameTimeNanos
 
     /** Ownership transfers to caller on success; abandoned/late native bitmaps are recycled. */
     fun capture(activity: Activity, host: View, expected: Location): Bitmap {

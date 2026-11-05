@@ -1,0 +1,101 @@
+name: Production glass performance
+on:
+  # Branch-local execution without adding an unreviewed workflow to main. An
+  # explicit commit marker avoids repeating the matrix on unrelated UI fixes.
+  push:
+    branches: [feature/production-glass-perf]
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: One native input profile (nine runs total)
+        type: choice
+        default: glass-controls
+        options: [glass-controls, poster-motion]
+permissions:
+  contents: read
+concurrency:
+  group: production-glass-performance-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[glass-performance]') || contains(github.event.head_commit.message, '[poster-performance]')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+      - uses: actions/cache@v4
+        with:
+          path: .cache/cinematv-noto-fonts
+          key: noto-fonts-v2-${{ hashFiles('scripts/fonts/noto-fonts.lock.json') }}
+      - name: Validate performance evidence protocol
+        run: python3 -m unittest discover -s scripts/glass-performance -p 'test_*.py' -v
+      - name: Install compile SDK
+        run: |
+          SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -1)
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" 'platforms;android-36' 'build-tools;36.0.0'
+      - name: Build one release-inherited, nondebuggable benchmark APK
+        run: |
+          gradle --no-daemon --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process :app:assembleGlassBenchmark :app:lintGlassBenchmark
+          mkdir -p dist/glass-performance
+          cp app/build/outputs/apk/glassBenchmark/app-glassBenchmark.apk dist/glass-performance/
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose dist/glass-performance/app-glassBenchmark.apk
+          python3 scripts/glass-performance/evidence.py build --sha "$GITHUB_SHA" --aapt "$ANDROID_HOME/build-tools/36.0.0/aapt2"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: production-glass-performance-apk
+          path: dist/glass-performance/
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: production-glass-performance-build-reports
+          path: app/build/reports/lint-results-glassBenchmark.*
+          if-no-files-found: warn
+          retention-days: 14
+  benchmark:
+    env:
+      BENCHMARK_PROFILE: ${{ inputs.profile || (contains(github.event.head_commit.message, '[poster-performance]') && 'poster-motion' || 'glass-controls') }}
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: production-glass-performance-apk
+          path: dist/glass-performance
+      - name: Verify exact build receipt and enable cloud KVM
+        run: |
+          python3 scripts/glass-performance/evidence.py verify --sha "$GITHUB_SHA"
+          sudo chmod 666 /dev/kvm
+      - name: Run nine interleaved 1080p production-root samples
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: default
+          arch: x86_64
+          profile: pixel_2
+          emulator-build: '15004761'
+          disable-animations: false
+          emulator-options: '-no-window -no-audio -gpu lavapipe -feature -Vulkan -no-snapshot -no-boot-anim -memory 3072'
+          script: |
+            timeout --signal=TERM --kill-after=10s 15m python3 scripts/glass-performance/drive-performance.py --profile "$BENCHMARK_PROFILE" --sha "$GITHUB_SHA" --requested-config 'emulator 15004761; API35 default x86_64; requested gpu lavapipe; Vulkan disabled; memory 3072 MB; 1920x1080 density320'
+      - name: Analyze native input windows, preserving blocked or incomplete outcomes
+        if: always()
+        run: python3 scripts/glass-performance/analyze.py --profile "$BENCHMARK_PROFILE"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: production-glass-performance-evidence
+          path: qa/glass-performance/
+          if-no-files-found: error
+          retention-days: 14

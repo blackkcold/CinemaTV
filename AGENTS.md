@@ -33,7 +33,7 @@ The repository GitHub Actions workflow also validates APK archive integrity and 
 Production-ready is **not** satisfied by compiling an APK alone. Require tested TV input/focus matrix, controlled metadata quality, player format and decode coverage, app lifecycle, security review, and release signing. See GitHub release-readiness issue for exact remaining tasks.
 
 ## Current limitations
-Glass uses GPU-light static depth by default. Explicit ENHANCED TV controls can sample/refract the settled scene still on supported API 33+ hardware canvases, with bounded cost and fallback; this is not arbitrary UI/video framebuffer refraction or measured hardware performance. Browse metadata may not have cinematic 16:9 backgrounds. Login, search, metadata, player and live require the user's own legally accessible LibreTV server. Direct source discovery is not included.
+Glass uses a conservative Basic/Blur/Full admission policy. AUTO selects real Compose-scene blur only on eligible API31+ windows; Full optical refraction is explicit API33+ opt-in. The first committed frame, low-memory/power/thermal guards, same-window source ownership and session failure latch protect fallback. API26–30, video Surfaces and separate dialogs do not receive an optical source. See docs/GLASS_PRODUCTION.md; no emulator result establishes physical-device frame rate. Browse metadata may not have cinematic 16:9 backgrounds. Login, search, metadata, player and live require the user's own legally accessible LibreTV server. Direct source discovery is not included.
 
 ## Recovery procedure after interrupted work
 1. Inspect last `main` SHA and the latest GitHub Actions workflow result.

@@ -15,6 +15,25 @@ SPEC.loader.exec_module(runner)
 
 
 class LibreTvContractsTest(unittest.TestCase):
+    def test_android_protocol_fixtures_do_not_reuse_async_preference_files(self):
+        folder = ROOT / 'app/src/androidTest/java/dev/cinematv/data'
+        for filename, prefix in [('LibreTvProtocolTest.kt', 'libretv-protocol-fixture'),
+                                 ('RepositoryContractTest.kt', 'repository-contract-settings')]:
+            source = (folder / filename).read_text()
+            self.assertIn(prefix + '-${UUID.randomUUID()}', source)
+            self.assertIn('fixturePreferences.all.isEmpty()', source)
+            self.assertIn('fixturePreferences.edit().clear().commit()', source)
+            self.assertIn('override fun getSharedPreferences', source)
+        protocol = (folder / 'LibreTvProtocolTest.kt').read_text()
+        self.assertIn('overlappingFixturesDoNotShareSourcesOrPendingPreferenceWrites', protocol)
+        self.assertIn('Concurrent fixtures must have distinct backing files', protocol)
+        self.assertIn('val writer = launch(Dispatchers.IO)', protocol)
+        self.assertIn('firstWrite.await()', protocol)
+        self.assertIn('writer.join()', protocol)
+        self.assertIn('repo.sources().single()', protocol)  # No relaxed uniqueness assertion.
+        self.assertIn('catch (error: LibreTvHttpException) { assertEquals(403, error.status) }', protocol)
+        self.assertIn('val cached = repo.searchSnapshots("Fixture").toList().single()', protocol)
+
     def test_environment_is_loopback_and_telemetry_disabled(self):
         env = runner.child_env(1234, 'test-only')
         self.assertEqual('127.0.0.1', env['HOSTNAME'])
