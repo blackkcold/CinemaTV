@@ -32,6 +32,32 @@ class DeviceQaContractTest(unittest.TestCase):
         self.assertNotIn('emu-crash', device)
         self.assertNotIn('minidump', device)
 
+    def test_api26_native_capture_uses_real_landscape_framebuffer(self):
+        workflow = (ROOT / '.github/workflows/tv-smoke.yml').read_text()
+        native = (ROOT / '.github/workflows/production-glass.yml').read_text()
+        condition = "${{ matrix.api == 26 && '-skin 1920x1080' || '' }}"
+        self.assertIn(condition, workflow)
+        self.assertIn(condition, native)
+        capture = (ROOT / 'app/src/androidTest/java/dev/cinematv/TvWindowCapture.kt').read_text()
+        self.assertIn('automation.takeScreenshot()', capture)
+        self.assertIn('bitmap.width == rootWidth && bitmap.height == rootHeight', capture)
+        self.assertIn('refusing scaling/cropping', capture)
+
+    def test_rail_configuration_fixture_does_not_remount_a_focused_root(self):
+        source = (ROOT / 'app/src/androidTest/java/dev/cinematv/ContentRailVisibilityTest.kt').read_text()
+        host = (ROOT / 'app/src/debug/java/dev/cinematv/TvTestActivity.kt').read_text()
+        self.assertIn('RuleChain.outerRule(cleanSettingsBeforeActivity).around(rule)', source)
+        self.assertIn('settings.edit().clear().commit()', source)
+        self.assertIn('Page.SETTINGS, model.page', source)
+        self.assertNotIn('setContent', source)
+        self.assertNotIn('requestFocus(', source)
+        method = source.split('@Test fun oversizedFontScaleRailSettlesWithoutRepeatedVerticalScroll()', 1)[1]
+        self.assertLess(method.index('nativeKey(KeyEvent.KEYCODE_DPAD_DOWN)'), method.index('testFontScaleOverride = 12f'))
+        self.assertIn('bookmarkBeforeResize, model.focusCoordinator.last("HOME")', method)
+        self.assertIn('mutableStateOf<Float?>(null)', host)
+        self.assertIn('Density(platformDensity.density, it) } ?: platformDensity', host)
+        self.assertEqual(1, host.count('setContent {'))
+
     def test_committed_media_is_validated_before_compile_without_tool_downloads(self):
         workflow = (ROOT / '.github/workflows/tv-smoke.yml').read_text()
         device = workflow.split('\n  instrumented:\n', 1)[1]

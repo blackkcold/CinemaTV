@@ -2,27 +2,19 @@ package dev.cinematv
 
 import android.view.KeyEvent
 import android.view.ViewTreeObserver
-import androidx.activity.compose.BackHandler
-import androidx.activity.compose.setContent
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.SemanticsPropertyKey
 import androidx.compose.ui.semantics.ScrollAxisRange
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
-import androidx.compose.ui.unit.Density
 import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import dev.cinematv.ui.shared.metadataLine
 import dev.cinematv.ui.shared.presentationKey
-import dev.cinematv.ui.tv.TvRootApp
 import dev.cinematv.ui.tv.motion.PosterMotionTokens
-import dev.cinematv.ui.typography.CinemaNotoProvider
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.*
@@ -30,11 +22,26 @@ import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.junit.rules.ExternalResource
+import org.junit.rules.RuleChain
 
 /** Real Home/rail/card layout, loopback catalog, and Android remote input. No screenshot or player. */
 @RunWith(AndroidJUnit4::class)
 class ContentRailVisibilityTest {
-    @get:Rule val rule = createAndroidComposeRule<TvTestActivity>()
+    val rule = createAndroidComposeRule<TvTestActivity>()
+    private val cleanSettingsBeforeActivity = object : ExternalResource() {
+        override fun before() {
+            // Other classes can leave a now-closed fixture server in preferences.
+            // @Before runs too late: Activity creation has already constructed
+            // the ViewModel and selected its initial route/connection work.
+            val settings = InstrumentationRegistry.getInstrumentation().targetContext
+                .getSharedPreferences("cinema_settings", 0)
+            val hadServer = !settings.getString("server", "").isNullOrBlank()
+            assertTrue("Clear fixture settings before Activity launch", settings.edit().clear().commit())
+            android.util.Log.i("CinemaTVRailFixture", "pre-activity hadConfiguredServer=$hadServer settingsEmpty=${settings.all.isEmpty()}")
+        }
+    }
+    @get:Rule val activityRules: RuleChain = RuleChain.outerRule(cleanSettingsBeforeActivity).around(rule)
     private lateinit var server: UiFixtureServer
     private lateinit var featuredAtEntry: List<FeaturedIdentity>
     private val model get() = rule.activity.model
@@ -50,6 +57,12 @@ class ContentRailVisibilityTest {
     )
 
     @Before fun connectFixture() {
+        rule.runOnUiThread {
+            android.util.Log.i("CinemaTVRailFixture", "initial connected=${model.repo.isConnected} page=${model.page} " +
+                "windowFocus=${rule.activity.hasWindowFocus()} viewFocus=${rule.activity.window.decorView.hasFocus()}")
+            assertFalse("Every fixture must launch without a previous class's connection", model.repo.isConnected)
+            assertEquals("Every fixture must start on the same clean Settings route", Page.SETTINGS, model.page)
+        }
         rule.waitUntil(15_000) { rule.activity.bundledFontsReady || rule.activity.fontLoadFailures.isNotEmpty() }
         assertTrue("Bundled Noto failed: ${rule.activity.fontLoadFailures}", rule.activity.bundledFontsReady)
         rule.waitUntil(10_000) { rule.activity.hasWindowFocus() }
@@ -91,7 +104,23 @@ class ContentRailVisibilityTest {
                 featuredAtEntry.map { it.presentationKey }.toSet().size)
             model.dismissMessage()
         }
-        rule.onNodeWithText("观看详情").assertIsFocused()
+        try {
+            rule.onNodeWithText("观看详情").assertIsFocused()
+        } catch (failure: AssertionError) {
+            // Capture the failing state once; do not retry, refocus, or change
+            // timing to turn a failed entry into a successful test precondition.
+            val focused = runCatching {
+                rule.onAllNodes(isFocused(), useUnmergedTree = true).fetchSemanticsNodes()
+                    .joinToString { "id=${it.id},bounds=${it.boundsInRoot}" }
+            }.getOrElse { "unavailable:${it.javaClass.simpleName}" }
+            rule.runOnUiThread {
+                val bookmark = model.focusCoordinator.last("HOME")
+                android.util.Log.e("CinemaTVRailFixture", "hero-entry-failed page=${model.page} " +
+                    "windowFocus=${rule.activity.hasWindowFocus()} viewFocus=${rule.activity.window.decorView.hasFocus()} " +
+                    "bookmark=$bookmark focused=[$focused]")
+            }
+            throw failure
+        }
     }
 
     @After fun cleanUp() {
@@ -362,29 +391,14 @@ class ContentRailVisibilityTest {
     }
 
     @Test fun oversizedFontScaleRailSettlesWithoutRepeatedVerticalScroll() {
-        // Enter through the normal real root first, then change configuration
-        // without replacing its composition/focus. Remounting the entire root
-        // at 12x failed its initial Hero-focus precondition in one cloud run,
-        // before the rail was exercised; that did not establish a rail loop or
-        // distinguish root-startup timing from extreme Hero layout constraints.
-        val density = rule.activity.resources.displayMetrics.density
-        val fontScale = mutableFloatStateOf(1f)
-        rule.runOnUiThread {
-            rule.activity.setContent {
-                CompositionLocalProvider(LocalDensity provides Density(density, fontScale = fontScale.floatValue)) {
-                    CinemaNotoProvider {
-                        BackHandler(enabled = model.page != Page.HOME) { model.back() }
-                        TvRootApp(model)
-                    }
-                }
-            }
-        }
-        rule.waitForIdle()
+        // Change configuration on the same real root whose normal Home entry
+        // was already verified. No additional Home remount or automatic focus
+        // restoration precondition; this does not fix general root recreation.
         rule.onNodeWithText("观看详情").assertIsFocused()
         nativeKey(KeyEvent.KEYCODE_DPAD_DOWN)
         assertFeaturedFocus(0)
         val bookmarkBeforeResize = rule.runOnIdle { model.focusCoordinator.last("HOME") }
-        rule.runOnIdle { fontScale.floatValue = 12f }
+        rule.runOnIdle { rule.activity.testFontScaleOverride = 12f }
         rule.waitForIdle()
         assertFeaturedFocus(0)
         rule.runOnIdle {
