@@ -27,6 +27,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import dev.cinematv.ui.GlassAction
 import dev.cinematv.ui.tv.components.CinemaGlassSurface
+import dev.cinematv.ui.tv.focus.trackTvContentFocus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -81,7 +82,7 @@ fun RecommendationLicensesDialog(tv: Boolean, onDismiss: () -> Unit) {
                                 }
                                 else -> false
                             }
-                        }.focusable(tv))
+                        }.trackTvContentFocus().focusable(tv))
             }
         }
         if (tv) LaunchedEffect(Unit) { withFrameNanos { }; close.requestFocus() }

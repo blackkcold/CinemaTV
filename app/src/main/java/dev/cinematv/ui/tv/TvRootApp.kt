@@ -18,12 +18,14 @@ import dev.cinematv.ui.*
 import dev.cinematv.ui.tv.components.*
 import dev.cinematv.ui.tv.design.*
 import dev.cinematv.ui.tv.focus.*
+import dev.cinematv.ui.tv.motion.PosterMotionProvider
 import dev.cinematv.ui.tv.pages.*
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun TvRootApp(model: CinemaViewModel, onSceneDecoded: (String?) -> Unit = {}) {
     CinemaTvTheme(model.reducedMotion, model.glassQuality) {
+      PosterMotionProvider(resetKey = model.focusRoute) { posterInput ->
         val keyboard = LocalSoftwareKeyboardController.current
         val imeVisible = WindowInsets.isImeVisible
         // Keep ownership in the persistent root: a restored Search editor can
@@ -36,23 +38,28 @@ fun TvRootApp(model: CinemaViewModel, onSceneDecoded: (String?) -> Unit = {}) {
         val registry = remember { TvFocusRegistry() }
         val navigation = remember { FocusRequester() }
         val content = remember(model.focusRoute) { FocusRequester() }
+        val navigationFocusOwner = remember(model) {
+            TvNavigationFocusOwner { model.page !in listOf(Page.DETAIL, Page.PLAYER, Page.SETTINGS) }
+        }
+        val focusObserver = LocalTvFocusOwnerObserver.current
+        SideEffect { focusObserver?.invoke(navigationFocusOwner) }
         var navigationHasFocus by remember { mutableStateOf(false) }
         var decodedArt by remember { mutableStateOf<String?>(null) }
-        var glassFrame by remember { mutableStateOf<GlassBackdropFrame?>(null) }
-        val glassFailure = remember { GlassFailureLatch() }
-        val showNav = model.page !in listOf(Page.DETAIL, Page.PLAYER, Page.SETTINGS)
-        LaunchedEffect(showNav) { if (!showNav) navigationHasFocus = false }
+        val glassScene = rememberProductionGlassScene(model.page != Page.PLAYER)
+        val showNav = navigationFocusOwner.available
+        LaunchedEffect(showNav) { if (!showNav) { navigationFocusOwner.update(false); navigationHasFocus = false } }
         CompositionLocalProvider(LocalTvFocusRegistry provides registry, LocalNavigationFocus provides navigation,
             LocalContentFocus provides content, LocalNavigationHasFocus provides (navigationHasFocus && showNav),
+            LocalNavigationFocusOwner provides navigationFocusOwner,
+            LocalTvContentFocusOwner provides navigationFocusOwner,
             LocalBackdropArt provides decodedArt,
-            LocalGlassBackdrop provides glassFrame.takeUnless { model.page == Page.PLAYER },
-            LocalGlassFailureLatch provides glassFailure) {
+            LocalProductionGlassScene provides glassScene) {
             val layout = LocalTvLayout.current
             if (model.page != Page.PLAYER) ArtworkPrefetch(model.featured + model.tvShows, model.focused)
-            Box(Modifier.fillMaxSize().background(TvColors.Background)) {
+            Box(Modifier.fillMaxSize().then(posterInput).background(TvColors.Background)) {
                 if (model.page != Page.PLAYER) BackdropLayer(
                     if (model.page == Page.DETAIL) model.selected else model.focused ?: model.featured.firstOrNull(),
-                    onDecodedFrame = { glassFrame = it }
+                    modifier = Modifier.recordProductionGlass(glassScene)
                 ) { decodedArt = it; onSceneDecoded(it) }
                 savedPages.SaveableStateProvider(model.focusRoute) {
                   key(model.focusRoute) {
@@ -70,7 +77,9 @@ fun TvRootApp(model: CinemaViewModel, onSceneDecoded: (String?) -> Unit = {}) {
                     }
                 }
                 }
-                if (showNav) FloatingNavigation(model, { navigationHasFocus = it }, Modifier.align(Alignment.TopCenter).padding(top = layout.navigationTop))
+                if (showNav) CompositionLocalProvider(LocalTvContentFocusOwner provides null) {
+                    FloatingNavigation(model, { navigationFocusOwner.update(it); navigationHasFocus = it }, Modifier.align(Alignment.TopCenter).padding(top = layout.navigationTop))
+                }
                 if (model.message.isNotBlank() && model.page != Page.PLAYER) {
                     Text(model.message, color = TvColors.Text, fontSize = 14.sp, maxLines = 3,
                         modifier = Modifier.align(Alignment.BottomCenter).padding(horizontal = layout.gutter, vertical = 12.dp)
@@ -79,5 +88,6 @@ fun TvRootApp(model: CinemaViewModel, onSceneDecoded: (String?) -> Unit = {}) {
                 }
             }
         }
+      }
     }
 }

@@ -3,7 +3,7 @@ package dev.cinematv.ui.tv.design
 import androidx.compose.runtime.staticCompositionLocalOf
 
 enum class GlassQuality(val title: String) {
-    AUTO("自动"), BASIC("基础"), BACKDROP("背景磨砂"), ENHANCED("镜片折射")
+    AUTO("自动"), BASIC("基础"), BACKDROP("普通模糊"), ENHANCED("完整光学")
 }
 
 data class TvEffects(val reducedMotion: Boolean = false, val glass: GlassQuality = GlassQuality.BASIC) {
@@ -16,7 +16,7 @@ data class TvEffects(val reducedMotion: Boolean = false, val glass: GlassQuality
 fun resolveGlassQuality(requested: GlassQuality, lowRam: Boolean, api: Int, reducedMotion: Boolean): GlassQuality =
     when {
         lowRam || requested == GlassQuality.BASIC -> GlassQuality.BASIC
-        requested == GlassQuality.ENHANCED && api >= 33 && !reducedMotion -> GlassQuality.ENHANCED
+        requested == GlassQuality.ENHANCED && api >= 33 -> GlassQuality.ENHANCED
         api < 31 -> GlassQuality.BASIC
         else -> GlassQuality.BACKDROP
     }

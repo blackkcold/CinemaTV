@@ -19,7 +19,7 @@ class PresentationPolicyTest {
         assertEquals(GlassQuality.BASIC, resolveGlassQuality(GlassQuality.ENHANCED, true, 36, false))
         assertEquals(GlassQuality.BASIC, resolveGlassQuality(GlassQuality.AUTO, false, 30, false))
         assertEquals(GlassQuality.BACKDROP, resolveGlassQuality(GlassQuality.AUTO, false, 36, false))
-        assertEquals(GlassQuality.BACKDROP, resolveGlassQuality(GlassQuality.ENHANCED, false, 36, true))
+        assertEquals(GlassQuality.ENHANCED, resolveGlassQuality(GlassQuality.ENHANCED, false, 36, true))
         assertEquals(GlassQuality.ENHANCED, resolveGlassQuality(GlassQuality.ENHANCED, false, 36, false))
         assertEquals(0, TvEffects(reducedMotion = true).sceneMillis)
     }

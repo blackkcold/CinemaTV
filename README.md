@@ -82,6 +82,14 @@ CinemaTV 连接你自建的 [LibreTV](https://github.com/LibreSpark/LibreTV)，�
 - 离线打包 Noto 字体，按内容语言与地区选择中日韩字形，不转换简繁内容。
 - 原创 A1 品牌与静态启动图标；应用内简短品牌动态不阻塞操作。
 
+## 主分支中的下一版
+
+新的原生玻璃与电视卡片动效已经合入主分支并完成对应模拟器验收，正在准备正式签名与发布，**不在上方 v0.7 下载包和截图中**。
+
+- Basic / Blur / Full 分档：Blur 需要 API 31+，Full 为 API 33+ 的显式选择；自动模式保守降级。
+- 电视焦点抬升、按压和层次动效支持减少动态；播放器 Surface 和独立弹窗不冒充可采样的电影画面。
+- 代码与限制见 [玻璃实现](docs/GLASS_PRODUCTION.md)、[动效实现](docs/MOTION_PRODUCTION.md)。模拟器验收不代表真实电视帧率认证。
+
 ## 安装与首次使用
 
 最低要求为 **Android 8.0 / API 26**。同一应用支持电视与手机，包名为 `dev.cinematv`。
@@ -141,6 +149,7 @@ CinemaTV 原创代码和测试画面采用 [MIT License](LICENSE)。没有复制
 - [LibreTV](https://github.com/LibreSpark/LibreTV)：连接的上游服务。
 - [AndroidX Media3](https://github.com/androidx/media)、Jetpack Compose：播放与原生界面。
 - RankSys：MPL-2.0；fastutil / jOOL：Apache-2.0，保留对应版本的附加声明。APK 提供完整许可及匹配版本的 RankSys 源码包，详见 [第三方推荐组件](docs/RANKSYS_INTEGRATION.md)。
+- 主分支的 AndroidLiquidGlass / Backdrop 复用部分采用 Apache-2.0，保留 [许可证](backdrop/LICENSE)、[上游与修改声明](backdrop/NOTICE.md)，不归入 CinemaTV 原创 MIT 代码。
 - Noto Sans / Noto Sans CJK：SIL Open Font License，详见 [字体说明](docs/NOTO_TYPOGRAPHY.md)。
 - TMDB：可选元数据来源；官方品牌素材与使用说明见 [第三方资产](docs/THIRD_PARTY_ASSETS.md)。
 

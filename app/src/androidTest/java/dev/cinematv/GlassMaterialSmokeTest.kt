@@ -1,7 +1,5 @@
 package dev.cinematv
 
-import android.graphics.Bitmap
-import android.graphics.RuntimeShader
 import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
@@ -13,12 +11,15 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.Color
+import com.kyant.backdrop.BackdropFailureState
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -95,71 +96,79 @@ class GlassMaterialSmokeTest {
         }
     }
 
-    @Test fun agslCompilesOnSupportedAndroidRuntime() {
-        assumeTrue(Build.VERSION.SDK_INT >= 33)
-        RuntimeShader(STILL_LENS_AGSL)
-    }
-
     @Test fun materialSurvivesFocusPressReducedMotionMissingArtAndFailure() {
-        val bitmap = Bitmap.createBitmap(640, 360, Bitmap.Config.ARGB_8888).apply {
-            val canvas = android.graphics.Canvas(this)
-            val paint = android.graphics.Paint()
-            for (x in 0 until 640 step 16) {
-                paint.color = if (x % 32 == 0) android.graphics.Color.WHITE else android.graphics.Color.BLUE
-                canvas.drawRect(x.toFloat(), 0f, (x + 16).toFloat(), 360f, paint)
-            }
-        }
-        val frame = mutableStateOf<GlassBackdropFrame?>(GlassBackdropFrame(bitmap, Offset.Zero, Size(640f, 360f)))
+        val hasScene = mutableStateOf(true)
+        val phase = mutableStateOf(0f)
         val focused = mutableStateOf(false)
         val pressed = mutableStateOf(false)
         val reduced = mutableStateOf(false)
-        val failure = GlassFailureLatch()
+        val mode = mutableStateOf(GlassQuality.ENHANCED)
+        val failure = BackdropFailureState()
         val diagnostics = GlassDrawDiagnostics()
         val materialDraws = AtomicInteger()
         fun render(stage: String, mutation: () -> Unit) = renderStage(stage, materialDraws, mutation)
         render("initial") {
             compose.setContent {
-                CompositionLocalProvider(LocalGlassBackdrop provides frame.value,
-                    LocalGlassFailureLatch provides failure,
+                CompositionLocalProvider(LocalProductionGlassFailure provides failure,
                     LocalGlassDrawDiagnostics provides diagnostics,
-                    LocalTvEffects provides TvEffects(reduced.value, GlassQuality.ENHANCED)) {
-                    Box(Modifier.size(160.dp, 45.dp).testTag("glass")) {
-                        GlassControlMaterial(focused.value, pressed.value, false, false,
-                            Modifier.matchParentSize().drawWithContent {
-                                drawContent()
-                                if (drawContext.canvas.nativeCanvas.isHardwareAccelerated) materialDraws.incrementAndGet()
-                            })
+                    LocalTvEffects provides TvEffects(reduced.value, mode.value)) {
+                    val scene = rememberProductionGlassScene(hasScene.value)
+                    CompositionLocalProvider(LocalProductionGlassScene provides scene) {
+                        Box(Modifier.size(640.dp, 360.dp)) {
+                            // A real recorded Compose scene, never a copied framebuffer.
+                            Canvas(Modifier.matchParentSize().recordProductionGlass(scene)) {
+                                drawRect(Color(0xFF203C57))
+                                for (x in 0..20) drawLine(Color.White, Offset(x * 24f + phase.value, 0f),
+                                    Offset(x * 24f + phase.value, size.height), strokeWidth = 3f)
+                            }
+                            Box(Modifier.size(160.dp, 45.dp).testTag("glass")) {
+                                GlassControlMaterial(focused.value, pressed.value, false, false,
+                                    Modifier.matchParentSize().drawWithContent {
+                                        drawContent()
+                                        if (drawContext.canvas.nativeCanvas.isHardwareAccelerated) materialDraws.incrementAndGet()
+                                    })
+                            }
+                        }
                     }
                 }
             }
         }
         render("focused") { compose.runOnIdle { focused.value = true } }
         compose.runOnIdle {
-            assertFalse("Shader failed before intentional failure", failure.failed)
-            if (Build.VERSION.SDK_INT >= 33) assertTrue(
-                "Supported hardware test must exercise the lens draw, not silently skip it",
-                diagnostics.successfulLensDraws > 0
-            )
+            assertFalse("Effect failed before intentional failure", failure.failed)
+            if (Build.VERSION.SDK_INT >= 33) assertTrue("Full must actually draw", diagnostics.successfulLensDraws > 0)
+            else if (Build.VERSION.SDK_INT >= 31) assertTrue("Blur must actually draw", diagnostics.blurDraws > 0)
+            else assertTrue("Old Android must use safe material", diagnostics.basicDraws > 0)
         }
-        val focusedDraws = compose.runOnIdle { diagnostics.successfulLensDraws }
-        render("pressed") { compose.runOnIdle { pressed.value = true } }
-        val pressedDraws = compose.runOnIdle {
-            if (Build.VERSION.SDK_INT >= 33) assertTrue(diagnostics.successfulLensDraws > focusedDraws)
-            diagnostics.successfulLensDraws
+        val beforePress = compose.runOnIdle { diagnostics.successfulLensDraws }
+        render("pressed") { compose.runOnIdle { pressed.value = true; phase.value = 7f } }
+        compose.runOnIdle { if (Build.VERSION.SDK_INT >= 33) assertTrue(diagnostics.successfulLensDraws > beforePress) }
+        render("blur") { compose.runOnIdle { mode.value = GlassQuality.BACKDROP; pressed.value = false } }
+        compose.runOnIdle { if (Build.VERSION.SDK_INT >= 31) assertTrue(diagnostics.blurDraws > 0) }
+        render("full-return") { compose.runOnIdle { mode.value = GlassQuality.ENHANCED; pressed.value = true } }
+        val beforeReduced = compose.runOnIdle { diagnostics.successfulLensDraws }
+        render("reduced-motion") { compose.runOnIdle { reduced.value = true; phase.value = 14f; focused.value = false } }
+        compose.runOnIdle {
+            // Reduced motion disables geometry animation, not the selected optical material.
+            if (Build.VERSION.SDK_INT >= 33) assertTrue(diagnostics.successfulLensDraws > beforeReduced)
         }
-        render("reduced-motion") { compose.runOnIdle { pressed.value = false; reduced.value = true } }
-        compose.runOnIdle { assertEquals(pressedDraws, diagnostics.successfulLensDraws) }
-        render("missing-art") { compose.runOnIdle { frame.value = null; reduced.value = false } }
-        compose.runOnIdle { assertEquals(pressedDraws, diagnostics.successfulLensDraws) }
+        val beforeMissing = compose.runOnIdle { diagnostics.successfulLensDraws }
+        render("missing-art") { compose.runOnIdle {
+            hasScene.value = false; reduced.value = false; pressed.value = false
+        } }
+        compose.runOnIdle { assertEquals(beforeMissing, diagnostics.successfulLensDraws) }
+        render("scene-restored") { compose.runOnIdle { hasScene.value = true; focused.value = true } }
+        val beforeFailure = compose.runOnIdle { diagnostics.successfulLensDraws }
         render("latched-failure") { compose.runOnIdle {
-            failure.attempt<Unit> { throw IllegalArgumentException("simulated shader failure") }
-            frame.value = GlassBackdropFrame(bitmap, Offset.Zero, Size(640f, 360f))
+            // Fail an active optical source, rather than an already identical Basic
+            // frame. Press is also a visible native interaction on the API26 tier.
+            failure.fail("test", IllegalArgumentException("simulated shader failure"))
+            pressed.value = true
         } }
         render("unfocused") { compose.runOnIdle {
             assertTrue(failure.failed)
-            assertEquals(pressedDraws, diagnostics.successfulLensDraws)
+            assertEquals(beforeFailure, diagnostics.successfulLensDraws)
             focused.value = false
         } }
-        // Coil owns real frames; this fixture remains alive through composition disposal.
     }
 }
