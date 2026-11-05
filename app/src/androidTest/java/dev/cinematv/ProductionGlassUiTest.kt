@@ -171,6 +171,11 @@ class ProductionGlassUiTest {
         trace("Movies activated")
         back()
         rule.waitUntil(10_000) { model.page == Page.HOME }
+        // Existing navigation policy preserves the focused tab across section
+        // changes; returning Home must not steal it into page content.
+        tab("电影").assertIsFocused().assertIsNotSelected()
+        tab("精选").assertIsSelected()
+        key(Key.DirectionDown)
         assertHomeControl()
         resetCounts()
         key(Key.DirectionCenter)

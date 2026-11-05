@@ -111,7 +111,9 @@ jobs:
           profile: pixel_2
           emulator-build: '15004761'
           disable-animations: false
-          emulator-options: '-no-window -no-audio -gpu lavapipe -feature -Vulkan -no-snapshot -no-boot-anim -memory 3072'
+          # API26 SurfaceFlinger rejects screenshot requests wider than the physical
+          # framebuffer even after wm size. Give that TV image a real landscape skin.
+          emulator-options: "-no-window -no-audio -gpu lavapipe -feature -Vulkan -no-snapshot -no-boot-anim -memory 3072 ${{ matrix.api == 26 && '-skin 1920x1080' || '' }}"
           script: bash scripts/glass-production/run-matrix.sh '${{ matrix.api }}' "$GITHUB_SHA"
       - uses: actions/upload-artifact@v4
         if: always()

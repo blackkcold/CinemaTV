@@ -68,6 +68,13 @@ class InstrumentationContract(unittest.TestCase):
         self.assertIn("expected.getValue(artifact.file.name)", source)
         self.assertNotIn("resolvedConfiguration.resolvedArtifacts", source)
 
+    def test_api26_capture_uses_matching_physical_tv_framebuffer(self):
+        workflow = (ROOT / ".github/workflows/production-glass.yml").read_text()
+        self.assertIn("matrix.api == 26 && '-skin 1920x1080'", workflow)
+        source = (ROOT / "app/src/androidTest/java/dev/cinematv/ProductionGlassUiTest.kt").read_text()
+        self.assertIn('tab("电影").assertIsFocused().assertIsNotSelected()', source)
+        self.assertIn('key(Key.DirectionDown)', source)
+
     def test_ci_reuses_apks_without_rebuilding_or_media_suite(self):
         workflow = (ROOT / ".github/workflows/production-glass.yml").read_text()
         self.assertIn("branches: [feature/production-glass-v2]", workflow)
