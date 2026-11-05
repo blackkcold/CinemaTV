@@ -38,7 +38,6 @@ private fun recommendationDashboard(rule: ComposeContentTestRule, activity: Comp
         rule.runOnIdle {
             model.repo.configureServer(server.base)
             model.repo.configureMetadata(server.base, "offline-fixture-token")
-            model.focused = null
             model.refreshCatalog()
             model.navigate(Page.SETTINGS)
         }
