@@ -1,3 +1,5 @@
+import java.security.MessageDigest
+
 plugins { id("com.android.application") }
 android {
     namespace = "dev.cinematv.ranksysprobe"
@@ -57,7 +59,7 @@ val stageCoreSources by tasks.registering(Copy::class) {
             "RankSys-novdiv-0.4.3-sources.jar" to "36795aedfb0885f9f118f48fd9598be607989e5d8e5ea680490872112b68774d")
         check(sourceArtifacts.files.map { it.name }.toSet() == expected.keys)
         sourceArtifacts.files.forEach { file ->
-            val hash = java.security.MessageDigest.getInstance("SHA-256").digest(file.readBytes()).joinToString("") { "%02x".format(it) }
+            val hash = MessageDigest.getInstance("SHA-256").digest(file.readBytes()).joinToString("") { "%02x".format(it) }
             check(hash == expected.getValue(file.name)) { "Unexpected published source bytes: ${file.name}" }
         }
     }
