@@ -3,6 +3,7 @@ package dev.cinematv
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
@@ -40,6 +41,11 @@ class MobileUpdateSettingsTest {
         rule.onNodeWithTag("update-channel-dev").performClick()
         rule.onNodeWithTag("update-channel-dev").performClick()
         rule.runOnIdle { assertEquals(UpdateChannel.DEV, updates.channel); assertFalse(updates.busy) }
+        val textLayout = mutableListOf<TextLayoutResult>()
+        rule.onNodeWithText("✓ 测试版", useUnmergedTree = true)
+            .performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(textLayout) }
+        assertEquals(1, textLayout.single().lineCount)
+        assertFalse(textLayout.single().hasVisualOverflow)
         captureUpdateSettings(rule, rule.activity, "phone")
     }
 }

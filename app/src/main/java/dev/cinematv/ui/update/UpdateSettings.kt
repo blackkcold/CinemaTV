@@ -8,6 +8,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
@@ -37,7 +38,7 @@ fun UpdateSettings(tv: Boolean, model: UpdateViewModel = viewModel()) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             UpdateChannel.entries.forEach { channel ->
                 UpdateButton((if (model.channel == channel) "✓ " else "") + channel.title, tv,
-                    "update-channel-${channel.id}") { model.select(channel) }
+                    "update-channel-${channel.id}", modifier = if (tv) Modifier else Modifier.weight(1f)) { model.select(channel) }
             }
         }
         CinemaText("测试版使用紫色图标。同包名切换保留数据，但只安装版本号更高且签名相同的包。",
@@ -45,21 +46,23 @@ fun UpdateSettings(tv: Boolean, model: UpdateViewModel = viewModel()) {
         if (!model.enabled) CinemaText("当前构建暂未启用联网更新，需要完成固定签名与发布验证。",
             color = TvColors.Secondary, fontSize = 13.sp, modifier = Modifier.testTag("update-unavailable"))
         CinemaText(model.message, color = TvColors.Text, fontSize = 14.sp, modifier = Modifier.testTag("update-status"))
-        if (model.enabled && !model.busy) UpdateButton("检查更新", tv, "update-check", model::check)
-        if (model.busy) UpdateButton("取消", tv, "update-cancel", model::cancel)
+        if (model.enabled && !model.busy) UpdateButton("检查更新", tv, "update-check", action = model::check)
+        if (model.busy) UpdateButton("取消", tv, "update-cancel", action = model::cancel)
         model.release?.let { release ->
             CinemaText("${release.versionName} · ${release.apkBytes / (1024 * 1024)} MB\n${release.notes}",
                 color = TvColors.Secondary, fontSize = 13.sp)
             if (!model.busy && !model.awaitingSystem && UpdatePolicy.canUpgrade(BuildConfig.VERSION_CODE.toLong(), release.versionCode)) {
                 if (model.ready) UpdateButton("安装已校验更新", tv, "update-install") { model.install(context) }
-                else UpdateButton("下载并校验", tv, "update-download", model::download)
+                else UpdateButton("下载并校验", tv, "update-download", action = model::download)
             }
         }
     }
 }
 
 @Composable
-private fun UpdateButton(label: String, tv: Boolean, tag: String, action: () -> Unit) {
-    if (tv) GlassAction(label, Modifier.testTag(tag).widthIn(min = 140.dp).height(44.dp), onClick = action)
-    else MobileGlassOutlinedButton(onClick = action, modifier = Modifier.testTag(tag)) { CinemaText(label) }
+private fun UpdateButton(label: String, tv: Boolean, tag: String, modifier: Modifier = Modifier, action: () -> Unit) {
+    if (tv) GlassAction(label, modifier.testTag(tag).widthIn(min = 140.dp).height(44.dp), onClick = action)
+    else MobileGlassOutlinedButton(onClick = action, modifier = modifier.testTag(tag)) {
+        CinemaText(label, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
 }
