@@ -85,11 +85,13 @@ jobs:
             viewport: 1080x1920
             density: 420
             test: MobileUpdateSettingsTest
+            evidence: phone
           - api: 33
             target: default
             viewport: 1920x1080
             density: 320
             test: TvUpdateSettingsTest
+            evidence: tv
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -120,7 +122,9 @@ jobs:
             adb shell am instrument -w -r -e class dev.cinematv.${{ matrix.test }} dev.cinematv.test/androidx.test.runner.AndroidJUnitRunner | tee update-ui-result.txt
             grep -q 'OK (1 test)' update-ui-result.txt
             ! grep -Eq 'FAILURES!!!|INSTRUMENTATION_FAILED|Process crashed' update-ui-result.txt
-            adb pull /sdcard/Android/data/dev.cinematv/files/update-evidence update-evidence
+            mkdir -p update-evidence
+            adb exec-out run-as dev.cinematv cat files/update-evidence/${{ matrix.evidence }}.png > update-evidence/${{ matrix.evidence }}.png
+            python3 -c "from pathlib import Path; p=Path('update-evidence/${{ matrix.evidence }}.png').read_bytes(); assert p[:8] == b'\x89PNG\r\n\x1a\n' and len(p) > 10000"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

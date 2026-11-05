@@ -67,7 +67,8 @@ class TvUpdateSettingsTest {
 private fun captureUpdateSettings(rule: ComposeContentTestRule, context: Context, name: String) {
     rule.waitForIdle()
     val image = rule.onRoot().captureToImage().asAndroidBitmap()
-    val directory = File(context.getExternalFilesDir(null), "update-evidence").apply { mkdirs() }
+    // CI uses Android's supported run-as debug interface, not access to scoped external storage.
+    val directory = File(context.filesDir, "update-evidence").apply { mkdirs() }
     File(directory, "$name.png").outputStream().use {
         check(image.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it))
     }
