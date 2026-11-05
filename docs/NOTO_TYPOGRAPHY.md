@@ -192,6 +192,16 @@ Sources:
 - https://developer.android.com/reference/android/window/SplashScreen#setOnExitAnimationListener(android.window.SplashScreen.OnExitAnimationListener)
 - https://developer.android.com/reference/android/window/SplashScreenView#remove()
 
+The same second candidate's 4K run ended separately at the 18-minute whole-suite
+harness deadline (exit 124), after seven passing long navigation/library cases and
+while the next was still active, before the font class. It is not a font pass or a
+font failure. The first candidate completed the full 4K suite in about 17 minutes.
+Only 4K's functional harness budget is now 24 minutes (trace 26, heartbeat 28,
+emulator step 30; job 45). Other targets, per-operation deadlines, classes and pixel
+assertions stay unchanged; actual timeout/failure propagation remains tested.
+This gives software-renderer/shared-runner variance headroom, not a performance
+certification or permission to ignore an unfinished run.
+
 ### API26 readback compatibility
 
 API26 has a narrow test-only readback route. In main `5576a10` run `41887458013`,
