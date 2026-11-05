@@ -48,6 +48,9 @@ class DoubanAccountService internal constructor(private val vault: DoubanStorage
     /** Called only by explicit on-device confirmation after the user finishes official login. */
     suspend fun acceptLocalSession(localCookie: String) = withContext(Dispatchers.IO) { lock.withLock {
         val previousState = mutable.value
+        val previousCookie = cookie
+        val previousSavedAt = savedAt
+        val previousStop = gate.stopped
         mutable.value = mutable.value.copy(phase = DoubanPhase.VERIFYING, message = "正在验证本机登录")
         try {
             require(localCookie.isNotBlank()) { "Missing local login" }
@@ -61,9 +64,13 @@ class DoubanAccountService internal constructor(private val vault: DoubanStorage
             currentCoroutineContext().ensureActive()
             gate.userReauthenticated(); cookie = localCookie; savedAt = now(); cursors.clear(); staged.clear(); done.clear(); totals.clear()
             val old = mutable.value.snapshot?.takeIf { it.owner.id == owner.id }
-            mutable.value = DoubanAccountState(DoubanPhase.CONNECTED, owner, old, "登录成功 · 会话已加密保存在这台设备")
-            persist()
-        } catch (e: CancellationException) { mutable.value = previousState.copy(message = "验证已取消，原连接状态保留"); throw e } catch (e: Exception) { failed(e) }
+            val candidate = DoubanAccountState(DoubanPhase.CONNECTED, owner, old, "登录成功 · 会话已加密保存在这台设备")
+            persist(candidate)
+            mutable.value = candidate
+        } catch (e: CancellationException) { mutable.value = previousState.copy(message = "验证已取消，原连接状态保留"); throw e } catch (e: Exception) {
+            cookie = previousCookie; savedAt = previousSavedAt; gate.restore(gate.notBefore, previousStop)
+            mutable.value = previousState; failed(e)
+        }
     } }
     suspend fun sync(continuePartial: Boolean = false) = withContext(Dispatchers.IO) {
         if (!syncRunning.compareAndSet(false, true)) return@withContext
@@ -97,8 +104,9 @@ class DoubanAccountService internal constructor(private val vault: DoubanStorage
             }
             val complete = done.size == DoubanShelf.entries.size
             val snapshot = DoubanSnapshot(owner, staged.values.toList(), now(), complete, done.toSet())
-            mutable.value = mutable.value.copy(phase = DoubanPhase.CONNECTED, snapshot = snapshot, message = if(complete) "同步完成 · ${staged.size} 条个人记录" else "本轮已读取 $pages 页，点击继续同步；尚未覆盖全部片单")
-            persist()
+            val candidate = mutable.value.copy(phase = DoubanPhase.CONNECTED, snapshot = snapshot, message = if(complete) "同步完成 · ${staged.size} 条个人记录" else "本轮已读取 $pages 页，点击继续同步；尚未覆盖全部片单")
+            persist(candidate)
+            mutable.value = candidate
         } catch(e: CancellationException) { mutable.value = mutable.value.copy(phase = DoubanPhase.CONNECTED, message = "同步已取消，保留上次数据"); throw e }
         catch(e: Exception) { failed(e) }
     } } finally { syncRunning.set(false) }
@@ -122,9 +130,10 @@ class DoubanAccountService internal constructor(private val vault: DoubanStorage
                     mutable.value = mutable.value.copy(message = "已检查 ${scores.size} / ${subjects.size} 部作品的社区评分")
                 }
                 val next = snapshot.copy(entries = snapshot.entries.map { item -> if(item.subjectId in scores) item.copy(communityScore = scores[item.subjectId], communityScoreCheckedAt = now()) else item })
+                val candidate = mutable.value.copy(phase = DoubanPhase.CONNECTED, snapshot = next, message = "已检查 ${scores.size} 部作品的社区评分；无评分仍保持未知")
+                persist(candidate)
                 next.entries.forEach { entry -> val key = "${entry.shelf}:${entry.subjectId}"; if(key in staged) staged[key] = entry }
-                mutable.value = mutable.value.copy(phase = DoubanPhase.CONNECTED, snapshot = next, message = "已检查 ${scores.size} 部作品的社区评分；无评分仍保持未知")
-                persist()
+                mutable.value = candidate
             } catch(e: CancellationException) { mutable.value = mutable.value.copy(phase = DoubanPhase.CONNECTED, message = "评分读取已取消，保留上次数据"); throw e }
             catch(e: Exception) { failed(e) }
         } } finally { syncRunning.set(false) }
@@ -145,9 +154,9 @@ class DoubanAccountService internal constructor(private val vault: DoubanStorage
         mutable.value = mutable.value.copy(phase = phase, message = access?.message ?: "页面无法安全解析，保留上次数据；不会自动重试", retryAt = access?.retryAt ?: 0)
         if(cookie.isNotBlank()) runCatching { persist() }
     }
-    private fun persist() {
-        val owner = mutable.value.owner ?: return
-        val snapshot = mutable.value.snapshot
+    private fun persist(candidate: DoubanAccountState = mutable.value) {
+        val owner = candidate.owner ?: return
+        val snapshot = candidate.snapshot
         vault.write(JSONObject().put("cookie", cookie).put("savedAt", savedAt).put("owner", owner.id).put("name", owner.displayName)
             .put("notBefore", gate.notBefore).put("stop", gate.stopped?.name.orEmpty())
             .put("syncedAt", snapshot?.syncedAt ?: 0).put("complete", snapshot?.complete ?: false)

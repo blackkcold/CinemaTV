@@ -13,6 +13,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -32,7 +33,7 @@ fun DoubanAccountEntry(model: CinemaViewModel, tv: Boolean) {
     val entry = remember { FocusRequester() }
     var wasOpen by remember { mutableStateOf(false) }
     LaunchedEffect(open) { if(!open && wasOpen) { withFrameNanos { }; runCatching { entry.requestFocus() } } }
-    Button(onClick = { wasOpen = true; open = true }, modifier = Modifier.focusRequester(entry).testTag("douban-account-entry")) { Text("豆瓣个人账号与片单") }
+    AccountButton(tv, onClick = { wasOpen = true; open = true }, modifier = Modifier.focusRequester(entry).testTag("douban-account-entry")) { Text("豆瓣个人账号与片单") }
     if(open) DoubanAccountPanel(model, tv) { open = false }
 }
 
@@ -59,20 +60,20 @@ private fun DoubanAccountPanel(model: CinemaViewModel, tv: Boolean, dismiss: () 
                 item { Text(state.message, modifier = Modifier.testTag("douban-account-status")) }
                 item { Text("登录态与片单只留在本机。仅在你点击同步时读取，不修改豆瓣记录。", style = MaterialTheme.typography.bodySmall) }
                 item { Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Button(onClick = login, enabled = state.phase != DoubanPhase.SYNCING, modifier = Modifier.focusRequester(initial)) { Text(if(state.owner == null) "官方扫码登录" else "重新登录 / 验证") }
-                    OutlinedButton(onClick = dismiss) { Text("返回") }
+                    AccountButton(tv, onClick = login, enabled = state.phase != DoubanPhase.SYNCING, modifier = Modifier.focusRequester(initial)) { Text(if(state.owner == null) "官方扫码登录" else "重新登录 / 验证") }
+                    AccountButton(tv, outlined = true, onClick = dismiss) { Text("返回") }
                 } }
                 item { Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Button(enabled = state.owner != null && state.phase in listOf(DoubanPhase.CONNECTED, DoubanPhase.ERROR, DoubanPhase.RATE_LIMITED), onClick = { syncJob = scope.launch { service.sync() } }) { Text("同步个人片单") }
-                    if(state.phase == DoubanPhase.SYNCING) OutlinedButton(onClick = { syncJob?.cancel() }) { Text("取消同步") }
-                    if(state.snapshot?.complete == false && state.phase == DoubanPhase.CONNECTED) OutlinedButton(onClick = { syncJob = scope.launch { service.sync(true) } }) { Text("继续同步") }
+                    AccountButton(tv, enabled = state.owner != null && state.phase in listOf(DoubanPhase.CONNECTED, DoubanPhase.ERROR, DoubanPhase.RATE_LIMITED), onClick = { syncJob = scope.launch { service.sync() } }) { Text("同步个人片单") }
+                    if(state.phase == DoubanPhase.SYNCING) AccountButton(tv, outlined = true, onClick = { syncJob?.cancel() }) { Text("取消同步") }
+                    if(state.snapshot?.complete == false && state.phase == DoubanPhase.CONNECTED) AccountButton(tv, outlined = true, onClick = { syncJob = scope.launch { service.sync(true) } }) { Text("继续同步") }
                 } }
                 item { Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    OutlinedButton(onClick = {
+                    AccountButton(tv, outlined = true, onClick = {
                         lan?.stop()
                         runCatching { DoubanLanServer.open { Handler(Looper.getMainLooper()).post { login() } } }.onSuccess { lan = it; note = "用同一 Wi-Fi 下的手机扫码打开设置，不是豆瓣登录二维码。" }.onFailure { note = it.message.orEmpty() }
                     }) { Text("手机局域网设置") }
-                    if(lan != null) OutlinedButton(onClick = { lan?.stop(); lan = null; note = "手机设置入口已关闭" }) { Text("关闭入口") }
+                    if(lan != null) AccountButton(tv, outlined = true, onClick = { lan?.stop(); lan = null; note = "手机设置入口已关闭" }) { Text("关闭入口") }
                 } }
                 if(lan != null) item {
                     val address = lan!!.url
@@ -83,8 +84,8 @@ private fun DoubanAccountPanel(model: CinemaViewModel, tv: Boolean, dismiss: () 
                 if(note.isNotBlank()) item { Text(note, modifier = Modifier.testTag("douban-account-note")) }
                 state.snapshot?.let { snapshot ->
                     item { Text("${snapshot.entries.size} 条 · ${if(snapshot.complete) "完整片单快照" else "部分片单，尚未完成"}") }
-                    item { OutlinedButton(onClick = { syncJob = scope.launch { service.syncScores() } }, enabled = state.phase == DoubanPhase.CONNECTED) { Text("读取豆瓣社区评分（最多 10 部）") } }
-                    item { OutlinedButton(onClick = { importConfirm = true }, enabled = state.phase != DoubanPhase.SYNCING) { Text("导入本机片库（保留本机冲突）") } }
+                    item { AccountButton(tv, outlined = true, onClick = { syncJob = scope.launch { service.syncScores() } }, enabled = state.phase == DoubanPhase.CONNECTED) { Text("读取豆瓣社区评分（最多 10 部）") } }
+                    item { AccountButton(tv, outlined = true, onClick = { importConfirm = true }, enabled = state.phase != DoubanPhase.SYNCING) { Text("导入本机片库（保留本机冲突）") } }
                     items(snapshot.entries, key = { "${it.shelf}:${it.subjectId}" }) { item ->
                         Column {
                             Text(item.title)
@@ -94,16 +95,16 @@ private fun DoubanAccountPanel(model: CinemaViewModel, tv: Boolean, dismiss: () 
                     }
                 }
                 item { Text("个人星级不等于豆瓣社区评分。社区评分需单独点击读取，不覆盖其他来源评分或排名。", style = MaterialTheme.typography.bodySmall) }
-                if(state.owner != null || state.phase == DoubanPhase.ERROR) item { OutlinedButton(onClick = { disconnectConfirm = true }, enabled = state.phase != DoubanPhase.SYNCING) { Text("断开账号并删除本机会话") } }
+                if(state.owner != null || state.phase == DoubanPhase.ERROR) item { AccountButton(tv, outlined = true, onClick = { disconnectConfirm = true }, enabled = state.phase != DoubanPhase.SYNCING) { Text("断开账号并删除本机会话") } }
             }
         }
     }
     if(importConfirm) AlertDialog(onDismissRequest = { importConfirm = false }, title = { Text("导入本机片库？") },
         text = { Text("按豆瓣作品 ID 匹配。只添加尚未设置的本机观看状态；冲突、播放进度和收藏保持原样。不会写回豆瓣，也不会把个人星级当作社区评分。") },
-        confirmButton = { Button(onClick = { importConfirm = false; scope.launch { val (added, conflicts) = model.repo.library.importDouban(state.snapshot?.entries.orEmpty()); note = "已添加 $added 条状态；保留 $conflicts 项冲突。" } }) { Text("导入并保留冲突") } }, dismissButton = { TextButton(onClick = { importConfirm = false }) { Text("取消") } })
+        confirmButton = { AccountButton(tv, onClick = { importConfirm = false; scope.launch { val (added, conflicts) = model.repo.library.importDouban(state.snapshot?.entries.orEmpty()); note = "已添加 $added 条状态；保留 $conflicts 项冲突。" } }) { Text("导入并保留冲突") } }, dismissButton = { AccountButton(tv, outlined = true, onClick = { importConfirm = false }) { Text("取消") } })
     if(disconnectConfirm) AlertDialog(onDismissRequest = { disconnectConfirm = false }, title = { Text("删除本机豆瓣连接？") },
         text = { Text("删除此设备加密的登录态和豆瓣同步缓存。已导入的本机片库记录保留。此操作不注销豆瓣账号，也不撤销其他设备会话。") },
-        confirmButton = { Button(onClick = { disconnectConfirm = false; scope.launch { service.disconnect(); runCatching { DoubanWebSessionCleaner.clear() }.onFailure { note = "加密会话已删除；系统 WebView 清理失败，请清除应用数据。" } }; lan?.stop(); lan = null }) { Text("删除本机连接") } }, dismissButton = { TextButton(onClick = { disconnectConfirm = false }) { Text("取消") } })
+        confirmButton = { AccountButton(tv, onClick = { disconnectConfirm = false; scope.launch { service.disconnect(); runCatching { DoubanWebSessionCleaner.clear() }.onFailure { note = "加密会话已删除；系统 WebView 清理失败，请清除应用数据。" } }; lan?.stop(); lan = null }) { Text("删除本机连接") } }, dismissButton = { AccountButton(tv, outlined = true, onClick = { disconnectConfirm = false }) { Text("取消") } })
 }
 
 private fun qrBitmap(text: String): Bitmap {
@@ -111,4 +112,13 @@ private fun qrBitmap(text: String): Bitmap {
     return Bitmap.createBitmap(384, 384, Bitmap.Config.ARGB_8888).apply {
         setPixels(IntArray(384 * 384) { if(matrix[it % 384, it / 384]) android.graphics.Color.BLACK else android.graphics.Color.WHITE }, 0, 384, 0, 0, 384, 384)
     }
+}
+
+/** TV remotes must remain focusable even on touch-capable emulator/television profiles. */
+@Composable
+private fun AccountButton(tv: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier,
+    enabled: Boolean = true, outlined: Boolean = false, content: @Composable RowScope.() -> Unit) {
+    val focusModifier = modifier.then(if(tv) Modifier.focusProperties { canFocus = enabled } else Modifier)
+    if(outlined) androidx.compose.material3.OutlinedButton(onClick = onClick, modifier = focusModifier, enabled = enabled, content = content)
+    else androidx.compose.material3.Button(onClick = onClick, modifier = focusModifier, enabled = enabled, content = content)
 }

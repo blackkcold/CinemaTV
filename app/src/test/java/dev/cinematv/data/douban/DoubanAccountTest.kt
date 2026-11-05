@@ -10,8 +10,9 @@ class DoubanAccountTest {
     private fun collection(id: String = "123", stars: Int = 4, next: String = "", shelf: DoubanShelf = DoubanShelf.WATCHED, total: Int = 1) = """<html>$identity<h1>测试用户${shelf.label}的电影($total)</h1><div class="grid-view"><div class="item"><li class="title"><a href="https://movie.douban.com/subject/$id/">测试作品</a></li><span class="rating$stars-t"></span><span class="date">2026-11-01</span></div></div>$next</html>"""
     private class MemoryStore : DoubanStorage {
         var value: JSONObject? = null
+        var rejectWrites = false
         override fun read() = value?.let { JSONObject(it.toString()) }
-        override fun write(value: JSONObject) { this.value = JSONObject(value.toString()) }
+        override fun write(value: JSONObject) { check(!rejectWrites) { "Synthetic disk error" }; this.value = JSONObject(value.toString()) }
         override fun clear() { value = null }
     }
     @Test fun personalStarsNeverBecomeCommunityScore() {
@@ -115,6 +116,16 @@ class DoubanAccountTest {
         assertEquals(10, service.state.value.snapshot!!.entries.count { it.communityScoreCheckedAt > 0 })
         service.sync(true)
         assertEquals(8.7, service.state.value.snapshot!!.entries.first { it.subjectId == "1" }.communityScore!!, 0.001)
+    }
+
+    @Test fun failedSessionPersistenceCannotReportConnectedOrRetainCandidate() = runBlocking {
+        var clock = 1_000L; val store = MemoryStore().apply { rejectWrites = true }
+        val transport = object : DoubanTransport { override suspend fun get(path: String, cookie: String, beforeRequest: suspend () -> Unit): String { beforeRequest(); return identity } }
+        val service = DoubanAccountService(store, transport, { clock }, { clock += it })
+        service.acceptLocalSession("synthetic-candidate")
+        assertEquals(DoubanPhase.ERROR, service.state.value.phase)
+        assertNull(service.state.value.owner); assertNull(store.value)
+        service.sync(); assertNull(service.state.value.snapshot)
     }
 
 }

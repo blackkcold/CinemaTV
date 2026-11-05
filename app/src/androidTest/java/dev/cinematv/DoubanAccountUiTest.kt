@@ -48,6 +48,7 @@ class TvDoubanAccountUiTest {
         rule.runOnIdle { androidx.lifecycle.ViewModelProvider(rule.activity)[CinemaViewModel::class.java].navigate(Page.SETTINGS) }
         val entry = rule.onNodeWithTag("douban-account-entry")
         entry.performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.RequestFocus) { it() }
+        entry.assertIsFocused()
         entry.performKeyInput { pressKey(androidx.compose.ui.input.key.Key.DirectionCenter) }
         rule.onNodeWithTag("douban-account-status").assertExists()
         rule.onNodeWithText("官方扫码登录").assertIsFocused()
