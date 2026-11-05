@@ -2,8 +2,12 @@ package dev.cinematv
 
 import android.view.KeyEvent
 import android.view.View
+import android.graphics.Bitmap
+import androidx.activity.ComponentActivity
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -16,6 +20,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.InputMode
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalInputModeManager
@@ -27,7 +33,7 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.test.*
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -49,11 +55,13 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.util.concurrent.atomic.AtomicInteger
+import kotlin.math.ceil
+import kotlin.math.floor
 
-/** Real production controls and native D-pad input. No screenshots or video surfaces. */
+/** Real production controls, native input, and compositor pixels. No optical readback or video surfaces. */
 @RunWith(AndroidJUnit4::class)
 class GlassActionLayoutTest {
-    @get:Rule val compose = createComposeRule()
+    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
     private lateinit var fonts: CinemaNotoFonts
 
     @Before fun preloadBundledNotoBeforeMeasuring() {
@@ -388,6 +396,162 @@ class GlassActionLayoutTest {
                 assertState(true)
                 button("first").assertIsFocused()
             }
+        } finally {
+            compose.mainClock.autoAdvance = true
+        }
+    }
+
+    @Test fun nativeFocusRingRemainsVisibleWithReducedMotionAndKeepsTouchBounds() {
+        lateinit var nativeView: View
+        val first = FocusRequester()
+        val reducedMotion = mutableStateOf(true)
+        val backdrop = mutableStateOf(Color.Black)
+        val selected = mutableStateOf(false)
+        val clicks = AtomicInteger()
+        compose.setContent {
+            val view = LocalView.current
+            val inputMode = LocalInputModeManager.current
+            SideEffect { nativeView = view }
+            LaunchedEffect(Unit) { inputMode.requestInputMode(InputMode.Keyboard); first.requestFocus() }
+            CompositionLocalProvider(
+                LocalCinemaNoto provides fonts,
+                LocalCinemaLanguageTags provides listOf("zh-Hans-CN"),
+                LocalTvEffects provides TvEffects(reducedMotion = reducedMotion.value),
+            ) {
+                MaterialTheme {
+                    Column(Modifier.fillMaxSize().background(backdrop.value).padding(32.dp),
+                        verticalArrangement = Arrangement.spacedBy(24.dp)) {
+                        GlassAction("其他", Modifier.testTag("ring-first").focusRequester(first)
+                            .width(160.dp).height(44.dp), onClick = {})
+                        GlassAction("立即播放", Modifier.testTag("ring-target").width(160.dp).height(44.dp),
+                            selected = selected.value, icon = CinemaSymbol.Play,
+                            onClick = { clicks.incrementAndGet() })
+                    }
+                }
+            }
+        }
+        compose.waitUntil(10_000) { nativeView.hasWindowFocus() }
+        button("ring-first").assertIsFocused()
+        val targetBounds = button("ring-target").fetchSemanticsNode().boundsInRoot
+        val originalParagraph = textLayout("ring-target").multiParagraph
+        val density = compose.density.density
+        compose.mainClock.autoAdvance = false
+        fun settle() { compose.mainClock.advanceTimeBy(600); compose.waitForIdle() }
+        fun key(action: Int, code: Int) = compose.runOnUiThread {
+            nativeView.dispatchKeyEvent(KeyEvent(action, code))
+        }
+        fun move(code: Int) { key(KeyEvent.ACTION_DOWN, code); key(KeyEvent.ACTION_UP, code); settle() }
+        fun capture(): Bitmap {
+            compose.waitForIdle()
+            val size = compose.runOnIdle { compose.activity.window.decorView.let { it.width to it.height } }
+            // Actual display pixels fenced after a hardware frame. No semantics
+            // flag, synthetic bitmap, or Compose/GPU redraw stands in for a ring.
+            return TvWindowCapture.capture(compose.activity, size.first, size.second)
+        }
+        fun assertPixels(bitmap: Bitmap, tag: String, focused: Boolean, lightScene: Boolean) {
+            val bounds = button(tag).fetchSemanticsNode().boundsInRoot
+            val origin = IntArray(2)
+            compose.runOnIdle { nativeView.getLocationOnScreen(origin) }
+            val left = ceil(origin[0] + bounds.left + bounds.width * .4f).toInt()
+            val right = floor(origin[0] + bounds.right - bounds.width * .4f).toInt()
+            val top = origin[1] + bounds.top
+            fun count(fromY: Float, toY: Float, predicate: (Int) -> Boolean): Int {
+                var total = 0
+                for (y in floor(fromY).toInt() until ceil(toY).toInt()) {
+                    for (x in left until right) if (predicate(bitmap.getPixel(x, y))) total++
+                }
+                return total
+            }
+            fun bright(pixel: Int) = android.graphics.Color.red(pixel) >= 225 &&
+                android.graphics.Color.green(pixel) >= 225 && android.graphics.Color.blue(pixel) >= 225
+            fun dark(pixel: Int) = android.graphics.Color.red(pixel) < 40 &&
+                android.graphics.Color.green(pixel) < 40 && android.graphics.Color.blue(pixel) < 40
+            // Top-center is clear of label/icon/selection pixels and stays on
+            // the straight outline in both settled focus and held-press scales.
+            val core = count(top, top + 4 * density, ::bright)
+            if (focused) assertTrue("$tag needs a real bright focus contour, found $core pixels",
+                core >= (right - left) * density * .5f)
+            else assertEquals("An unfocused button must not retain a focus contour", 0, core)
+            if (lightScene) {
+                val rim = count(top - 2 * density, top, ::dark)
+                if (focused) assertTrue("A light scene needs a real dark outer rim, found $rim pixels",
+                    rim >= (right - left) * density * .3f)
+                else assertEquals("An unfocused button must not retain the outer rim", 0, rim)
+            }
+            assertEquals("Focus must not replace the glass with a white fill", 0,
+                count(top + 6 * density, top + 7 * density, ::bright))
+        }
+        fun assertStable() {
+            assertEquals("Focus/press must keep the native touch bounds", targetBounds,
+                button("ring-target").fetchSemanticsNode().boundsInRoot)
+            assertSame("Focus/press must keep the shaped paragraph", originalParagraph,
+                textLayout("ring-target").multiParagraph)
+        }
+        try {
+            var expectedClicks = 0
+            for (reduced in listOf(true, false)) for (lightScene in listOf(false, true)) {
+                compose.runOnIdle {
+                    reducedMotion.value = reduced
+                    backdrop.value = if (lightScene) Color.White else Color.Black
+                    selected.value = false
+                }
+                settle()
+                button("ring-first").assertIsFocused()
+                capture().let { bitmap ->
+                    try { assertPixels(bitmap, "ring-target", focused = false, lightScene) }
+                    finally { bitmap.recycle() }
+                }
+                move(KeyEvent.KEYCODE_DPAD_DOWN)
+                button("ring-target").assertIsFocused().assertIsNotSelected()
+                selectionIndicator("ring-target").assertDoesNotExist()
+                assertStable()
+                capture().let { bitmap ->
+                    try { assertPixels(bitmap, "ring-target", focused = true, lightScene) }
+                    finally { bitmap.recycle() }
+                }
+                compose.runOnIdle { selected.value = true }
+                key(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_CENTER)
+                settle()
+                assertStable()
+                button("ring-target").assertIsFocused().assertIsSelected()
+                selectionIndicator("ring-target").assertIsDisplayed()
+                assertEquals("A held key must not activate", expectedClicks, clicks.get())
+                capture().let { bitmap ->
+                    try { assertPixels(bitmap, "ring-target", focused = true, lightScene) }
+                    finally { bitmap.recycle() }
+                }
+                key(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_CENTER)
+                settle()
+                assertEquals(++expectedClicks, clicks.get())
+                move(KeyEvent.KEYCODE_DPAD_UP)
+                button("ring-first").assertIsFocused()
+                button("ring-target").assertIsNotFocused().assertIsSelected()
+                selectionIndicator("ring-target").assertIsDisplayed()
+                assertStable()
+                capture().let { bitmap ->
+                    try {
+                        assertPixels(bitmap, "ring-target", focused = false, lightScene)
+                        assertPixels(bitmap, "ring-first", focused = true, lightScene)
+                    } finally { bitmap.recycle() }
+                }
+            }
+            // Keep the existing rectangular touch target, including its edges;
+            // the decorative ring must neither intercept nor enlarge clicks.
+            button("ring-target").performTouchInput { click(Offset(1f, center.y)) }
+            settle()
+            assertEquals(++expectedClicks, clicks.get())
+            button("ring-target").performTouchInput { click(Offset(center.x * 2 - 1f, center.y)) }
+            settle()
+            assertEquals(++expectedClicks, clicks.get())
+            assertStable()
+            button("ring-target").performSemanticsAction(SemanticsActions.RequestFocus) { it() }
+            settle()
+            button("ring-target").assertIsFocused()
+            compose.onRoot().performTouchInput {
+                click(Offset(targetBounds.right + density, targetBounds.center.y))
+            }
+            settle()
+            assertEquals("The focus contour must not expand the native hit target", expectedClicks, clicks.get())
         } finally {
             compose.mainClock.autoAdvance = true
         }

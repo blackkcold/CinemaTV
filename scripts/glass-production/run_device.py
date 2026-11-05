@@ -49,6 +49,7 @@ ACTION_LAYOUT = [("dev.cinematv.GlassActionLayoutTest", method) for method in (
     "nativeFocusAndPressKeepHitTargetAndTextLayoutStable",
     "selectedStatePreservesCompactBoundsLabelsAndIconSemantics",
     "selectionRemainsIndependentOfNativeFocusPressAndReducedMotion",
+    "nativeFocusRingRemainsVisibleWithReducedMotionAndKeepsTouchBounds",
 )]
 
 

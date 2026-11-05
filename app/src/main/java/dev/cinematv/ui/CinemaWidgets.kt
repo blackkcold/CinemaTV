@@ -26,12 +26,18 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.scale as scaleCanvas
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.testTag
@@ -131,6 +137,26 @@ fun GlassAction(
                 maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis
             )
         }
+        // Keep the outline in the foreground, outside the optical pass. It uses
+        // the same geometry as the material without an additional graphics layer.
+        // Native focus, rather than animation progress, controls its visibility:
+        // Reduced Motion must never make the active remote target ambiguous.
+        Box(Modifier.matchParentSize().drawBehind {
+            if (focused) {
+                val inset = 1.dp.toPx()
+                val outlineSize = Size((size.width - 2 * inset).coerceAtLeast(0f),
+                    (size.height - 2 * inset).coerceAtLeast(0f))
+                val radius = (minOf(26.dp.toPx(), size.width / 2, size.height / 2) - inset).coerceAtLeast(0f)
+                scaleCanvas(scale) {
+                    // A dark outer rim survives bright scenes; the bright core
+                    // survives dark scenes. Neither fills or whitens the glass.
+                    drawRoundRect(Ink, Offset(inset, inset), outlineSize,
+                        CornerRadius(radius), style = Stroke(4.dp.toPx()))
+                    drawRoundRect(Ivory, Offset(inset, inset), outlineSize,
+                        CornerRadius(radius), style = Stroke(2.dp.toPx()))
+                }
+            }
+        })
         if (selected) {
             // Selection persists independently of focus/press and Reduced Motion.
             // This foreground-only overlay never measures the label or changes the

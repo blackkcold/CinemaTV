@@ -70,6 +70,30 @@ class GlassActionSelectionTest(unittest.TestCase):
         for forbidden in ("captureToImage(", "PixelCopy", "takeScreenshot("):
             self.assertNotIn(forbidden, source)
 
+    def test_focus_outline_is_foreground_two_tone_and_uses_existing_geometry(self):
+        source = SOURCE.read_text().split("fun GlassAction(", 1)[1].split("fun TvInput(", 1)[0]
+        ring = source.split("Box(Modifier.matchParentSize().drawBehind {", 1)[1].split("if (selected) {", 1)[0]
+        self.assertLess(source.index("Row("), source.index("Box(Modifier.matchParentSize().drawBehind {"))
+        for required in ("if (focused)", "scaleCanvas(scale)", "minOf(26.dp.toPx(), size.width / 2, size.height / 2)",
+                         "drawRoundRect(Ink", "drawRoundRect(Ivory", "Stroke(4.dp.toPx())", "Stroke(2.dp.toPx())"):
+            self.assertIn(required, ring)
+        for forbidden in ("graphicsLayer", "saveLayer", "Offscreen", "drawBackdrop", "selected", "reducedMotion", "alpha =", "animate"):
+            self.assertNotIn(forbidden, ring)
+        self.assertIn("val scale = if (effects.reducedMotion) 1f else 1f + .045f * focus - .035f * press", source)
+
+    def test_focus_regression_requires_compositor_pixels_and_native_touch_edges(self):
+        source = NATIVE.read_text().split("fun nativeFocusRingRemainsVisibleWithReducedMotionAndKeepsTouchBounds()", 1)[1]
+        for required in ("TvWindowCapture.capture(compose.activity", "bitmap.getPixel(x, y)", "bitmap.recycle()",
+                         "for (reduced in listOf(true, false))", "for (lightScene in listOf(false, true))",
+                         "KeyEvent.KEYCODE_DPAD_DOWN", "KeyEvent.KEYCODE_DPAD_UP", "KeyEvent.KEYCODE_DPAD_CENTER",
+                         "real bright focus contour", "real dark outer rim", "white fill",
+                         "performTouchInput", "targetBounds.right + density", "must not expand the native hit target",
+                         'selectionIndicator("ring-target").assertDoesNotExist()',
+                         'selectionIndicator("ring-target").assertIsDisplayed()'):
+            self.assertIn(required, source)
+        for forbidden in ("captureToImage(", "forceRedraw(", "createBitmap(", "createScaledBitmap("):
+            self.assertNotIn(forbidden, source)
+
 
 if __name__ == "__main__":
     unittest.main()

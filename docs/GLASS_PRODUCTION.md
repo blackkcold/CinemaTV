@@ -42,6 +42,9 @@ when stopped. There is no continuous hardware polling or model-name blacklist.
 - TV `GlassAction` selection has a persistent opaque dark-rim/bright-core foreground
   marker and native Selected semantics. It is independent of focus, press and
   Reduced Motion, does not resize the hit target, and does not alter glass optics.
+  A separate opaque dark-rim/bright-core focus contour remains visible when
+  geometry is disabled. It follows the existing focus/press transform using
+  Canvas drawing, with no added offscreen layer or white material fill.
 - TV `GlassAction` and mobile `MobileGlassButton` keep their native interaction
   nodes. The material Box and text/icon foreground are separate siblings with
   matching transforms. Emergency fallback repaint cannot cover the foreground.
