@@ -34,6 +34,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -52,6 +53,7 @@ import dev.cinematv.ui.icons.CinemaIcon
 import dev.cinematv.ui.icons.CinemaSymbol
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.text
 import androidx.compose.ui.text.AnnotatedString
 
@@ -107,6 +109,7 @@ fun GlassAction(
             .trackTvContentFocus()
             .onFocusChanged { focused = it.isFocused; if (it.isFocused) onFocus() }
             .focusProperties { canFocus = true }
+            .semantics { this.selected = selected }
             .clickable(interactionSource = interactions, indication = null, role = Role.Button, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
@@ -127,6 +130,20 @@ fun GlassAction(
                 color = Ivory,
                 maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis
             )
+        }
+        if (selected) {
+            // Selection persists independently of focus/press and Reduced Motion.
+            // This foreground-only overlay never measures the label or changes the
+            // native hit target. The opaque dark rim and bright core stay legible
+            // over both light and dark scenes, without changing the glass optics.
+            Box(Modifier.matchParentSize()) {
+                Box(Modifier.align(Alignment.BottomCenter).offset(y = (-1).dp)
+                    .size(width = 16.dp, height = 4.dp)
+                    .testTag("glass-action-selection-indicator")
+                    .background(Ink, RoundedCornerShape(50))
+                    .padding(1.dp)
+                    .background(Ivory, RoundedCornerShape(50)))
+            }
         }
     }
 }

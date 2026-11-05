@@ -26,6 +26,7 @@ MOTION = [("dev.cinematv.FocusMediaCardMotionTest", method) for method in (
     "animationFramesDoNotRecomposeTheWholeCardAndGlassTierDoesNotChangeMotion",
     "identityCaptionsSelectionProgressAndLoadingSurviveImageFailure",
     "productionReducedMotionProviderKeepsApi26SafeAndVisibleFocus",
+    "narrowPosterKeepsScoreAndSourceVisibleWithFullAccessibleMetadata",
 )]
 
 FOCUS_RESTORE = [("dev.cinematv.InterruptedFocusRestorationTest", method) for method in (
@@ -46,6 +47,8 @@ ACTION_LAYOUT = [("dev.cinematv.GlassActionLayoutTest", method) for method in (
     "unconstrainedLabelsKeepDefaultPaddingAndFullSemantics",
     "fixedSizesPreserveIconsAndEllipsizeOnlyTheVisibleLabel",
     "nativeFocusAndPressKeepHitTargetAndTextLayoutStable",
+    "selectedStatePreservesCompactBoundsLabelsAndIconSemantics",
+    "selectionRemainsIndependentOfNativeFocusPressAndReducedMotion",
 )]
 
 

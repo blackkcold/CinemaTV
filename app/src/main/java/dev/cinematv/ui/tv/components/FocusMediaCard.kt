@@ -19,6 +19,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.text
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -116,7 +118,9 @@ fun FocusMediaCard(
         if (showCaption) {
           Text(item.title, color = TvColors.Text, fontSize = 15.sp, lineHeight = 20.sp, fontWeight = FontWeight.Medium,
             maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Text(item.metadataLine().ifBlank { if (item.isTv) "剧集" else "电影" }, color = TvColors.Secondary,
+        val fullMetadata = item.metadataLine().ifBlank { if (item.isTv) "剧集" else "电影" }
+        Text(item.cardMetadataLine().ifBlank { fullMetadata }, color = TvColors.Secondary,
+            modifier = Modifier.semantics { text = AnnotatedString(fullMetadata) },
             fontSize = 11.sp, lineHeight = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }

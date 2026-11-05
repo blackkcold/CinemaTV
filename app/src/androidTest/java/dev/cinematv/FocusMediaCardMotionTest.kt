@@ -27,9 +27,19 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import dev.cinematv.ui.typography.CinemaNotoFonts
+import dev.cinematv.ui.typography.LocalCinemaNoto
+import dev.cinematv.ui.typography.LocalCinemaLanguageTags
+import dev.cinematv.ui.typography.NotoFontCache
+import dev.cinematv.ui.typography.NotoRegion
+import kotlinx.coroutines.runBlocking
 import dev.cinematv.data.MediaItem
 import dev.cinematv.data.TvSource
 import dev.cinematv.ui.shared.presentationKey
+import dev.cinematv.ui.shared.metadataLine
+import dev.cinematv.ui.shared.cardMetadataLine
+import androidx.compose.ui.text.TextLayoutResult
 import dev.cinematv.ui.tv.components.FocusMediaCard
 import dev.cinematv.ui.tv.components.ProductionGlassProvider
 import dev.cinematv.ui.tv.components.rememberProductionGlassScene
@@ -92,7 +102,7 @@ class FocusMediaCardMotionTest {
         }
     }
 
-    private fun mount(realReducedProvider: Boolean = false, portrait: Boolean = false, caption: Boolean = true) {
+    private fun mount(realReducedProvider: Boolean = false, portrait: Boolean = false, caption: Boolean = true, fonts: CinemaNotoFonts? = null) {
         rule.setContent {
             val view = LocalView.current
             val focusedWindow = LocalWindowInfo.current.isWindowFocused
@@ -122,6 +132,8 @@ class FocusMediaCardMotionTest {
             }
             val content: @Composable () -> Unit = {
                 CompositionLocalProvider(
+                    LocalCinemaNoto provides (fonts ?: LocalCinemaNoto.current),
+                    LocalCinemaLanguageTags provides listOf("zh-Hans-CN"),
                     LocalPosterMotionObserver provides observer,
                     LocalPosterMotionClock provides motionClock,
                 ) {
@@ -330,6 +342,37 @@ class FocusMediaCardMotionTest {
             assertEquals(identity, first.value.presentationKey)
             card().assertIsFocused()
         }
+    }
+
+    @Test fun narrowPosterKeepsScoreAndSourceVisibleWithFullAccessibleMetadata() {
+        first.value = first.value.copy(year = "2025", category = "剧情", rating = "8.0", ratingSource = "Synthetic")
+        val fonts = runBlocking { NotoFontCache.load(InstrumentationRegistry.getInstrumentation().targetContext.assets) }
+        assertTrue("Failed bundled fonts: ${fonts.failedAssets}", fonts.failedAssets.isEmpty())
+        assertEquals(NotoRegion.entries.toSet(), fonts.regional.keys)
+        mount(portrait = true, fonts = fonts)
+        val metadata = rule.onNodeWithText(first.value.metadataLine(), useUnmergedTree = true)
+        fun assertVisibleScore() {
+            val layouts = mutableListOf<TextLayoutResult>()
+            metadata.performSemanticsAction(SemanticsActions.GetTextLayoutResult) { assertTrue(it(layouts)) }
+            val result = layouts.single()
+            assertEquals(first.value.cardMetadataLine(), result.layoutInput.text.text)
+            val required = "★ 8.0 Synthetic"
+            assertTrue("Score and source must precede the visible line end", result.getLineEnd(0, visibleEnd = true) >= required.length)
+            for (index in required.indices.filter { !required[it].isWhitespace() }) {
+                val box = result.getBoundingBox(index)
+                assertTrue("Score and actual source must remain before visual ellipsis: $box", box.width > 0f && box.left >= 0f && box.right <= result.size.width + 1f)
+            }
+            metadata.assertTextEquals(first.value.metadataLine())
+        }
+        assertVisibleScore()
+        val bounds = card().getUnclippedBoundsInRoot()
+        focus()
+        step()
+        assertVisibleScore()
+        rule.runOnIdle { reduced.value = true }
+        step()
+        assertVisibleScore()
+        assertEquals(bounds, card().getUnclippedBoundsInRoot())
     }
 
     @Test fun productionReducedMotionProviderKeepsApi26SafeAndVisibleFocus() {

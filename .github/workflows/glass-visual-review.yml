@@ -1,0 +1,129 @@
+name: Glass visual review capture (not release acceptance)
+on:
+  push:
+    branches: [feature/glass-visual-review]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: glass-visual-review-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+      - uses: actions/cache@v4
+        with:
+          path: .cache/cinematv-noto-fonts
+          key: noto-fonts-v2-${{ hashFiles('scripts/fonts/noto-fonts.lock.json') }}
+      - name: Validate source and focused harness contracts
+        run: |
+          python3 -m pip install --disable-pip-version-check 'Pillow==11.3.0'
+          python3 backdrop/scripts/verify-production-source.py
+          python3 -m unittest discover -s scripts/tests -v
+          python3 -m unittest discover -s scripts/glass-production -p 'test_*.py' -v
+      - name: Install compile SDK
+        run: |
+          SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -1)
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" 'platforms;android-36' 'build-tools;36.0.0'
+      - name: Build both APKs once, unit test and lint
+        run: |
+          bash scripts/generate-test-media.sh
+          gradle --no-daemon --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process :backdrop:testDebugUnitTest :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest :backdrop:lintDebug :app:lintDebug
+          python3 scripts/fonts/verify-noto-fonts.py
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          for module in ('backdrop', 'app'):
+              files = list(Path(module, 'build/test-results/testDebugUnitTest').glob('TEST-*.xml'))
+              assert files, f'{module}: absent unit results (NO-SOURCE)'
+              cases = [case for path in files for case in ET.parse(path).getroot().iter('testcase')]
+              assert cases and all(case.find('failure') is None and case.find('error') is None and case.find('skipped') is None for case in cases)
+          PY
+      - name: Validate and pin APK bytes to this commit
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/debug/app-debug.apk dist/
+          cp app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk dist/
+          for APK in dist/*.apk; do
+            unzip -t "$APK" | tail -n 2
+            "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$APK"
+          done
+          python3 scripts/glass-production/evidence.py build --directory dist --sha "$GITHUB_SHA"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: glass-visual-review-apks
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: glass-visual-review-build-reports
+          path: |
+            app/build/test-results/
+            backdrop/build/test-results/
+            app/build/reports/lint-results-debug.*
+            backdrop/build/reports/lint-results-debug.*
+          if-no-files-found: warn
+          retention-days: 14
+  visual-review:
+    name: Capture / ${{ matrix.viewport }} (review only)
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 26
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Hard bounds include install, setup, tests, PNG export and validation.
+          # TERM plus the 10-second kill grace stays within 12 / 18 minutes.
+          - viewport: tv1080
+            timeout: 710s
+          - viewport: tv4k
+            timeout: 1070s
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: glass-visual-review-apks
+          path: dist
+      - name: Verify reusable APK bytes before starting emulator
+        run: |
+          python3 -m pip install --disable-pip-version-check 'Pillow==11.3.0'
+          python3 scripts/glass-production/evidence.py verify-build --directory dist --sha "$GITHUB_SHA"
+          sudo chmod 666 /dev/kvm
+      - name: Canonical TV capture and focused input tests, once per viewport
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 33
+          target: default
+          arch: x86_64
+          profile: pixel_2
+          emulator-build: '15004761'
+          disable-animations: false
+          # Match canonical TV acceptance's API33/AOSP/software-renderer host.
+          emulator-options: '-no-window -no-audio -gpu lavapipe -feature -Vulkan -no-snapshot -no-boot-anim -memory 2048'
+          script: timeout --signal=TERM --kill-after=10s '${{ matrix.timeout }}' python3 scripts/glass-production/run_visual.py --sha "$GITHUB_SHA" --viewport '${{ matrix.viewport }}'
+      - name: Explain capture scope
+        if: always()
+        run: |
+          printf '%s\n' 'Visual review only: inspect original ui-evidence PNGs and golden-difference/comparison.json. A successful capture does not pass the release gate. The unchanged full phone / 1080p / 4K / API26 matrix, including official Media3 acceptance, is still required.' >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: glass-visual-review-${{ matrix.viewport }}
+          path: qa/glass-visual-review/${{ matrix.viewport }}/
+          if-no-files-found: error
+          retention-days: 14

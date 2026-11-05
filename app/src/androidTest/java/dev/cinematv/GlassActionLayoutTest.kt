@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -65,6 +66,10 @@ class GlassActionLayoutTest {
     }
 
     private fun button(tag: String) = compose.onNodeWithTag(tag)
+    private fun selectionIndicator(tag: String) = compose.onNode(
+        hasTestTag("glass-action-selection-indicator") and hasAnyAncestor(hasTestTag(tag)),
+        useUnmergedTree = true,
+    )
     private fun label(tag: String) = compose.onNode(
         hasAnyAncestor(hasTestTag(tag)) and SemanticsMatcher.keyIsDefined(SemanticsProperties.Text),
         useUnmergedTree = true,
@@ -236,6 +241,153 @@ class GlassActionLayoutTest {
             button("first").assertIsFocused()
             assertStable()
             assertEquals(2, clicks.get())
+        } finally {
+            compose.mainClock.autoAdvance = true
+        }
+    }
+
+    @Test fun selectedStatePreservesCompactBoundsLabelsAndIconSemantics() {
+        val selected = mutableStateOf(false)
+        val tags = listOf("natural", "short-height", "compact-play", "compact-label", "icon-only")
+        compose.setContent {
+            CompositionLocalProvider(
+                LocalCinemaNoto provides fonts,
+                LocalCinemaLanguageTags provides listOf("zh-Hans-CN"),
+                LocalTvEffects provides TvEffects(reducedMotion = true),
+            ) {
+                MaterialTheme {
+                    Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        GlassAction("全部", Modifier.testTag("natural"), selected = selected.value, onClick = {})
+                        GlassAction("继续播放这部很长的电影", Modifier.testTag("short-height").width(128.dp).height(35.dp),
+                            selected = selected.value, onClick = {})
+                        GlassAction("播放", Modifier.testTag("compact-play").width(80.dp).height(41.dp),
+                            selected = selected.value, icon = CinemaSymbol.Play, onClick = {})
+                        GlassAction("12", Modifier.testTag("compact-label").width(48.dp).height(36.dp),
+                            selected = selected.value, onClick = {})
+                        GlassAction("", Modifier.testTag("icon-only").size(39.dp)
+                            .semantics { contentDescription = "打开搜索" }, selected = selected.value,
+                            icon = CinemaSymbol.Search, onClick = {})
+                    }
+                }
+            }
+        }
+        val bounds = tags.associateWith { button(it).fetchSemanticsNode().boundsInRoot }
+        val labelBounds = tags.dropLast(1).associateWith { label(it).fetchSemanticsNode().boundsInRoot }
+        val paragraphs = tags.dropLast(1).associateWith { textLayout(it).multiParagraph }
+        for (isSelected in listOf(false, true, false)) {
+            compose.runOnIdle { selected.value = isSelected }
+            tags.forEach { tag ->
+                button(tag).assertHasClickAction()
+                    .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
+                    .assert(SemanticsMatcher.expectValue(SemanticsProperties.Selected, isSelected))
+                assertEquals("Selection must not resize the native target", bounds.getValue(tag),
+                    button(tag).fetchSemanticsNode().boundsInRoot)
+                if (isSelected) {
+                    selectionIndicator(tag).assertIsDisplayed().assertWidthIsEqualTo(16.dp).assertHeightIsEqualTo(4.dp)
+                        .assert(SemanticsMatcher.keyNotDefined(SemanticsProperties.Focused))
+                        .assert(SemanticsMatcher.keyNotDefined(SemanticsActions.OnClick))
+                    val marker = selectionIndicator(tag).fetchSemanticsNode().boundsInRoot
+                    assertInside(bounds.getValue(tag), marker)
+                    assertEquals(bounds.getValue(tag).center.x, marker.center.x, 1f)
+                    assertEquals(with(compose.density) { 1.dp.toPx() }, bounds.getValue(tag).bottom - marker.bottom, 1f)
+                    labelBounds[tag]?.let { assertTrue("Selection must not cover label pixels", marker.top >= it.bottom) }
+                } else selectionIndicator(tag).assertDoesNotExist()
+            }
+            labelBounds.forEach { (tag, original) ->
+                assertEquals("Selection must not move the label", original, label(tag).fetchSemanticsNode().boundsInRoot)
+                assertSame("Selection must preserve the shaped paragraph", paragraphs.getValue(tag), textLayout(tag).multiParagraph)
+            }
+            button("natural").assertTextEquals("全部")
+            button("short-height").assertTextEquals("继续播放这部很长的电影")
+            assertTrue(textLayout("short-height").isLineEllipsized(0))
+            assertFalse(textLayout("compact-play").isLineEllipsized(0))
+            assertFalse(textLayout("compact-label").isLineEllipsized(0))
+            button("icon-only").assertContentDescriptionEquals("打开搜索")
+        }
+    }
+
+    @Test fun selectionRemainsIndependentOfNativeFocusPressAndReducedMotion() {
+        lateinit var nativeView: View
+        val first = FocusRequester()
+        val selected = mutableStateOf(true)
+        val reducedMotion = mutableStateOf(false)
+        val clicks = AtomicInteger()
+        val measurements = AtomicInteger()
+        val measured = Modifier.layout { measurable, constraints ->
+            measurements.incrementAndGet()
+            val content = measurable.measure(constraints)
+            layout(content.width, content.height) { content.placeRelative(0, 0) }
+        }
+        compose.setContent {
+            val view = LocalView.current
+            val inputMode = LocalInputModeManager.current
+            SideEffect { nativeView = view }
+            LaunchedEffect(Unit) { inputMode.requestInputMode(InputMode.Keyboard); first.requestFocus() }
+            CompositionLocalProvider(
+                LocalCinemaNoto provides fonts,
+                LocalCinemaLanguageTags provides listOf("zh-Hans-CN"),
+                LocalTvEffects provides TvEffects(reducedMotion = reducedMotion.value),
+            ) {
+                MaterialTheme {
+                    Column(Modifier.padding(32.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        GlassAction("其他", Modifier.testTag("first").focusRequester(first), onClick = {})
+                        GlassAction("全部", Modifier.testTag("target").width(80.dp).height(40.dp).then(measured),
+                            selected = selected.value, onClick = { clicks.incrementAndGet() })
+                    }
+                }
+            }
+        }
+        compose.waitUntil(10_000) { nativeView.hasWindowFocus() }
+        button("first").assertIsFocused().assertIsNotSelected()
+        val bounds = button("target").fetchSemanticsNode().boundsInRoot
+        val paragraph = textLayout("target").multiParagraph
+        val marker = selectionIndicator("target").fetchSemanticsNode().boundsInRoot
+        compose.mainClock.autoAdvance = false
+        fun key(action: Int, code: Int) = compose.runOnUiThread {
+            nativeView.dispatchKeyEvent(KeyEvent(action, code))
+        }
+        fun assertState(isSelected: Boolean) {
+            compose.mainClock.advanceTimeBy(600)
+            compose.waitForIdle()
+            button("target").assert(SemanticsMatcher.expectValue(SemanticsProperties.Selected, isSelected))
+            assertEquals(bounds, button("target").fetchSemanticsNode().boundsInRoot)
+            assertSame(paragraph, textLayout("target").multiParagraph)
+            if (isSelected) {
+                selectionIndicator("target").assertIsDisplayed()
+                assertEquals("The persistent marker must not animate with focus/press", marker,
+                    selectionIndicator("target").fetchSemanticsNode().boundsInRoot)
+            } else selectionIndicator("target").assertDoesNotExist()
+            button("first").assertIsNotSelected()
+            selectionIndicator("first").assertDoesNotExist()
+        }
+        try {
+            listOf(false, true).forEachIndexed { index, reduced ->
+                compose.runOnIdle { reducedMotion.value = reduced }
+                assertState(true)
+                val originalMeasures = measurements.get()
+                key(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_DOWN)
+                key(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_DOWN)
+                assertState(true)
+                button("target").assertIsFocused()
+                key(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_CENTER)
+                assertState(true)
+                assertEquals("Holding the native key must not activate selection", index, clicks.get())
+                assertEquals("Focus/press must not remeasure", originalMeasures, measurements.get())
+                // Clearing selection while the button is focused and held must
+                // remove both the marker and Selected semantics immediately.
+                compose.runOnIdle { selected.value = false }
+                assertState(false)
+                button("target").assertIsFocused()
+                key(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_CENTER)
+                assertState(false)
+                assertEquals("Exactly one click per native release", index + 1, clicks.get())
+                compose.runOnIdle { selected.value = true }
+                assertState(true)
+                key(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_UP)
+                key(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_UP)
+                assertState(true)
+                button("first").assertIsFocused()
+            }
         } finally {
             compose.mainClock.autoAdvance = true
         }
