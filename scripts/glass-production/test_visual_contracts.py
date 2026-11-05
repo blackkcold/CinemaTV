@@ -169,7 +169,13 @@ class VisualEvidence(unittest.TestCase):
         def export(directory, _):
             calls.append("export")
             directory.mkdir(exist_ok=True)
-            (directory / "01-home.png").write_bytes(b"mocked-app-evidence")
+            from PIL import Image
+            # Host-only pixels let the real PNG integrity validator run here.
+            for name in ("01-home.png", "02-focused-rail.png"):
+                Image.new("RGB", (16, 9), "black").save(directory / name)
+            if failure == "truncated_non_golden":
+                path = directory / "02-focused-rail.png"
+                path.write_bytes(path.read_bytes()[:-20])
         with ExitStack() as stack:
             for name, value in (("ROOT", root), ("verify_build", verify), ("expected_tests", lambda: expected),
                                 ("adb", adb), ("wait_launcher", Mock()), ("TestLogBoundary", Mock(return_value=log)),
@@ -196,6 +202,50 @@ class VisualEvidence(unittest.TestCase):
             log.start.assert_called_once()
             log.finish.assert_called_once()
             log.close.assert_called_once()
+
+    def test_non_golden_truncated_png_fails_capture_before_hash_or_comparison(self):
+        from PIL import Image
+        name = "02-focused-rail.png"
+        for viewport in visual.VIEWPORTS:
+            manifest = json.loads((ROOT / "design/ui/goldens" / viewport / "manifest.json").read_text())
+            self.assertNotIn(name, [screen["file"] for screen in manifest["screens"]])
+        with tempfile.TemporaryDirectory() as temp:
+            status, result, calls, _ = self.simulate(Path(temp), "truncated_non_golden")
+            path = Path(temp) / "qa/glass-visual-review/tv1080/ui-evidence" / name
+            # Header-only size inspection still passes for this truncated file.
+            with Image.open(path) as image:
+                self.assertEqual((16, 9), image.size)
+            self.assertEqual(1, status)
+            self.assertEqual("failed", result["result"])
+            self.assertIn(name, result["error"])
+            self.assertNotIn("captureSha256", result)
+            self.assertNotIn("goldens", result)
+            self.assertEqual(1, calls.count("export"))
+
+    def test_png_format_and_full_decode_are_both_required(self):
+        from PIL import Image
+        import struct
+        import zlib
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            path = directory / "14-player-panel.png"
+            Image.new("RGB", (16, 9), "black").save(path, format="JPEG")
+            with self.assertRaisesRegex(ValueError, "not a PNG"):
+                visual.validate_pngs(directory)
+            Image.new("RGB", (16, 9), "black").save(path, format="PNG")
+            # Valid PNG container/CRC, invalid compressed pixels: verify() alone
+            # accepts it, but the second open + load must reject it.
+            data = bytearray(path.read_bytes())
+            start = data.index(b"IDAT")
+            length = struct.unpack(">I", data[start - 4:start])[0]
+            data[start + 4] ^= 0xff
+            end = start + 4 + length
+            data[end:end + 4] = struct.pack(">I", zlib.crc32(data[start:end]))
+            path.write_bytes(data)
+            with Image.open(path) as image:
+                image.verify()
+            with self.assertRaisesRegex(ValueError, path.name):
+                visual.validate_pngs(directory)
 
     def test_failures_cannot_become_capture_success_and_keep_partial_evidence(self):
         for failure in ("build", "junit", "timeout", "validation", "close"):

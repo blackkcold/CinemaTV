@@ -98,6 +98,27 @@ def export_evidence(directory, call_adb):
         (directory / name).write_bytes(call_adb("exec-out", "run-as", PACKAGE, "cat", f"{DEVICE_EVIDENCE}/{name}", binary=True))
 
 
+def validate_pngs(directory):
+    """Verify and fully decode every exported PNG, including non-golden routes."""
+    from PIL import Image, ImageFile
+
+    assert not ImageFile.LOAD_TRUNCATED_IMAGES, "Permissive truncated-image decoding is forbidden"
+    paths = sorted(directory.glob("*.png"))
+    assert paths, "No exported PNG captures"
+    for path in paths:
+        try:
+            with Image.open(path) as image:
+                assert image.format == "PNG", "Capture is not a PNG"
+                image.verify()
+            # verify() checks container structure without decoding pixel data.
+            # Reopen before load(): every image must also survive full decoding.
+            with Image.open(path) as image:
+                assert image.format == "PNG", "Capture is not a PNG"
+                image.load()
+        except Exception as error:
+            raise ValueError(f"Invalid native PNG {path.name}: {error}") from error
+
+
 def golden_report(viewport, evidence, directory, timeout):
     """Keep unchanged thresholds, but label old-golden differences as review input."""
     baseline = ROOT / "design/ui/goldens" / viewport
@@ -199,6 +220,7 @@ def run(args):
             subprocess.run([sys.executable, str(ROOT / "scripts/validate-ui-evidence.py"), "--directory", str(evidence),
                             "--size", size, "--density", str(density)], stdout=output, stderr=subprocess.STDOUT,
                            timeout=remaining(30), check=True)
+        validate_pngs(evidence)
         result["captureSha256"] = {path.name: digest(path) for path in sorted(evidence.iterdir())}
         result["goldens"] = golden_report(args.viewport, evidence, directory, remaining(45))
         windows = call_adb("shell", "dumpsys", "window")
