@@ -60,7 +60,9 @@ class UpdateRepository(private val context: Context) {
         validate(release, channel)
         val highest = preferences.getLong("highest_${channel.id}", 0)
         require(release.versionCode >= highest) { "已拒绝过时的更新清单" }
-        preferences.edit().putLong("highest_${channel.id}", release.versionCode).apply()
+        check(preferences.edit().putLong("highest_${channel.id}", release.versionCode).commit()) {
+            "无法保存更新校验状态，请稍后重试"
+        }
         release
     }
 

@@ -125,6 +125,38 @@ class UpdateChannelsTest(unittest.TestCase):
         self.assertNotIn('apksigner sign', source)
         self.assertIn('Unsigned candidate unexpectedly has a valid signature', source)
 
+    def test_candidate_and_safety_jobs_share_pinned_checkout(self):
+        source_workflow = (ROOT / '.github/workflows/update-channels.yml').read_text()
+        self.assertEqual(source_workflow.count('uses: actions/checkout@v4'),
+                         source_workflow.count('ref: ${{ github.sha }}'))
+        self.assertNotIn('ref: ${{ github.event.pull_request.head.sha', source_workflow)
+        source = (ROOT / 'scripts/updates/build-unsigned-candidate.sh').read_text()
+        self.assertIn('git status --porcelain --untracked-files=all', source)
+        self.assertIn('git ls-files --others --ignored --exclude-standard app/src backdrop/src', source)
+        self.assertIn('git diff --cached --exit-code', source)
+
+    def test_release_identity_contains_only_public_fingerprint(self):
+        import json
+        identity = json.loads((ROOT / 'release/signing-identity.json').read_text())
+        self.assertEqual(set(identity), {'schema', 'applicationId', 'certificateSha256'})
+        self.assertEqual(identity['applicationId'], 'dev.cinematv')
+        self.assertRegex(identity['certificateSha256'], r'^[0-9a-f]{64}$')
+
+    def test_candidate_and_fixture_environment_guards_do_not_pipe_secrets(self):
+        import os
+        import subprocess
+        for filename in ('build-installer-fixtures.sh', 'build-unsigned-candidate.sh'):
+            path = ROOT / 'scripts/updates' / filename
+            source = path.read_text()
+            self.assertNotIn('env | grep', source)
+            # Synthetic marker only. The guard must run before any key/build/filesystem action.
+            env = dict(os.environ, ANDROID_HOME='/nonexistent-test-sdk', RUNNER_TEMP='/nonexistent-test-temp',
+                       CINEMATV_KEY_ALIAS='SYNTHETIC-NOT-A-CREDENTIAL', LARGE_SYNTHETIC_VAR='x'*100000)
+            result = subprocess.run(['bash', str(path)], cwd=ROOT, env=env, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 1)
+            self.assertIn('signing credentials', result.stdout)
+            self.assertNotIn('SYNTHETIC-NOT-A-CREDENTIAL', result.stdout + result.stderr)
+
     def test_signing_tool_cannot_run_on_github_or_use_repo_key(self):
         source = (ROOT / "scripts/updates/SignUpdateManifest.java").read_text()
         self.assertIn('System.getenv("GITHUB_ACTIONS")', source)

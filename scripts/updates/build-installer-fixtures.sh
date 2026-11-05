@@ -2,9 +2,12 @@
 # Disposable emulator fixtures only. No key leaves RUNNER_TEMP, no production credentials.
 set -euo pipefail
 : "${ANDROID_HOME:?}" "${RUNNER_TEMP:?}"
-if env | grep -q '^CINEMATV_KEYSTORE_\|^CINEMATV_KEY_PASSWORD=\|^CINEMATV_KEY_ALIAS='; then
-  echo 'Refusing fixture build with external signing credentials configured'; exit 1
-fi
+# Inspect only variable names; never pipe/print environment values (or depend on SIGPIPE).
+for variable in ${!CINEMATV_KEYSTORE_@} CINEMATV_KEY_PASSWORD CINEMATV_KEY_ALIAS; do
+  if declare -p "$variable" >/dev/null 2>&1; then
+    echo 'Refusing fixture build with external signing credentials configured'; exit 1
+  fi
+done
 OUT="$RUNNER_TEMP/update-fixtures"
 KEYDIR="$RUNNER_TEMP/update-test-keys"
 mkdir -p "$OUT" "$KEYDIR"
@@ -39,5 +42,7 @@ javac -source 17 -target 17 -classpath "$ANDROID_JAR" -d "$OUT/classes" scripts/
 (cd "$OUT/dex" && zip -q "$OUT/probe-unaligned.apk" classes.dex)
 "$SDK/zipalign" -p 4 "$OUT/probe-unaligned.apk" "$OUT/probe-unsigned.apk"
 sign same "$OUT/probe-unsigned.apk" "$OUT/probe.apk"
+ANALYZER=$(find "$ANDROID_HOME/cmdline-tools" -type f -name apkanalyzer | head -1)
+python3 scripts/updates/inspect-installer-fixtures.py "$OUT" "$SDK/apksigner" "$ANALYZER"
 (cd "$OUT" && sha256sum base.apk stable.apk dev.apk wrong-key.apk probe.apk > SHA256SUMS.txt)
 rm -rf "$OUT/classes" "$OUT/dex" "$OUT/probe-unaligned.apk" "$OUT/probe-unsigned.apk"

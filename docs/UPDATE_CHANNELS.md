@@ -1,7 +1,8 @@
 # Stable / dev updates
 
-This is an **opt-in implementation, not an active production update service**. No
-production key has been created, read from 1Password, or uploaded by this change.
+This is an **opt-in implementation, not an active production update service**. The fixed production key has been created and its encrypted backup verified on
+the separately approved signing machine. No private material has been uploaded
+to GitHub.
 No update feed or release is published by the PR. Existing preview pipelines remain
 unchanged. The obsolete production workflow is now a fail-closed safety notice;
 it has no signing-secret references or publication permissions. Network updates are disabled by default and always disabled in debug APKs.
@@ -73,13 +74,16 @@ A compromised signing key is outside this v1 mechanism's recovery capability.
   -PcinematvVersionName=<version>`, and all external signing environment variables.
   This configuration alone is not authorization to sign or publish.
 
-## Signing and 1Password: approval still needed
+## Signing and private storage
 
 The user's policy is **no private signing material on GitHub**, including Actions
 Secrets, logs, artifacts, caches and repository history. Public APKs, detached
 signatures and certificate fingerprints are intended to be public.
 
-Before production activation, obtain per-action approval for:
+Key creation, private storage and any new persistent access require explicit
+per-action approval. The current key and encrypted backup were created under
+specific approval; that does not authorize new service tokens or ongoing access.
+Keep future operations within their approved scope:
 
 1. Generate a fixed Android release signing key on the selected trusted signing
    machine, with a clearly named alias, and save the keystore, password and alias
@@ -179,3 +183,12 @@ the signed APK's package/channel/version/minSdk and approved public certificate,
 and record its new hash. Only the signed bytes can undergo final installer/device
 acceptance. The unsigned candidate, test-key fixtures and earlier debug evidence
 are never a production release. The candidate job does not publish or certify it.
+
+## Fixed public release identity
+
+The production identity's **public** certificate SHA-256 is
+`1f:e6:e9:87:57:2f:c3:68:c2:bd:1b:8d:ed:cc:c6:df:95:29:d8:c5:98:bf:44:ba:fa:2c:d4:56:c1:55:74:f6`.
+Machine-readable public metadata is in `release/signing-identity.json`. The private
+key remains outside GitHub; this file contains no private key or password.
+Creation and encrypted backup verification do not certify an APK. No previously
+distributed debug build is claimed to share this signing identity.
