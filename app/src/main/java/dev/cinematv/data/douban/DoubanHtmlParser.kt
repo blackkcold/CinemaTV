@@ -30,6 +30,14 @@ object DoubanHtmlParser {
     fun collection(html: String, ownerId: String, shelf: DoubanShelf, start: Int): DoubanPage {
         checkAccess(html)
         val doc = Jsoup.parse(html)
+        if(identity(html).id != ownerId) throw DoubanAccessException(DoubanPhase.ERROR, "账户不一致，未导入片单")
+        val heading = doc.selectFirst("h1")?.text().orEmpty()
+        if(!heading.contains(shelf.label)) throw DoubanAccessException(DoubanPhase.ERROR, "片单类型无法确认，保留上次数据")
+        val totalText = doc.selectFirst(".subject-num")?.text().orEmpty()
+        val total = Regex("/\\s*([0-9]+)").find(totalText)?.groupValues?.get(1)?.toIntOrNull()
+            ?: Regex("[（(]([0-9]+)[)）]").find(heading)?.groupValues?.get(1)?.toIntOrNull()
+            ?: throw DoubanAccessException(DoubanPhase.ERROR, "片单总数无法确认，保留上次数据")
+        require(total in 0..30_000 && start <= total)
         val grid = doc.selectFirst(".grid-view") ?: throw DoubanAccessException(DoubanPhase.ERROR, "片单页面结构变化，保留上次数据")
         val items = grid.select(".item")
         val entries = items.map { item ->
@@ -49,8 +57,12 @@ object DoubanHtmlParser {
             val values = u.rawQuery.orEmpty().split('&').filter { it.startsWith("start=") }
             require(values.size == 1); val n = values.single().substringAfter('=').toInt(); require(n > start && n <= 30_000); n
         }
-        val count = doc.selectFirst(".subject-num")?.text()?.let { Regex("(?:/|共\\s*)([0-9]+)").find(it)?.groupValues?.get(1)?.toIntOrNull() }
-        return DoubanPage(entries, next, count)
+        require(start + entries.size <= total) { "Collection count inconsistent" }
+        if(total == 0) require(entries.isEmpty() && next == null && start == 0)
+        else require(entries.isNotEmpty()) { "Unexpected empty collection" }
+        if(start + entries.size < total) require(next == start + entries.size) { "Incomplete or unknown pagination" }
+        else require(next == null) { "Pagination exceeds total" }
+        return DoubanPage(entries, next, total)
     }
     fun communityScore(html: String): Double? {
         checkAccess(html)

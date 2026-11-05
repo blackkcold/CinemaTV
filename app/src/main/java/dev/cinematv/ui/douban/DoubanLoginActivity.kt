@@ -42,7 +42,10 @@ class DoubanLoginActivity : ComponentActivity() {
         setContentView(root)
         AlertDialog.Builder(this).setTitle("在这台设备登录豆瓣")
             .setMessage("登录页由豆瓣提供。请用豆瓣 App 扫码确认，不要向 CinemaTV 输入密码。登录完成后，将另行确认是否在本机加密保存会话，用于手动读取你的片单和评分。会话不会传给手机设置页、云端或 LibreTV。")
-            .setPositiveButton("打开官方登录") { _, _ -> openOfficial(root) }.setNegativeButton("取消") { _, _ -> finish() }
+            .setPositiveButton("打开官方登录") { _, _ -> lifecycleScope.launch {
+                runCatching { DoubanWebSessionCleaner.startup(); openOfficial(root) }
+                    .onFailure { status.text = "系统 WebView 不可用，无法打开官方登录。请更新系统 WebView 后重试。" }
+            } }.setNegativeButton("取消") { _, _ -> finish() }
             .setOnCancelListener { finish() }.show()
     }
     @SuppressLint("SetJavaScriptEnabled")
@@ -98,8 +101,10 @@ class DoubanLoginActivity : ComponentActivity() {
     }
     override fun onDestroy() {
         web?.apply { stopLoading(); (parent as? ViewGroup)?.removeView(this); clearCache(true); clearHistory(); destroy() }; web = null
-        CookieManager.getInstance().removeAllCookies { CookieManager.getInstance().flush() }
-        android.webkit.WebStorage.getInstance().deleteAllData()
+        runCatching {
+            CookieManager.getInstance().removeAllCookies { CookieManager.getInstance().flush() }
+            android.webkit.WebStorage.getInstance().deleteAllData()
+        }
         super.onDestroy()
     }
     companion object {

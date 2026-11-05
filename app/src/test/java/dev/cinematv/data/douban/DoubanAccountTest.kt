@@ -7,7 +7,7 @@ import org.junit.Test
 
 class DoubanAccountTest {
     private val identity = """<html><div class="nav-user-account"><a class="bn-more"><span>测试用户的账号</span></a><a href="https://www.douban.com/people/test_user/">个人主页</a></div></html>"""
-    private fun collection(id: String = "123", stars: Int = 4, next: String = "") = """<html><div class="grid-view"><div class="item"><li class="title"><a href="https://movie.douban.com/subject/$id/">测试作品</a></li><span class="rating$stars-t"></span><span class="date">2026-11-01</span></div></div>$next</html>"""
+    private fun collection(id: String = "123", stars: Int = 4, next: String = "", shelf: DoubanShelf = DoubanShelf.WATCHED, total: Int = 1) = """<html>$identity<h1>测试用户${shelf.label}的电影($total)</h1><div class="grid-view"><div class="item"><li class="title"><a href="https://movie.douban.com/subject/$id/">测试作品</a></li><span class="rating$stars-t"></span><span class="date">2026-11-01</span></div></div>$next</html>"""
     private class MemoryStore : DoubanStorage {
         var value: JSONObject? = null
         override fun read() = value?.let { JSONObject(it.toString()) }
@@ -19,7 +19,7 @@ class DoubanAccountTest {
         assertEquals(4, item.personalStars); assertNull(item.communityScore)
     }
     @Test fun acceptsValidatedEmptyCollection() {
-        val page = DoubanHtmlParser.collection("<div class='grid-view'></div>", "test_user", DoubanShelf.WANT, 0)
+        val page = DoubanHtmlParser.collection("$identity<h1>测试用户想看的电影(0)</h1><div class='grid-view'></div>", "test_user", DoubanShelf.WANT, 0)
         assertTrue(page.entries.isEmpty()); assertNull(page.nextStart)
     }
     @Test(expected = DoubanAccessException::class) fun rejectsUnknownEmptyMarkup() { DoubanHtmlParser.collection("<h1>empty</h1>", "test_user", DoubanShelf.WATCHED, 0) }
@@ -47,7 +47,7 @@ class DoubanAccountTest {
     }
     @Test fun syncAuthenticatesAndStoresOnlyAfterExplicitCall() = runBlocking {
         var clock = 1_000L; val store = MemoryStore(); val requests = mutableListOf<String>()
-        val transport = object : DoubanTransport { override suspend fun get(path: String, cookie: String): String { requests += path; return if(path == "/mine/") identity else collection() } }
+        val transport = object : DoubanTransport { override suspend fun get(path: String, cookie: String, beforeRequest: suspend () -> Unit): String { beforeRequest(); requests += path; return if(path == "/mine/") identity else collection(shelf = DoubanShelf.entries.first { path.contains("/${it.path}?") }) } }
         val service = DoubanAccountService(store, transport, { clock }, { clock += it })
         service.initialize(); assertTrue(requests.isEmpty()); assertNull(store.value)
         service.acceptLocalSession("synthetic-test-cookie"); assertEquals(DoubanPhase.CONNECTED, service.state.value.phase)
@@ -57,7 +57,7 @@ class DoubanAccountTest {
     }
     @Test fun accessDenialPreservesPreviousSnapshotAndBlocksRetry() = runBlocking {
         var clock = 1_000L; var deny = false; var calls = 0
-        val transport = object : DoubanTransport { override suspend fun get(path: String, cookie: String): String { calls++; if(deny) throw DoubanAccessException(DoubanPhase.CHALLENGE, "验证"); return if(path == "/mine/") identity else collection() } }
+        val transport = object : DoubanTransport { override suspend fun get(path: String, cookie: String, beforeRequest: suspend () -> Unit): String { beforeRequest(); calls++; if(deny) throw DoubanAccessException(DoubanPhase.CHALLENGE, "验证"); return if(path == "/mine/") identity else collection(shelf = DoubanShelf.entries.first { path.contains("/${it.path}?") }) } }
         val service = DoubanAccountService(MemoryStore(), transport, { clock }, { clock += it })
         service.acceptLocalSession("synthetic"); service.sync(); val old = service.state.value.snapshot
         deny = true; service.sync(); val deniedCalls = calls; assertEquals(DoubanPhase.CHALLENGE, service.state.value.phase)
@@ -65,16 +65,33 @@ class DoubanAccountTest {
     }
     @Test fun pageBudgetStopsAndCanContinue() = runBlocking {
         var clock = 1_000L
-        val transport = object : DoubanTransport { override suspend fun get(path: String, cookie: String): String {
+        val transport = object : DoubanTransport { override suspend fun get(path: String, cookie: String, beforeRequest: suspend () -> Unit): String { beforeRequest();
             if(path == "/mine/") return identity
             val start = path.substringAfter("start=").substringBefore('&').toInt()
             val shelf = path.substringAfter("test_user/").substringBefore('?')
             val next = if(start < 30) "<div class='paginator'><span class='next'><a href='?start=${start + 1}'>下一页</a></span></div>" else ""
-            return collection((start + 1).toString(), next = next)
+            return collection((start + 1).toString(), next = next, shelf = DoubanShelf.entries.first { it.path == shelf }, total = 31)
         } }
         val service = DoubanAccountService(MemoryStore(), transport, { clock }, { clock += it })
         service.acceptLocalSession("synthetic"); service.sync()
         assertEquals(20, service.state.value.snapshot!!.entries.size); assertFalse(service.state.value.snapshot!!.complete)
         service.sync(true); assertEquals(40, service.state.value.snapshot!!.entries.size)
     }
+    @Test fun failedReplacementCannotClearPreviousChallenge() = runBlocking {
+        var clock = 1_000L; var fail = false; var calls = 0
+        val transport = object : DoubanTransport { override suspend fun get(path: String, cookie: String, beforeRequest: suspend () -> Unit): String {
+            beforeRequest(); calls++
+            if(fail && path == "/mine/") error("temporary failure")
+            if(fail) throw DoubanAccessException(DoubanPhase.CHALLENGE, "验证")
+            return if(path == "/mine/") identity else collection(shelf = DoubanShelf.entries.first { path.contains("/${it.path}?") })
+        } }
+        val service = DoubanAccountService(MemoryStore(), transport, { clock }, { clock += it })
+        service.acceptLocalSession("synthetic"); fail = true; service.sync()
+        service.acceptLocalSession("candidate"); val afterReplacement = calls
+        service.sync(); assertEquals(afterReplacement, calls)
+    }
+    @Test(expected = IllegalArgumentException::class) fun rejectsMissingNextPageWithMoreExpected() {
+        DoubanHtmlParser.collection(collection(total = 20), "test_user", DoubanShelf.WATCHED, 0)
+    }
+
 }

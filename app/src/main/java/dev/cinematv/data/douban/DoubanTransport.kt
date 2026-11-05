@@ -2,6 +2,9 @@ package dev.cinematv.data.douban
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.HttpUrl.Companion.toHttpUrl
@@ -9,17 +12,18 @@ import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util.concurrent.TimeUnit
 
-interface DoubanTransport { suspend fun get(path: String, cookie: String): String }
+interface DoubanTransport { suspend fun get(path: String, cookie: String, beforeRequest: suspend () -> Unit): String }
 /** Fixed origin, explicit redirect handling, no proxy fallback, no retries, no HTTP cache or logs. */
 class OfficialDoubanTransport : DoubanTransport {
     private val client = OkHttpClient.Builder().followRedirects(false).followSslRedirects(false)
         .retryOnConnectionFailure(false).connectTimeout(15, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS)
         .callTimeout(25, TimeUnit.SECONDS).build()
-    override suspend fun get(path: String, cookie: String): String = withContext(Dispatchers.IO) {
+    override suspend fun get(path: String, cookie: String, beforeRequest: suspend () -> Unit): String = withContext(Dispatchers.IO) {
         require(path == "/mine/" || path.matches(Regex("/people/[A-Za-z0-9_-]{1,80}/(collect|wish|do)\\?start=[0-9]+&sort=time&rating=all&filter=all&mode=grid")) || path.matches(Regex("/subject/[0-9]{1,16}/")))
         require(cookie.isNotBlank() && cookie.length <= 16_384 && !cookie.contains('\r') && !cookie.contains('\n'))
         var url = ("https://movie.douban.com$path").toHttpUrl()
         for (redirect in 0..2) {
+            beforeRequest()
             val request = Request.Builder().url(url).header("Cookie", cookie).header("User-Agent", "CinemaTV/0.1 (personal library; user initiated)").build()
             client.newCall(request).execute().use { response ->
                 if (response.code in listOf(401, 403, 418)) throw DoubanAccessException(if(response.code == 401) DoubanPhase.NEEDS_LOGIN else DoubanPhase.CHALLENGE, "豆瓣拒绝访问（${response.code}），请在官方页面处理后继续")

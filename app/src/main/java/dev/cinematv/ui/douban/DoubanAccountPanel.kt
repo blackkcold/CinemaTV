@@ -83,15 +83,17 @@ private fun DoubanAccountPanel(model: CinemaViewModel, tv: Boolean, dismiss: () 
                 if(note.isNotBlank()) item { Text(note, modifier = Modifier.testTag("douban-account-note")) }
                 state.snapshot?.let { snapshot ->
                     item { Text("${snapshot.entries.size} 条 · ${if(snapshot.complete) "完整片单快照" else "部分片单，尚未完成"}") }
+                    item { OutlinedButton(onClick = { syncJob = scope.launch { service.syncScores() } }, enabled = state.phase == DoubanPhase.CONNECTED) { Text("读取豆瓣社区评分（最多 10 部）") } }
                     item { OutlinedButton(onClick = { importConfirm = true }, enabled = state.phase != DoubanPhase.SYNCING) { Text("导入本机片库（保留本机冲突）") } }
                     items(snapshot.entries, key = { "${it.shelf}:${it.subjectId}" }) { item ->
                         Column {
                             Text(item.title)
                             Text("${item.shelf.label} · 我的评分：${item.personalStars?.let { "$it / 5" } ?: "未评"} · ${item.markedDate}", style = MaterialTheme.typography.bodySmall)
+                            if(item.communityScore != null) Text("豆瓣社区评分 ${item.communityScore} / 10", style = MaterialTheme.typography.bodySmall)
                         }
                     }
                 }
-                item { Text("个人星级不等于豆瓣社区评分。片单同步不批量抓详情、不覆盖来源评分或排名。", style = MaterialTheme.typography.bodySmall) }
+                item { Text("个人星级不等于豆瓣社区评分。社区评分需单独点击读取，不覆盖其他来源评分或排名。", style = MaterialTheme.typography.bodySmall) }
                 if(state.owner != null || state.phase == DoubanPhase.ERROR) item { OutlinedButton(onClick = { disconnectConfirm = true }, enabled = state.phase != DoubanPhase.SYNCING) { Text("断开账号并删除本机会话") } }
             }
         }
@@ -101,7 +103,7 @@ private fun DoubanAccountPanel(model: CinemaViewModel, tv: Boolean, dismiss: () 
         confirmButton = { Button(onClick = { importConfirm = false; scope.launch { val (added, conflicts) = model.repo.library.importDouban(state.snapshot?.entries.orEmpty()); note = "已添加 $added 条状态；保留 $conflicts 项冲突。" } }) { Text("导入并保留冲突") } }, dismissButton = { TextButton(onClick = { importConfirm = false }) { Text("取消") } })
     if(disconnectConfirm) AlertDialog(onDismissRequest = { disconnectConfirm = false }, title = { Text("删除本机豆瓣连接？") },
         text = { Text("删除此设备加密的登录态和豆瓣同步缓存。已导入的本机片库记录保留。此操作不注销豆瓣账号，也不撤销其他设备会话。") },
-        confirmButton = { Button(onClick = { disconnectConfirm = false; scope.launch { service.disconnect() }; lan?.stop(); lan = null }) { Text("删除本机连接") } }, dismissButton = { TextButton(onClick = { disconnectConfirm = false }) { Text("取消") } })
+        confirmButton = { Button(onClick = { disconnectConfirm = false; scope.launch { service.disconnect(); runCatching { DoubanWebSessionCleaner.clear() }.onFailure { note = "加密会话已删除；系统 WebView 清理失败，请清除应用数据。" } }; lan?.stop(); lan = null }) { Text("删除本机连接") } }, dismissButton = { TextButton(onClick = { disconnectConfirm = false }) { Text("取消") } })
 }
 
 private fun qrBitmap(text: String): Bitmap {
