@@ -1,5 +1,7 @@
 package dev.cinematv.ui.tv.components
 
+import android.os.SystemClock
+import android.util.Log
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.relocation.BringIntoViewRequester
@@ -25,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.cinematv.ui.typography.CinemaTvText as Text
 import dev.cinematv.CinemaViewModel
+import dev.cinematv.BuildConfig
 import dev.cinematv.data.MediaItem
 import dev.cinematv.ui.shared.presentationKey
 import dev.cinematv.ui.tv.design.*
@@ -55,11 +58,20 @@ fun ContentRail(title: String, items: List<MediaItem>, model: CinemaViewModel, p
     var focusedKey by remember(route, region) { mutableStateOf<String?>(null) }
     var visibilityJob by remember { mutableStateOf<Job?>(null) }
     val railHasFocus = focusedKey != null && focusedKey in itemKeys
+    fun visibilityTrace(event: String) {
+        // Debug-only passive diagnostics. No frame observer, state mutation,
+        // focus request, or scroll command is introduced by this trace.
+        if (BuildConfig.DEBUG) Log.d("CinemaTVRailVisibility",
+            "uptime=${SystemClock.uptimeMillis()} event=$event route=$route currentRoute=${model.focusRoute} " +
+                "region=$region focused=$focusedKey nav=${focusOwner?.hasFocus ?: navigationHasFocus} " +
+                "rowSize=$rowSize requestActive=${visibilityJob?.isActive == true} owner=${focusOwner?.snapshot()}")
+    }
     LaunchedEffect(route, railHasFocus, effects.reducedMotion, rowSize, navigationHasFocus) {
         if (railHasFocus && focusedKey != null && focusedKey in currentKeys &&
             !(focusOwner?.hasFocus ?: navigationHasFocus) && rowSize.height > 0 && model.focusRoute == route) {
             val job = currentCoroutineContext().job
             visibilityJob = job
+            visibilityTrace("request-start")
             try {
                 // The caller modifier is outside LazyRow's horizontal scroller.
                 // Reveal this whole row (including its existing 15dp padding)
@@ -71,6 +83,7 @@ fun ContentRail(title: String, items: List<MediaItem>, model: CinemaViewModel, p
                 // bounds; never retry an impossible full-height fit.
                 rowVisibility.bringIntoView()
             } finally {
+                visibilityTrace(if (job.isActive) "request-finished" else "request-cancelled")
                 if (visibilityJob === job) visibilityJob = null
             }
         }
@@ -105,15 +118,22 @@ fun ContentRail(title: String, items: List<MediaItem>, model: CinemaViewModel, p
                     modifier = Modifier.focusRequester(target)
                         .then(if (entryRequester != null && index == active) Modifier.focusRequester(entryRequester) else Modifier)
                         .onFocusChanged { focus ->
-                            if (focus.isFocused) focusedKey = item.presentationKey
+                            if (focus.isFocused) {
+                                focusedKey = item.presentationKey
+                                visibilityTrace("focus-enter")
+                            }
                             else if (focusedKey == item.presentationKey) {
                                 focusedKey = null
+                                visibilityTrace("focus-leave")
                                 // Let this synchronous focus transaction finish:
                                 // a different card in this row still owns the same
                                 // vertical request, but navigation/another row does not.
                                 scope.launch {
                                     yield()
-                                    if (focusedKey == null) visibilityJob?.cancel()
+                                    if (focusedKey == null) {
+                                        visibilityTrace("cancel-after-focus-transaction")
+                                        visibilityJob?.cancel()
+                                    }
                                 }
                             }
                         }
@@ -123,6 +143,7 @@ fun ContentRail(title: String, items: List<MediaItem>, model: CinemaViewModel, p
                                 // Vertical navigation, activation and Back retain their
                                 // existing owners, but invalidate an unfinished move.
                                 cancelMovement()
+                                visibilityTrace("cancel-key:${event.key}")
                                 visibilityJob?.cancel()
                                 false
                             }

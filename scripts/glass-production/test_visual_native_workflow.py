@@ -11,6 +11,34 @@ class VisualNativeWorkflow(unittest.TestCase):
         self.workflow = (ROOT / ".github/workflows/glass-visual-review.yml").read_text()
         self.native = self.workflow.split("  native-glass:\n", 1)[1]
 
+    def test_native_only_skip_requires_the_exact_branch_ref(self):
+        self.assertIn("branches: [feature/glass-visual-review, feature/glass-native-review]", self.workflow)
+        canonical = self.workflow.split("  visual-review:\n", 1)[1].split("  native-glass:\n", 1)[0]
+        conditions = re.findall(r"^    if: (.+)$", canonical, re.M)
+        self.assertEqual(["${{ github.ref != 'refs/heads/feature/glass-native-review' }}"], conditions)
+        branch = re.fullmatch(r"\$\{\{ github\.ref != '([^']+)' \}\}", conditions[0])[1]
+        # Push and manual dispatch use the same ref predicate. Similar branch
+        # names, tags and other manual refs must not silently skip canonical QA.
+        for event in ("push", "workflow_dispatch"):
+            for ref, should_capture in (("refs/heads/feature/glass-native-review", False),
+                                        ("refs/heads/feature/glass-visual-review", True),
+                                        ("refs/heads/feature/glass-native-review-extra", True),
+                                        ("refs/tags/feature/glass-native-review", True),
+                                        ("refs/heads/main", True)):
+                with self.subTest(event=event, ref=ref):
+                    self.assertEqual(should_capture, ref != branch)
+        # The source build and focused native jobs remain required on both branches.
+        for job in (self.workflow.split("  build:\n", 1)[1].split("  visual-review:\n", 1)[0], self.native):
+            self.assertNotRegex(job.split("    steps:\n", 1)[0], r"(?m)^    if:")
+
+    def test_native_only_summary_does_not_claim_current_commit_capture_or_release(self):
+        build = self.workflow.split("  build:\n", 1)[1].split("  visual-review:\n", 1)[0]
+        scope = build.split("      - name: Declare native-only diagnostic scope\n", 1)[1].split("      - uses:", 1)[0]
+        self.assertIn("if: ${{ github.ref == 'refs/heads/feature/glass-native-review' }}", scope)
+        for required in ("$GITHUB_SHA", "$GITHUB_REF", "$GITHUB_STEP_SUMMARY", "intentionally SKIPPED", "No canonical screenshots were executed or validated for this source SHA", "not screenshot approval or release acceptance", "Previous-commit screenshots do not validate this commit", "full four-device release matrix remains required"):
+            self.assertIn(required, scope)
+        self.assertLess(build.index("Declare native-only diagnostic scope"), build.index("actions/setup-java@v4"))
+
     def test_two_native_jobs_reuse_the_single_build(self):
         self.assertEqual(["31", "35"], re.findall(r"^          - api: (\d+)$", self.native, re.M))
         for required in ("needs: build", "fail-fast: false", "actions/download-artifact@v4", "name: glass-visual-review-apks", "path: dist", 'evidence.py verify-build --directory dist --sha "$GITHUB_SHA"'):

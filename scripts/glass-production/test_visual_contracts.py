@@ -71,7 +71,7 @@ class VisualInventory(unittest.TestCase):
 
     def test_workflow_is_isolated_build_once_without_release_receipt(self):
         workflow = (ROOT / ".github/workflows/glass-visual-review.yml").read_text()
-        self.assertIn("branches: [feature/glass-visual-review]", workflow)
+        self.assertIn("branches: [feature/glass-visual-review, feature/glass-native-review]", workflow)
         for forbidden in ("pull_request:", "workflow_call:", "schedule:", "preview-release.py", "promotion-receipt"):
             self.assertNotIn(forbidden, workflow)
         self.assertEqual(1, workflow.count(":app:assembleDebug :app:assembleDebugAndroidTest"))

@@ -1,7 +1,7 @@
 name: Glass visual review capture (not release acceptance)
 on:
   push:
-    branches: [feature/glass-visual-review]
+    branches: [feature/glass-visual-review, feature/glass-native-review]
   workflow_dispatch:
 permissions:
   contents: read
@@ -14,6 +14,14 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      - name: Declare native-only diagnostic scope
+        if: ${{ github.ref == 'refs/heads/feature/glass-native-review' }}
+        run: |
+          {
+            printf 'Native-only diagnostic run at %s (%s).\n\n' "$GITHUB_SHA" "$GITHUB_REF"
+            printf '%s\n' 'Canonical API33 TV 1080p and 4K capture jobs are intentionally SKIPPED on this branch. No canonical screenshots were executed or validated for this source SHA.'
+            printf '%s\n' 'Only same-build focused native API31 TV and API35 TV + phone QA is scheduled. A successful run is not screenshot approval or release acceptance. Previous-commit screenshots do not validate this commit. The unchanged full four-device release matrix remains required.'
+          } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -79,6 +87,9 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
   visual-review:
+    # Only the explicit native-only branch omits canonical screenshots. Manual
+    # dispatches on any other ref retain both canonical viewports.
+    if: ${{ github.ref != 'refs/heads/feature/glass-native-review' }}
     name: Capture / ${{ matrix.viewport }} (review only)
     needs: build
     runs-on: ubuntu-24.04

@@ -1,6 +1,7 @@
 package dev.cinematv
 
 import android.view.KeyEvent
+import android.view.ViewTreeObserver
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.CompositionLocalProvider
@@ -34,9 +35,18 @@ import org.junit.runner.RunWith
 class ContentRailVisibilityTest {
     @get:Rule val rule = createAndroidComposeRule<TvTestActivity>()
     private lateinit var server: UiFixtureServer
+    private lateinit var featuredAtEntry: List<FeaturedIdentity>
     private val model get() = rule.activity.model
     private val horizontal = SemanticsProperties.HorizontalScrollAxisRange
     private val vertical = SemanticsProperties.VerticalScrollAxisRange
+
+    private data class FeaturedIdentity(
+        val catalogId: String,
+        val sourceId: String,
+        val title: String,
+        val presentationKey: String,
+        val metadata: String,
+    )
 
     @Before fun connectFixture() {
         rule.waitUntil(15_000) { rule.activity.bundledFontsReady || rule.activity.fontLoadFailures.isNotEmpty() }
@@ -60,8 +70,24 @@ class ContentRailVisibilityTest {
         rule.waitUntil(20_000) { model.authorized && model.featured.size == 24 && model.tvShows.size == 24 }
         rule.runOnIdle {
             assertTrue("This regression must enter the featured rail, not a persisted history rail", model.history().isEmpty())
-            assertEquals("catalog:synthetic:movie-9", model.featured[9].id)
-            assertEquals("深海来信 · 10", model.featured[9].title)
+            // Earlier fixture activity can legitimately affect recommendations.
+            // Freeze actual positions, not the server's original catalog order.
+            featuredAtEntry = model.featured.take(10).mapIndexed { position, item ->
+                val match = Regex("catalog:synthetic:movie-([0-9]+)").matchEntire(item.id)
+                    ?: throw AssertionError("Unexpected featured fixture ID at position $position: ${item.id}")
+                val sourceIndex = match.groupValues[1].toIntOrNull()
+                assertTrue("Fixture ID outside movie-0..23 at position $position: ${item.id}",
+                    sourceIndex != null && sourceIndex in 0..23)
+                val number = requireNotNull(sourceIndex)
+                assertEquals("Catalog identity at position $position", "catalog:synthetic:movie-$number", item.id)
+                assertEquals("Fixture title at position $position", server.title(number), item.title)
+                FeaturedIdentity(item.id, "movie-$number", item.title, item.presentationKey, item.metadataLine())
+            }
+            assertEquals("Freeze all ten actual remote destinations", 10, featuredAtEntry.size)
+            assertEquals("Featured catalog IDs must be unique", featuredAtEntry.size,
+                featuredAtEntry.map { it.catalogId }.toSet().size)
+            assertEquals("Featured presentation keys must be unique", featuredAtEntry.size,
+                featuredAtEntry.map { it.presentationKey }.toSet().size)
             model.dismissMessage()
         }
         rule.onNodeWithText("观看详情").assertIsFocused()
@@ -83,15 +109,17 @@ class ContentRailVisibilityTest {
         if (settle) rule.waitForIdle()
     }
 
-    private fun focusedCardMatcher(index: Int) = hasContentDescription(server.title(index)) and isFocused()
+    private fun focusedCardMatcher(index: Int) = hasContentDescription(featuredAtEntry[index].title) and isFocused()
     private fun focusedCard(index: Int) = rule.onNode(focusedCardMatcher(index))
 
     private fun assertFeaturedFocus(index: Int) {
         focusedCard(index).assertIsFocused()
         rule.runOnIdle {
             assertEquals(Page.HOME, model.page)
+            assertEquals("Featured position changed after the remote traversal began",
+                featuredAtEntry[index].catalogId, model.featured[index].id)
             assertEquals("rail:为你精选", model.focusCoordinator.last("HOME")?.region)
-            assertEquals(model.featured[index].presentationKey, model.focusCoordinator.last("HOME")?.itemKey)
+            assertEquals(featuredAtEntry[index].presentationKey, model.focusCoordinator.last("HOME")?.itemKey)
         }
     }
 
@@ -144,6 +172,34 @@ class ContentRailVisibilityTest {
         }
     }
 
+    private fun observeExistingDraws(row: SemanticsNode, card: SemanticsNode): java.io.Closeable {
+        val root = rule.onRoot().fetchSemanticsNode().layoutInfo.coordinates
+        val hero = rule.onNodeWithText("观看详情").fetchSemanticsNode().layoutInfo.coordinates
+        val rowCoordinates = row.layoutInfo.coordinates
+        val cardCoordinates = card.layoutInfo.coordinates
+        val page = scrollAncestor(row, vertical)
+        val pageCoordinates = page.layoutInfo.coordinates
+        val axis = page.config[vertical]
+        val view = rule.activity.window.decorView
+        var observations = 0
+        // Observe existing native draws only. Do not invalidate, schedule frames,
+        // or use this callback count as a rendered-frame/performance measurement.
+        val listener = ViewTreeObserver.OnDrawListener {
+            if (observations++ < 256 && root.isAttached && hero.isAttached && rowCoordinates.isAttached &&
+                cardCoordinates.isAttached && pageCoordinates.isAttached) {
+                android.util.Log.d("CinemaTVRailVisibilityFrame",
+                    "uptime=${android.os.SystemClock.uptimeMillis()} route=${model.focusRoute} scroll=${axis.value()} " +
+                        "row=${root.localBoundingBoxOf(rowCoordinates, false)} " +
+                        "card=${root.localBoundingBoxOf(cardCoordinates, false)} " +
+                        "hero=${root.localBoundingBoxOf(hero, false)} " +
+                        "viewport=${root.localBoundingBoxOf(pageCoordinates, false)} " +
+                        "bookmark=${model.focusCoordinator.last(model.focusRoute)}")
+            }
+        }
+        rule.runOnUiThread { view.viewTreeObserver.addOnDrawListener(listener) }
+        return java.io.Closeable { rule.runOnUiThread { view.viewTreeObserver.removeOnDrawListener(listener) } }
+    }
+
     private fun viewportFor(node: SemanticsNode): Rect {
         val root = renderedBounds(rule.onRoot().fetchSemanticsNode())
         val parent = renderedBounds(scrollAncestor(node, vertical))
@@ -166,11 +222,11 @@ class ContentRailVisibilityTest {
         val bottomSpace = 4f * card.layoutInfo.density.density
         val bounds = renderedBounds(card)
         assertInside("Whole focused card", bounds, viewport, bottomSpace)
-        val metadata = rule.runOnIdle { model.featured[index].metadataLine() }
+        val metadata = featuredAtEntry[index].metadata
         assertTrue("Fixture metadata must be present", metadata.isNotBlank())
         // Match within the focused card: the hero and the later '更多电影' rail
         // legitimately repeat titles and metadata in the same semantics tree.
-        listOf("Caption" to server.title(index), "Metadata" to metadata).forEach { (label, text) ->
+        listOf("Caption" to featuredAtEntry[index].title, "Metadata" to metadata).forEach { (label, text) ->
             val child = rule.onNode(hasText(text) and hasAnyAncestor(focusedCardMatcher(index)), useUnmergedTree = true)
                 .assertIsDisplayed().fetchSemanticsNode()
             assertInside(label, renderedBounds(child), viewport, bottomSpace)
@@ -207,44 +263,66 @@ class ContentRailVisibilityTest {
         rule.mainClock.autoAdvance = false
         nativeKey(KeyEvent.KEYCODE_DPAD_DOWN, settle = false)
         focusedCard(0).assertIsFocused()
-        val row = scrollAncestor(focusedCard(0).fetchSemanticsNode(), horizontal)
-        assertTrue("The initial Home row must still need vertical relocation on the paused clock",
-            renderedBounds(row).bottom > viewportFor(row).bottom)
-        // Start the production request, then interrupt it before its animation
-        // can finish. These are deterministic ownership checks, not timing claims.
-        rule.mainClock.advanceTimeByFrame()
-        rule.waitForIdle()
-        nativeKey(KeyEvent.KEYCODE_DPAD_UP, settle = false)
-        rule.onNodeWithText("观看详情").assertIsFocused()
-        nativeKey(KeyEvent.KEYCODE_DPAD_UP, settle = false)
-        rule.onNodeWithText("精选").assertIsFocused()
-        val atNavigation = pageScroll()
-        rule.mainClock.advanceTimeBy(2_400)
-        rule.waitForIdle()
-        rule.onNodeWithText("精选").assertIsFocused()
-        val settledNavigation = pageScroll()
-        assertEquals(atNavigation.nodeId, settledNavigation.nodeId)
-        // Passing through the hero may legitimately finish its own upward
-        // relocation. The blurred rail must never pull the page back downward.
-        assertTrue("A blurred rail must not keep pulling the Home viewport toward the rail",
-            settledNavigation.value <= atNavigation.value)
-        rule.mainClock.advanceTimeBy(2_400)
-        rule.waitForIdle()
-        rule.onNodeWithText("精选").assertIsFocused()
-        assertSameScroll("Navigation must remain stable after the hero settles", settledNavigation, pageScroll())
-        nativeKey(KeyEvent.KEYCODE_DPAD_RIGHT, settle = false)
-        rule.onNodeWithText("电影").assertIsFocused()
-        nativeKey(KeyEvent.KEYCODE_DPAD_CENTER, settle = false)
-        assertEquals(Page.MOVIES, rule.runOnUiThread { model.page })
-        rule.mainClock.advanceTimeBy(2_400)
-        rule.waitForIdle()
-        rule.onNodeWithText("电影").assertIsFocused()
-        val destination = pageScroll()
-        rule.mainClock.advanceTimeBy(2_400)
-        rule.waitForIdle()
-        assertEquals(Page.MOVIES, rule.runOnUiThread { model.page })
-        rule.onNodeWithText("电影").assertIsFocused()
-        assertSameScroll("The disposed Home rail must not scroll the destination", destination, pageScroll())
+        val card = focusedCard(0).fetchSemanticsNode()
+        val row = scrollAncestor(card, horizontal)
+        val drawObservation = observeExistingDraws(row, card)
+        try {
+            val observations = mutableListOf<String>()
+            fun observe(stage: String) {
+                val hero = rule.onNodeWithText("观看详情").fetchSemanticsNode()
+                val focused = rule.onAllNodes(isFocused()).fetchSemanticsNodes().map { it.id }
+                val observation = "$stage uptime=${android.os.SystemClock.uptimeMillis()} clock=${rule.mainClock.currentTime} " +
+                    "page=${model.page} scroll=${pageScroll()} row=${renderedBounds(row)} " +
+                    "viewport=${viewportFor(row)} hero=${renderedBounds(hero)} focused=$focused"
+                observations += observation
+                android.util.Log.i("CinemaTVRailVisibilityTest", observation)
+            }
+            observe("after-down")
+            assertTrue("The initial Home row must still need vertical relocation on the paused clock",
+                renderedBounds(row).bottom > viewportFor(row).bottom)
+            // Start the production request, then interrupt it before its animation
+            // can finish. These are deterministic ownership checks, not timing claims.
+            rule.mainClock.advanceTimeByFrame()
+            rule.waitForIdle()
+            observe("before-up")
+            nativeKey(KeyEvent.KEYCODE_DPAD_UP, settle = false)
+            rule.onNodeWithText("观看详情").assertIsFocused()
+            observe("hero-focused")
+            nativeKey(KeyEvent.KEYCODE_DPAD_UP, settle = false)
+            rule.onNodeWithText("精选").assertIsFocused()
+            observe("navigation-focused")
+            val atNavigation = pageScroll()
+            rule.mainClock.advanceTimeBy(2_400)
+            rule.waitForIdle()
+            rule.onNodeWithText("精选").assertIsFocused()
+            val settledNavigation = pageScroll()
+            observe("navigation-settled")
+            assertEquals(atNavigation.nodeId, settledNavigation.nodeId)
+            // Passing through the hero may legitimately finish its own upward
+            // relocation. The blurred rail must never pull the page back downward.
+            assertTrue("A blurred rail must not keep pulling the Home viewport toward the rail: " +
+                "before=$atNavigation after=$settledNavigation observations=${observations.joinToString("; ")}",
+                settledNavigation.value <= atNavigation.value)
+            rule.mainClock.advanceTimeBy(2_400)
+            rule.waitForIdle()
+            rule.onNodeWithText("精选").assertIsFocused()
+            assertSameScroll("Navigation must remain stable after the hero settles", settledNavigation, pageScroll())
+            nativeKey(KeyEvent.KEYCODE_DPAD_RIGHT, settle = false)
+            rule.onNodeWithText("电影").assertIsFocused()
+            nativeKey(KeyEvent.KEYCODE_DPAD_CENTER, settle = false)
+            assertEquals(Page.MOVIES, rule.runOnUiThread { model.page })
+            rule.mainClock.advanceTimeBy(2_400)
+            rule.waitForIdle()
+            rule.onNodeWithText("电影").assertIsFocused()
+            val destination = pageScroll()
+            rule.mainClock.advanceTimeBy(2_400)
+            rule.waitForIdle()
+            assertEquals(Page.MOVIES, rule.runOnUiThread { model.page })
+            rule.onNodeWithText("电影").assertIsFocused()
+            assertSameScroll("The disposed Home rail must not scroll the destination", destination, pageScroll())
+        } finally {
+            drawObservation.close()
+        }
     }
 
     @Test fun normalMotionTraversalAndDetailBackKeepWholeCardVisible() {
@@ -260,8 +338,8 @@ class ContentRailVisibilityTest {
         rule.runOnIdle {
             // Resolving metadata to a concrete source deliberately changes the
             // presentation key. Check the exact synthetic identity at that source.
-            assertEquals("movie-9", model.selected?.id)
-            assertEquals(server.title(9), model.selected?.title)
+            assertEquals(featuredAtEntry[9].sourceId, model.selected?.id)
+            assertEquals(featuredAtEntry[9].title, model.selected?.title)
             assertEquals("fixture", model.selected?.source?.key)
         }
         rule.onNodeWithText("▶ 立即播放").assertIsFocused()
