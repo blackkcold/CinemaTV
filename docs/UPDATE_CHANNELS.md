@@ -9,7 +9,7 @@ unchanged. Network updates are disabled by default and always disabled in debug 
 
 - Settings → About on TV, and Settings on phones, show the installed version/channel
   and a persisted stable/dev subscription. Checking and downloading are explicit.
-- Dev has a purple adaptive launcher icon and `CinemaTV Dev` launcher label; stable
+- Dev has a purple adaptive launcher icon, purple TV launcher banner and `CinemaTV Dev` launcher label; stable
   retains the existing reviewed icon. Selecting a subscription does not pretend that
   a different APK is installed: the icon changes only after the actual update.
 - Both channels use `dev.cinematv` and the **same fixed production signing key**.

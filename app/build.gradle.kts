@@ -32,8 +32,11 @@ android {
         applicationId = "dev.cinematv"
         minSdk = 26
         targetSdk = 35
-        versionCode = providers.gradleProperty("cinematvVersionCode").orNull?.toInt() ?: 7
-        versionName = providers.gradleProperty("cinematvVersionName").getOrElse("0.6.0-preview")
+        // Preserve literal preview defaults for the existing immutable provenance reader.
+        versionCode = 7
+        versionName = "0.6.0-preview"
+        providers.gradleProperty("cinematvVersionCode").orNull?.let { versionCode = it.toInt() }
+        providers.gradleProperty("cinematvVersionName").orNull?.let { versionName = it }
         require(versionCode!! in 1..2_100_000_000)
         buildConfigField("String", "UPDATE_CHANNEL", "\"$updateChannel\"")
         buildConfigField("boolean", "UPDATES_ENABLED", updatesEnabled.toString())
@@ -41,6 +44,7 @@ android {
         manifestPlaceholders["channelIcon"] = if (updateChannel == "dev") "@mipmap/ic_launcher_dev" else "@mipmap/ic_launcher"
         manifestPlaceholders["channelRoundIcon"] = if (updateChannel == "dev") "@mipmap/ic_launcher_dev" else "@mipmap/ic_launcher_round"
         manifestPlaceholders["channelLabel"] = if (updateChannel == "dev") "CinemaTV Dev" else "CinemaTV"
+        manifestPlaceholders["channelBanner"] = if (updateChannel == "dev") "@drawable/tv_banner_dev" else "@drawable/tv_banner"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     signingConfigs {
@@ -111,6 +115,7 @@ dependencies {
     androidTestImplementation("androidx.room:room-testing:$room")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")
+    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")

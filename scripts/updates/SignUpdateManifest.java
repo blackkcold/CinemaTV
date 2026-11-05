@@ -13,7 +13,8 @@ class SignUpdateManifest {
         Path storePath = Path.of(required("CINEMATV_KEYSTORE_PATH")).toRealPath();
         // Prevent accidental use of a key under any repository checkout.
         for (Path directory = storePath.getParent(); directory != null; directory = directory.getParent()) {
-            if (Files.exists(directory.resolve(".git")))
+            Path marker = directory.resolve(".git");
+            if (Files.isRegularFile(marker) || Files.isRegularFile(marker.resolve("HEAD")))
                 throw new IllegalStateException("Keystore must be outside every Git repository");
         }
         byte[] payload = Files.readAllBytes(Path.of(args[0]));

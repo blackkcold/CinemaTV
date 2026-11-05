@@ -8,6 +8,7 @@ import android.os.Build
 import dev.cinematv.BuildConfig
 import dev.cinematv.data.update.UpdatePolicy.toHex
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -38,7 +39,7 @@ class UpdateRepository(private val context: Context) {
         check(updatesEnabled) { "联网更新尚未启用；需使用经验证的固定签名发行版" }
         val cert = installedCertificate()
         val publicKey = CertificateFactory.getInstance("X.509").generateCertificate(cert.inputStream()).publicKey
-        val envelope = request(UpdatePolicy.feedUrl(channel)).use { response ->
+        val envelope = request(UpdatePolicy.feedUrl(channel)) { response ->
             check(response.code == 200) { if (response.code == 404) "该渠道尚未发布签名更新" else "更新服务暂时不可用" }
             val body = checkNotNull(response.body) { "更新清单为空" }
             require(body.contentLength() <= UpdatePolicy.MAX_FEED_BYTES) { "更新清单过大" }
@@ -63,42 +64,55 @@ class UpdateRepository(private val context: Context) {
         release
     }
 
-    suspend fun download(release: UpdateRelease, onProgress: (Int) -> Unit): File = withContext(Dispatchers.IO) {
-        check(updatesEnabled)
-        validate(release, release.channel)
-        require(UpdatePolicy.canUpgrade(BuildConfig.VERSION_CODE.toLong(), release.versionCode,
-            preferences.getLong("highest_${release.channel.id}", 0))) { "不允许降级或安装旧版本" }
-        val directory = File(context.cacheDir, "verified-updates").apply { mkdirs() }
-        check(directory.isDirectory && directory.usableSpace > release.apkBytes + 16 * 1024 * 1024) { "存储空间不足" }
-        val file = File(directory, "${UUID.randomUUID()}.apk")
+    suspend fun download(release: UpdateRelease, onProgress: (Int) -> Unit): File {
+        var pending: File? = null
         try {
-            request(release.apkUrl).use { response ->
-                check(response.code == 200) { "下载失败，请稍后重试" }
-                val body = checkNotNull(response.body)
-                require(body.contentLength() == -1L || body.contentLength() == release.apkBytes) { "更新包大小不匹配" }
-                body.byteStream().use { input ->
-                    file.outputStream().use { output ->
-                        val buffer = ByteArray(64 * 1024)
-                        var total = 0L
-                        var lastProgress = -1
-                        while (true) {
-                            coroutineContext.ensureActive()
-                            val read = input.read(buffer)
-                            if (read < 0) break
-                            total += read
-                            require(total <= release.apkBytes) { "更新包超出预期大小" }
-                            output.write(buffer, 0, read)
-                            val progress = (100 * total / release.apkBytes).toInt()
-                            if (progress != lastProgress) { onProgress(progress); lastProgress = progress }
+            return withContext(Dispatchers.IO) {
+                check(updatesEnabled)
+                validate(release, release.channel)
+                require(UpdatePolicy.canUpgrade(BuildConfig.VERSION_CODE.toLong(), release.versionCode,
+                    preferences.getLong("highest_${release.channel.id}", 0))) { "不允许降级或安装旧版本" }
+                val directory = File(context.cacheDir, "verified-updates").apply { mkdirs() }
+                // Process death can leave an unclaimed private download. Never accumulate stale APKs indefinitely.
+                directory.listFiles()?.filter { it.isFile && it.lastModified() < System.currentTimeMillis() - 24 * 60 * 60 * 1000 }
+                    ?.forEach { it.delete() }
+                check(directory.isDirectory && directory.usableSpace > release.apkBytes + 16 * 1024 * 1024) { "存储空间不足" }
+                val file = File(directory, "${UUID.randomUUID()}.apk")
+                pending = file
+                try {
+                    request(release.apkUrl) { response ->
+                        check(response.code == 200) { "下载失败，请稍后重试" }
+                        val body = checkNotNull(response.body)
+                        require(body.contentLength() == -1L || body.contentLength() == release.apkBytes) { "更新包大小不匹配" }
+                        body.byteStream().use { input ->
+                            file.outputStream().use { output ->
+                                val buffer = ByteArray(64 * 1024)
+                                var total = 0L
+                                var lastProgress = -1
+                                while (true) {
+                                    coroutineContext.ensureActive()
+                                    val read = input.read(buffer)
+                                    if (read < 0) break
+                                    total += read
+                                    require(total <= release.apkBytes) { "更新包超出预期大小" }
+                                    output.write(buffer, 0, read)
+                                    val progress = (100 * total / release.apkBytes).toInt()
+                                    if (progress != lastProgress) { onProgress(progress); lastProgress = progress }
+                                }
+                                output.fd.sync()
+                            }
                         }
-                        output.fd.sync()
                     }
-                }
+                    verifyFile(file, release)
+                    coroutineContext.ensureActive()
+                    file
+                } catch (error: Throwable) { file.delete(); throw error }
             }
-            verifyFile(file, release)
-            coroutineContext.ensureActive()
-            file
-        } catch (error: Throwable) { file.delete(); throw error }
+        } catch (error: Throwable) {
+            // Covers cancellation while withContext dispatches a completed download back to the UI.
+            withContext(NonCancellable + Dispatchers.IO) { pending?.delete() }
+            throw error
+        }
     }
 
     /** Recheck immediately before offering the private file to Android's user-confirmed installer. */
@@ -148,7 +162,11 @@ class UpdateRepository(private val context: Context) {
 
     @Suppress("DEPRECATION")
     private fun certificates(info: PackageInfo): List<ByteArray> = if (Build.VERSION.SDK_INT >= 28) {
-        info.signingInfo?.apkContentsSigners?.map { it.toByteArray() }.orEmpty()
+        val signing = info.signingInfo
+        require(signing == null || (!signing.hasMultipleSigners() && !signing.hasPastSigningCertificates())) {
+            "签名轮换或多签名配置暂不支持联网更新"
+        }
+        signing?.apkContentsSigners?.map { it.toByteArray() }.orEmpty()
     } else info.signatures?.map { it.toByteArray() }.orEmpty()
 
     @Suppress("DEPRECATION")
@@ -157,17 +175,30 @@ class UpdateRepository(private val context: Context) {
     @Suppress("DEPRECATION")
     private fun versionCode(info: PackageInfo) = if (Build.VERSION.SDK_INT >= 28) info.longVersionCode else info.versionCode.toLong()
 
-    private suspend fun request(initialUrl: String): Response {
+    private sealed interface ResponseStep<out T> {
+        data class Redirect(val url: String) : ResponseStep<Nothing>
+        data class Value<T>(val value: T) : ResponseStep<T>
+    }
+
+    private suspend fun <T> request(initialUrl: String, consume: suspend (Response) -> T): T {
         var url = initialUrl
         repeat(6) { redirects ->
             coroutineContext.ensureActive()
             require(UpdatePolicy.isAllowedTransport(url)) { "更新下载地址不受信任" }
-            val response = client.newCall(Request.Builder().url(url).header("Accept", "application/octet-stream")
-                .header("User-Agent", "CinemaTV-Updater/1").build()).execute()
-            if (response.code !in setOf(301, 302, 303, 307, 308)) return response
-            val next = response.use { it.header("Location")?.let(response.request.url::resolve)?.toString() }
-            check(redirects < 5 && next != null) { "更新服务重定向异常" }
-            url = next
+            val call = client.newCall(Request.Builder().url(url).header("Accept", "application/octet-stream")
+                .header("User-Agent", "CinemaTV-Updater/1").build())
+            val result: ResponseStep<T> = consumeUpdateResponse(call) { response ->
+                if (response.code !in setOf(301, 302, 303, 307, 308)) ResponseStep.Value(consume(response))
+                else {
+                    val next = response.header("Location")?.let(response.request.url::resolve)?.toString()
+                    check(redirects < 5 && next != null) { "更新服务重定向异常" }
+                    ResponseStep.Redirect(next)
+                }
+            }
+            when (result) {
+                is ResponseStep.Value -> return result.value
+                is ResponseStep.Redirect -> url = result.url
+            }
         }
         error("更新服务重定向异常")
     }

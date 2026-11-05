@@ -69,6 +69,12 @@ class UpdateChannelsTest(unittest.TestCase):
         self.assertIn("ApplicationInfo.FLAG_DEBUGGABLE == 0", repo)
         self.assertNotIn("DownloadManager", repo)
 
+    def test_existing_preview_provenance_still_reads_literal_default(self):
+        import re
+        build = (ROOT / "app/build.gradle.kts").read_text()
+        self.assertIsNotNone(re.search(r'versionName = "([^\"]+)"', build))
+        self.assertIn('providers.gradleProperty("cinematvVersionName").orNull?.let', build)
+
     def test_signing_tool_cannot_run_on_github_or_use_repo_key(self):
         source = (ROOT / "scripts/updates/SignUpdateManifest.java").read_text()
         self.assertIn('System.getenv("GITHUB_ACTIONS")', source)

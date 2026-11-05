@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="320dp" android:height="180dp" android:viewportWidth="320" android:viewportHeight="180">
+    <path android:fillColor="@color/cinema_dev_purple" android:pathData="M0,0 H320 V180 H0 Z"/>
+    <!-- Reuse the reviewed original mark geometry; only the channel color and placement differ. -->
+    <group android:translateX="87.125" android:translateY="19.6" android:scaleX="0.55" android:scaleY="0.55">
+        <path android:fillColor="#00000000" android:strokeColor="#f8f8f6" android:strokeWidth="22"
+            android:strokeLineCap="round" android:strokeLineJoin="round"
+            android:pathData="M 65 146 V 64 Q 65 49 78 56 L 197 121 Q 210 128 197 135 L 78 200 Q 65 207 65 192 V 183"/>
+    </group>
+</vector>
