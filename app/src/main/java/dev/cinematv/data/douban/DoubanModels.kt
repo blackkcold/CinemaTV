@@ -3,7 +3,7 @@ package dev.cinematv.data.douban
 /** Personal stars are deliberately separate from Douban's community score. */
 enum class DoubanShelf(val path: String, val label: String) { WATCHED("collect", "看过"), WANT("wish", "想看"), WATCHING("do", "在看") }
 data class DoubanEntry(val subjectId: String, val title: String, val shelf: DoubanShelf,
-    val personalStars: Int? = null, val markedDate: String = "", val communityScore: Double? = null) {
+    val personalStars: Int? = null, val markedDate: String = "", val communityScore: Double? = null, val communityScoreCheckedAt: Long = 0) {
     init { require(subjectId.matches(Regex("[0-9]{1,16}"))); require(title.isNotBlank()); require(personalStars == null || personalStars in 1..5); require(communityScore == null || communityScore in 0.0..10.0) }
 }
 data class DoubanIdentity(val id: String, val displayName: String) {
@@ -36,3 +36,5 @@ object DoubanImportPolicy {
         return when(localStatus) { null -> DoubanImportDecision.ADD; target -> DoubanImportDecision.ALREADY_MATCHED; else -> DoubanImportDecision.CONFLICT }
     }
 }
+
+interface DoubanStorage { fun read(): org.json.JSONObject?; fun write(value: org.json.JSONObject); fun clear() }

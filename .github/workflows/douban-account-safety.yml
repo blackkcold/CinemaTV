@@ -1,0 +1,89 @@
+name: Douban account synthetic safety
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'app/src/main/java/dev/cinematv/data/douban/**'
+      - 'app/src/main/java/dev/cinematv/ui/douban/**'
+      - 'app/src/main/java/dev/cinematv/data/library/LocalMediaLibrary.kt'
+      - 'app/src/androidTest/java/dev/cinematv/DoubanAccountUiTest.kt'
+      - 'app/src/androidTest/java/dev/cinematv/data/DoubanDeviceSecurityTest.kt'
+      - '.github/workflows/douban-account-safety.yml'
+permissions:
+  contents: read
+concurrency:
+  group: douban-account-safety-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  synthetic:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: phone33
+            api: 33
+            target: default
+            size: 1080x2400
+            density: 420
+          - name: compat26
+            api: 26
+            target: google_apis
+            size: 1920x1080
+            density: 320
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+      - uses: actions/cache@v4
+        with:
+          path: .cache/cinematv-noto-fonts
+          key: noto-fonts-v2-${{ hashFiles('scripts/fonts/noto-fonts.lock.json') }}
+      - name: Build synthetic-only acceptance
+        run: |
+          SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -1)
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" 'platforms;android-36' 'build-tools;36.0.0'
+          bash scripts/generate-test-media.sh
+          gradle --no-daemon --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process :app:assembleDebug :app:assembleDebugAndroidTest
+      - name: Enable KVM
+        run: sudo chmod 666 /dev/kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          target: ${{ matrix.target }}
+          arch: x86_64
+          profile: pixel_2
+          emulator-build: '15004761'
+          disable-animations: false
+          emulator-options: '-no-window -no-audio -gpu lavapipe -feature -Vulkan -no-snapshot -no-boot-anim -memory 2048'
+          script: bash scripts/run-device-qa.sh '${{ matrix.size }}' '${{ matrix.density }}' 'dev.cinematv.DoubanAccountUiTest,dev.cinematv.data.DoubanDeviceSecurityTest'
+      - name: Require all synthetic safety cases executed
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          cases = [c for p in Path('app/build/outputs/androidTest-results').rglob('TEST-*.xml') for c in ET.parse(p).getroot().iter('testcase')]
+          expected = {'accountEntryAndCancelledOfficialLoginReturnToNativePanel', 'keystoreRoundTripTamperAndDelete', 'importPreservesConflictsFavoritesAndEpisodeProgress'}
+          actual = [c for c in cases if c.get('name') in expected]
+          assert {c.get('name') for c in actual} == expected, 'Missing device test'
+          assert all(c.find('failure') is None and c.find('error') is None and c.find('skipped') is None for c in actual), 'Device test did not pass'
+          PY
+      - name: State live-account boundary
+        if: always()
+        run: echo 'Synthetic-only native tests. No real account, official QR, cookies or personal lists were used. This does not prove live login or synchronization.' >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: douban-synthetic-${{ matrix.name }}
+          path: |
+            qa/
+            app/build/reports/androidTests/
+            app/build/outputs/androidTest-results/
+          if-no-files-found: warn

@@ -52,7 +52,7 @@ object DoubanHtmlParser {
         require(entries.map { it.subjectId }.distinct().size == entries.size) { "Duplicate subject on page" }
         val next = doc.selectFirst(".paginator .next a[href]")?.attr("href")?.let { raw ->
             val base = URI("https://movie.douban.com/people/$ownerId/${shelf.path}")
-            val u = base.resolve(raw)
+            val u = if(raw.startsWith("?")) URI(base.toString() + raw) else base.resolve(raw)
             require(u.scheme == "https" && u.host == base.host && u.path.trimEnd('/') == base.path) { "Unexpected pagination destination" }
             val values = u.rawQuery.orEmpty().split('&').filter { it.startsWith("start=") }
             require(values.size == 1); val n = values.single().substringAfter('=').toInt(); require(n > start && n <= 30_000); n
@@ -64,9 +64,11 @@ object DoubanHtmlParser {
         else require(next == null) { "Pagination exceeds total" }
         return DoubanPage(entries, next, total)
     }
-    fun communityScore(html: String): Double? {
+    fun communityScore(html: String, expectedId: String): Double? {
         checkAccess(html)
         val doc = Jsoup.parse(html)
+        val canonical = doc.selectFirst("meta[property=og:url]")?.attr("content") ?: doc.selectFirst("link[rel=canonical]")?.attr("href")
+        require(canonical == "https://movie.douban.com/subject/$expectedId/") { "Unexpected detail identity" }
         require(doc.selectFirst("#content h1") != null) { "Unknown detail document" }
         return doc.selectFirst("strong[property=v:average]")?.text()?.toDoubleOrNull()?.takeIf { it in 0.0..10.0 }
     }

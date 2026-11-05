@@ -27,7 +27,7 @@ import java.io.ByteArrayInputStream
 class DoubanLoginActivity : ComponentActivity() {
     private var web: WebView? = null
     private lateinit var status: TextView
-    private val service by lazy { DoubanAccountService.get(this) }
+    private val service by lazy { dev.cinematv.data.douban.DoubanAccounts.get(this) }
     private var saving = false
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -75,7 +75,7 @@ class DoubanLoginActivity : ComponentActivity() {
                         return if(u.scheme == "https" && (host == "douban.com" || host.endsWith(".douban.com") || host.endsWith(".doubanio.com"))) null else blocked()
                     }
                     override fun onPageFinished(view: WebView?, url: String?) {
-                        if(Uri.parse(url).host == "sec.douban.com") status.text = "豆瓣要求官方安全验证，请自行完成；程序不会自动重试或绕过。"
+                        if(url?.let { Uri.parse(it).host } == "sec.douban.com") status.text = "豆瓣要求官方安全验证，请自行完成；程序不会自动重试或绕过。"
                     }
                 }
                 root.addView(this, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))

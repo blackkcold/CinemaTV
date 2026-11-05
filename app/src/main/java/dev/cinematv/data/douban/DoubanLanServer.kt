@@ -7,12 +7,13 @@ import java.security.MessageDigest
 import java.security.SecureRandom
 
 /** Temporary LAN control plane. Never receives or returns passwords, cookies, account IDs or lists. */
-class DoubanLanServer private constructor(private val ip: String, private val openLogin: () -> Unit) : NanoHTTPD(ip, 0) {
+class DoubanLanServer internal constructor(private val ip: String, private val openLogin: () -> Unit, private val now: () -> Long = System::currentTimeMillis) : NanoHTTPD(ip, 0) {
     private val token = ByteArray(24).also { SecureRandom().nextBytes(it) }.joinToString("") { "%02x".format(it) }
-    private val expires = System.currentTimeMillis() + 10 * 60_000
+    private val expires = now() + 10 * 60_000
+    private val loginRequested = java.util.concurrent.atomic.AtomicBoolean(false)
     val url: String get() = "http://$ip:$listeningPort/$token/"
     override fun serve(session: IHTTPSession): Response {
-        if(System.currentTimeMillis() >= expires) return reply(Response.Status.GONE, "会话已过期，请在电视上重新打开。")
+        if(now() >= expires) return reply(Response.Status.GONE, "会话已过期，请在电视上重新打开。")
         val expectedHost = "$ip:$listeningPort"
         if(session.headers["host"] != expectedHost) return reply(Response.Status.FORBIDDEN, "Forbidden")
         val prefix = "/$token/"
@@ -21,6 +22,7 @@ class DoubanLanServer private constructor(private val ip: String, private val op
         if(session.method == Method.POST && session.uri == "${prefix}login") {
             if(session.headers["origin"] != "http://$expectedHost" || !MessageDigest.isEqual(session.headers["x-cinematv-token"].orEmpty().toByteArray(), token.toByteArray())) return reply(Response.Status.FORBIDDEN, "Forbidden")
             if(session.headers["content-length"]?.toLongOrNull()?.let { it > 0 } == true) return reply(Response.Status.BAD_REQUEST, "No body allowed")
+            if(!loginRequested.compareAndSet(false, true)) return reply(Response.Status.CONFLICT, "电视已收到请求。需要再次打开时，请在电视重新生成设置入口。")
             openLogin()
             return reply(Response.Status.OK, "已请求电视打开官方登录，请在电视上确认。")
         }

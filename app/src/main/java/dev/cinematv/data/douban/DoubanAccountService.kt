@@ -1,6 +1,5 @@
 package dev.cinematv.data.douban
 
-import android.content.Context
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
@@ -30,6 +29,7 @@ class DoubanAccountService internal constructor(private val vault: DoubanStorage
     private val cursors = mutableMapOf<DoubanShelf, Int>()
     private val staged = linkedMapOf<String, DoubanEntry>()
     private val done = mutableSetOf<DoubanShelf>()
+    private val totals = mutableMapOf<DoubanShelf, Int>()
     suspend fun initialize() = withContext(Dispatchers.IO) { lock.withLock {
         if (initialized) return@withLock
         initialized = true
@@ -47,6 +47,7 @@ class DoubanAccountService internal constructor(private val vault: DoubanStorage
     } }
     /** Called only by explicit on-device confirmation after the user finishes official login. */
     suspend fun acceptLocalSession(localCookie: String) = withContext(Dispatchers.IO) { lock.withLock {
+        val previousState = mutable.value
         mutable.value = mutable.value.copy(phase = DoubanPhase.VERIFYING, message = "正在验证本机登录")
         try {
             require(localCookie.isNotBlank()) { "Missing local login" }
@@ -58,29 +59,38 @@ class DoubanAccountService internal constructor(private val vault: DoubanStorage
                 if(cookie.isNotBlank()) persist()
             })
             currentCoroutineContext().ensureActive()
-            gate.userReauthenticated(); cookie = localCookie; savedAt = now(); cursors.clear(); staged.clear(); done.clear()
+            gate.userReauthenticated(); cookie = localCookie; savedAt = now(); cursors.clear(); staged.clear(); done.clear(); totals.clear()
             val old = mutable.value.snapshot?.takeIf { it.owner.id == owner.id }
             mutable.value = DoubanAccountState(DoubanPhase.CONNECTED, owner, old, "登录成功 · 会话已加密保存在这台设备")
             persist()
-        } catch (e: CancellationException) { throw e } catch (e: Exception) { failed(e) }
+        } catch (e: CancellationException) { mutable.value = previousState.copy(message = "验证已取消，原连接状态保留"); throw e } catch (e: Exception) { failed(e) }
     } }
     suspend fun sync(continuePartial: Boolean = false) = withContext(Dispatchers.IO) {
         if (!syncRunning.compareAndSet(false, true)) return@withContext
         try { lock.withLock {
         val owner = mutable.value.owner ?: return@withLock
         if (cookie.isBlank() || (savedAt <= 0 || savedAt > now() || now() - savedAt > 7 * 24 * 60 * 60_000L)) { mutable.value = mutable.value.copy(phase = DoubanPhase.NEEDS_LOGIN, message = "请重新扫码"); return@withLock }
-        if (!continuePartial || staged.isEmpty()) { cursors.clear(); staged.clear(); done.clear() }
+        if (!continuePartial || staged.isEmpty()) { cursors.clear(); staged.clear(); done.clear(); totals.clear() }
         mutable.value = mutable.value.copy(phase = DoubanPhase.SYNCING, message = "正在按 4 秒以上间隔读取个人片单")
         var pages = 0
+        val previousScores = mutable.value.snapshot?.entries.orEmpty().filter { it.communityScoreCheckedAt > 0 && now() - it.communityScoreCheckedAt in 0..86_400_000L }.associateBy { it.subjectId }
         try {
             for (shelf in DoubanShelf.entries.filter { it !in done }) {
                 var start = cursors[shelf] ?: 0
                 while (pages < 20) {
                     val page = DoubanHtmlParser.collection(transport.get("/people/${owner.id}/${shelf.path}?start=$start&sort=time&rating=all&filter=all&mode=grid", cookie) { awaitGate(); persist() }, owner.id, shelf, start)
                     currentCoroutineContext().ensureActive(); pages++
-                    page.entries.forEach { staged["${it.shelf}:${it.subjectId}"] = it }
+                    val total = requireNotNull(page.total)
+                    require(totals[shelf] == null || totals[shelf] == total) { "Collection changed during pagination" }
+                    totals[shelf] = total
+                    page.entries.forEach { entry ->
+                        val key = "${entry.shelf}:${entry.subjectId}"
+                        require(key !in staged) { "Repeated subject across pages" }
+                        val score = previousScores[entry.subjectId]
+                        staged[key] = entry.copy(communityScore = score?.communityScore, communityScoreCheckedAt = score?.communityScoreCheckedAt ?: 0)
+                    }
                     mutable.value = mutable.value.copy(message = "${shelf.label} · 已读 ${staged.size} 条 · 本轮 $pages 页")
-                    if(page.nextStart == null) { done += shelf; cursors.remove(shelf); break }
+                    if(page.nextStart == null) { require(staged.values.count { it.shelf == shelf } == total); done += shelf; cursors.remove(shelf); break }
                     start = page.nextStart; cursors[shelf] = start
                 }
                 if(pages >= 20) break
@@ -101,17 +111,18 @@ class DoubanAccountService internal constructor(private val vault: DoubanStorage
             if(cookie.isBlank() || savedAt <= 0 || savedAt > now() || now() - savedAt > 7 * 24 * 60 * 60_000L) {
                 mutable.value = mutable.value.copy(phase = DoubanPhase.NEEDS_LOGIN, message = "请重新扫码"); return@withLock
             }
-            val subjects = snapshot.entries.filter { it.communityScore == null }.map { it.subjectId }.distinct().take(10)
+            val subjects = snapshot.entries.filter { it.communityScoreCheckedAt == 0L || now() - it.communityScoreCheckedAt > 86_400_000L }.map { it.subjectId }.distinct().take(10)
             mutable.value = mutable.value.copy(phase = DoubanPhase.SYNCING, message = "按间隔读取最多 10 部作品的豆瓣社区评分")
             val scores = mutableMapOf<String, Double?>()
             try {
                 subjects.forEach { id ->
                     val html = transport.get("/subject/$id/", cookie) { awaitGate(); persist() }
                     currentCoroutineContext().ensureActive()
-                    scores[id] = DoubanHtmlParser.communityScore(html)
+                    scores[id] = DoubanHtmlParser.communityScore(html, id)
                     mutable.value = mutable.value.copy(message = "已检查 ${scores.size} / ${subjects.size} 部作品的社区评分")
                 }
-                val next = snapshot.copy(entries = snapshot.entries.map { item -> if(item.subjectId in scores) item.copy(communityScore = scores[item.subjectId]) else item })
+                val next = snapshot.copy(entries = snapshot.entries.map { item -> if(item.subjectId in scores) item.copy(communityScore = scores[item.subjectId], communityScoreCheckedAt = now()) else item })
+                next.entries.forEach { entry -> val key = "${entry.shelf}:${entry.subjectId}"; if(key in staged) staged[key] = entry }
                 mutable.value = mutable.value.copy(phase = DoubanPhase.CONNECTED, snapshot = next, message = "已检查 ${scores.size} 部作品的社区评分；无评分仍保持未知")
                 persist()
             } catch(e: CancellationException) { mutable.value = mutable.value.copy(phase = DoubanPhase.CONNECTED, message = "评分读取已取消，保留上次数据"); throw e }
@@ -119,7 +130,7 @@ class DoubanAccountService internal constructor(private val vault: DoubanStorage
         } } finally { syncRunning.set(false) }
     }
     suspend fun disconnect() = withContext(Dispatchers.IO) { lock.withLock {
-        cookie = ""; savedAt = 0; cursors.clear(); staged.clear(); done.clear(); vault.clear(); mutable.value = DoubanAccountState(); initialized = true
+        cookie = ""; savedAt = 0; cursors.clear(); staged.clear(); done.clear(); totals.clear(); vault.clear(); mutable.value = DoubanAccountState(); initialized = true
     } }
     private suspend fun awaitGate() {
         gate.stopped?.let { gate.requireAllowed() }
@@ -143,10 +154,6 @@ class DoubanAccountService internal constructor(private val vault: DoubanStorage
             .put("completed", JSONArray(snapshot?.completedShelves?.map { it.name }.orEmpty()))
             .put("entries", JSONArray(snapshot?.entries.orEmpty().map(::encode))))
     }
-    private fun encode(it: DoubanEntry) = JSONObject().put("id", it.subjectId).put("title", it.title).put("shelf", it.shelf.name).put("stars", it.personalStars).put("date", it.markedDate).put("score", it.communityScore)
-    private fun decode(j: JSONObject) = DoubanEntry(j.getString("id"), j.getString("title"), DoubanShelf.valueOf(j.getString("shelf")), j.optInt("stars").takeIf { it in 1..5 }, j.optString("date"), if(j.isNull("score")) null else j.getDouble("score"))
-    companion object {
-        @Volatile private var instance: DoubanAccountService? = null
-        fun get(context: Context): DoubanAccountService = instance ?: synchronized(this) { instance ?: DoubanAccountService(DoubanVault(context.applicationContext)).also { instance = it } }
-    }
+    private fun encode(it: DoubanEntry) = JSONObject().put("id", it.subjectId).put("title", it.title).put("shelf", it.shelf.name).put("stars", it.personalStars).put("date", it.markedDate).put("score", it.communityScore).put("scoreAt", it.communityScoreCheckedAt)
+    private fun decode(j: JSONObject) = DoubanEntry(j.getString("id"), j.getString("title"), DoubanShelf.valueOf(j.getString("shelf")), j.optInt("stars").takeIf { it in 1..5 }, j.optString("date"), if(j.isNull("score")) null else j.getDouble("score"), j.optLong("scoreAt"))
 }

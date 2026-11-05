@@ -39,7 +39,7 @@ fun DoubanAccountEntry(model: CinemaViewModel, tv: Boolean) {
 @Composable
 private fun DoubanAccountPanel(model: CinemaViewModel, tv: Boolean, dismiss: () -> Unit) {
     val context = LocalContext.current
-    val service = remember { DoubanAccountService.get(context) }
+    val service = remember { dev.cinematv.data.douban.DoubanAccounts.get(context) }
     val state by service.state.collectAsState()
     val scope = rememberCoroutineScope()
     var syncJob by remember { mutableStateOf<Job?>(null) }

@@ -94,4 +94,27 @@ class DoubanAccountTest {
         DoubanHtmlParser.collection(collection(total = 20), "test_user", DoubanShelf.WATCHED, 0)
     }
 
+    @Test fun communityScoreRequiresExactSubjectAndRemainsSeparate() {
+        val html = "<meta property='og:url' content='https://movie.douban.com/subject/123/'><div id='content'><h1>作品</h1><strong property='v:average'>8.7</strong></div>"
+        assertEquals(8.7, DoubanHtmlParser.communityScore(html, "123")!!, 0.001)
+        assertThrows(IllegalArgumentException::class.java) { DoubanHtmlParser.communityScore(html, "456") }
+    }
+
+    @Test fun scoreCacheSurvivesPartialListContinuation() = runBlocking {
+        var clock = 1_000L
+        val transport = object : DoubanTransport { override suspend fun get(path: String, cookie: String, beforeRequest: suspend () -> Unit): String {
+            beforeRequest()
+            if(path == "/mine/") return identity
+            if(path.startsWith("/subject/")) return "<meta property='og:url' content='https://movie.douban.com$path'><div id='content'><h1>作品</h1><strong property='v:average'>8.7</strong></div>"
+            val start = path.substringAfter("start=").substringBefore('&').toInt()
+            val next = if(start < 30) "<div class='paginator'><span class='next'><a href='?start=${start + 1}'>下一页</a></span></div>" else ""
+            return collection((start + 1).toString(), next = next, shelf = DoubanShelf.entries.first { path.contains("/${it.path}?") }, total = 31)
+        } }
+        val service = DoubanAccountService(MemoryStore(), transport, { clock }, { clock += it })
+        service.acceptLocalSession("synthetic"); service.sync(); service.syncScores()
+        assertEquals(10, service.state.value.snapshot!!.entries.count { it.communityScoreCheckedAt > 0 })
+        service.sync(true)
+        assertEquals(8.7, service.state.value.snapshot!!.entries.first { it.subjectId == "1" }.communityScore!!, 0.001)
+    }
+
 }

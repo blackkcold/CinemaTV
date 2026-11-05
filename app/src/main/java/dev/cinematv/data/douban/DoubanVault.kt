@@ -13,11 +13,10 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
 /** App-private, backup-excluded authenticated encryption. No credential-bearing toString/logging. */
-interface DoubanStorage { fun read(): JSONObject?; fun write(value: JSONObject); fun clear() }
-
-class DoubanVault(context: Context) : DoubanStorage {
-    private val file = AtomicFile(File(context.noBackupFilesDir, "douban-account.v1"))
-    private val alias = "cinematv.douban.session.v1"
+class DoubanVault(context: Context, namespace: String = "douban-account") : DoubanStorage {
+    init { require(namespace.matches(Regex("[a-z0-9-]{1,40}"))) }
+    private val file = AtomicFile(File(context.noBackupFilesDir, "$namespace.v1"))
+    private val alias = "cinematv.$namespace.session.v1"
     private fun key(): SecretKey {
         val ks = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
         (ks.getKey(alias, null) as? SecretKey)?.let { return it }
