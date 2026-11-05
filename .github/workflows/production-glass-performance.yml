@@ -5,6 +5,12 @@ on:
   push:
     branches: [feature/production-glass-perf]
   workflow_dispatch:
+    inputs:
+      profile:
+        description: One native input profile (nine runs total)
+        type: choice
+        default: glass-controls
+        options: [glass-controls, poster-motion]
 permissions:
   contents: read
 concurrency:
@@ -12,7 +18,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   build:
-    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[glass-performance]')
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[glass-performance]') || contains(github.event.head_commit.message, '[poster-performance]')
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
@@ -56,6 +62,8 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
   benchmark:
+    env:
+      BENCHMARK_PROFILE: ${{ inputs.profile || (contains(github.event.head_commit.message, '[poster-performance]') && 'poster-motion' || 'glass-controls') }}
     needs: build
     runs-on: ubuntu-24.04
     timeout-minutes: 25
@@ -80,10 +88,10 @@ jobs:
           disable-animations: false
           emulator-options: '-no-window -no-audio -gpu lavapipe -feature -Vulkan -no-snapshot -no-boot-anim -memory 3072'
           script: |
-            timeout --signal=TERM --kill-after=10s 15m python3 scripts/glass-performance/drive-performance.py --sha "$GITHUB_SHA" --requested-config 'emulator 15004761; API35 default x86_64; requested gpu lavapipe; Vulkan disabled; memory 3072 MB; 1920x1080 density320'
+            timeout --signal=TERM --kill-after=10s 15m python3 scripts/glass-performance/drive-performance.py --profile "$BENCHMARK_PROFILE" --sha "$GITHUB_SHA" --requested-config 'emulator 15004761; API35 default x86_64; requested gpu lavapipe; Vulkan disabled; memory 3072 MB; 1920x1080 density320'
       - name: Analyze native input windows, preserving blocked or incomplete outcomes
         if: always()
-        run: python3 scripts/glass-performance/analyze.py
+        run: python3 scripts/glass-performance/analyze.py --profile "$BENCHMARK_PROFILE"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

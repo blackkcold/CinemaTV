@@ -12,7 +12,7 @@ import subprocess
 import time
 import uuid
 from evidence import APK_NAME, PACKAGE, sha256, verify_build
-from protocol import CYCLE, ORDERS, QUALITY
+from protocol import DEFAULT_PROFILE, PROFILES, ORDERS, QUALITY, cycle_for, validate_profile, poster_origin, poster_step
 
 ACTIVITY = PACKAGE + "/dev.cinematv.GlassBenchmarkActivity"
 TAG = "ProductionGlassBenchmark"
@@ -147,39 +147,47 @@ def key(run_id, index, code, expected_route=None, label="prepare"):
             "hostStartNs": host_start, "native": native}
 
 
-def launch(run_id, tier, build):
+def launch(run_id, tier, build, profile=DEFAULT_PROFILE):
+    cycle_for(profile)
     adb("shell", "am", "force-stop", PACKAGE)
     assert "Success" in adb("shell", "pm", "clear", PACKAGE), "Cannot reset isolated benchmark data"
     adb("logcat", "-c")
     adb("shell", "am", "start", "-W", "-n", ACTIVITY,
-        "--es", "benchmark_id", run_id, "--es", "quality", QUALITY[tier],
+        "--es", "benchmark_profile", profile, "--es", "benchmark_id", run_id, "--es", "quality", QUALITY[tier],
         "--es", "source_sha", build["sourceSha"], "--es", "apk_sha", build["apkSha256"])
     wait_ready(run_id)
     return foreground()
 
 
-def warmup(run_id, pid):
+def warmup(run_id, pid, profile=DEFAULT_PROFILE):
+    cycle = cycle_for(profile)
     steps = []
     # Native Up/Down exits touch mode and returns to Home's real default control.
     for index, code in enumerate((19, 20)):
         steps.append(key(run_id, index, code, "HOME"))
-    for offset, (code, route, label) in enumerate(CYCLE, start=2):
+        validate_profile(steps[-1]["native"]["after"], profile)
+    catalog = poster_origin(steps[-1]["native"]["after"]) if profile == "poster-motion" else None
+    for offset, (code, route, label) in enumerate(cycle, start=2):
         steps.append(key(run_id, offset, code, route, "warmup-" + label))
+        validate_profile(steps[-1]["native"]["after"], profile)
+        if catalog is not None:
+            poster_step(steps[-1]["native"]["after"], offset - 2, catalog)
     assert foreground() == pid, "App process changed during warmup"
     return steps
 
 
-def run_one(out, run_id, tier, build):
+def run_one(out, run_id, tier, build, profile=DEFAULT_PROFILE):
+    cycle = cycle_for(profile)
     directory = out / run_id
     directory.mkdir(parents=True, exist_ok=True)
     CONTROL_TRACE.clear()
-    result = {"runId": run_id, "tier": tier, "sourceSha": build["sourceSha"],
+    result = {"profile": profile, "runId": run_id, "tier": tier, "sourceSha": build["sourceSha"],
               "apkSha256": build["apkSha256"], "screenrecordConcurrent": False, "result": "blocked"}
     steps = []
     started = False
     stopped = False
     try:
-        pid = launch(run_id, tier, build)
+        pid = launch(run_id, tier, build, profile)
         gfx = adb("shell", "dumpsys", "gfxinfo", PACKAGE)
         (directory / "gfxinfo-before.txt").write_text(gfx)
         pipeline = [line.strip() for line in gfx.splitlines() if "Pipeline=" in line or "Pipeline:" in line]
@@ -188,18 +196,24 @@ def run_one(out, run_id, tier, build):
         # Keep the first ready receipt even if policy denies the desired tier.
         initial = status(run_id)
         (directory / "initial-status.json").write_text(json.dumps(initial, indent=2))
+        validate_profile(initial, profile)
         validate_tier(initial, tier)
-        steps = warmup(run_id, pid)
+        steps = warmup(run_id, pid, profile)
         start = status(run_id)
+        validate_profile(start, profile)
+        catalog = poster_origin(start) if profile == "poster-motion" else None
         validate_tier(start, tier)
         time.sleep(1)  # No startup/warmup animations in the measured phase.
         control("benchmark_start")
         wait_text("started " + run_id)
         started = True
-        for index, (code, route, label) in enumerate(CYCLE * 2, start=len(steps)):
+        for index, (code, route, label) in enumerate(cycle * 2, start=len(steps)):
             if index % 5 == 0:
                 assert foreground() == pid, "App process changed during measurement"
             steps.append(key(run_id, index, code, route, label))
+            validate_profile(steps[-1]["native"]["after"], profile)
+            if catalog is not None:
+                poster_step(steps[-1]["native"]["after"], index - (2 + len(cycle)), catalog)
         assert foreground() == pid
         time.sleep(.8)  # Last active window and FrameMetrics callbacks fully drain.
         control("benchmark_stop")
@@ -210,9 +224,10 @@ def run_one(out, run_id, tier, build):
         data = json.loads((directory / "frames.json").read_text())
         assert not data["debuggable"] and data["apkSha256"] == build["apkSha256"]
         assert data["sourceSha"] == build["sourceSha"] and not data["screenrecordConcurrent"]
+        validate_profile(data, profile)
         validate_tier(data["end"], tier)
         assert not data["policyViolations"], "Production policy changed during input windows"
-        assert len(data["windows"]) == len(CYCLE) * 2
+        assert len(data["windows"]) == len(cycle) * 2
         result["result"] = "collected"
     except Exception as error:
         result["error"] = f"{type(error).__name__}: {error}"
@@ -293,17 +308,18 @@ def execute(args):
     assert sha256(installed) == build["apkSha256"], "Installed APK is not build-once APK"
     installed.unlink()
     (args.out / "build-receipt.json").write_text(json.dumps(build, indent=2))
-    (args.out / "setup.json").write_text(json.dumps({"sourceSha": args.sha, "status": "ready"}, indent=2))
-    results = collect_runs(args.out, build)
+    (args.out / "setup.json").write_text(json.dumps({"profile": args.profile, "sourceSha": args.sha, "status": "ready"}, indent=2))
+    results = collect_runs(args.out, build, args.profile)
     return len(results) == 9 and all(r["result"] == "collected" for r in results)
 
 
-def collect_runs(out, build):
+def collect_runs(out, build, profile=DEFAULT_PROFILE):
+    cycle_for(profile)
     results = []
     for round_index, order in enumerate(ORDERS, start=1):
         for tier in order:
             run_id = f"r{round_index}-{tier.lower()}"
-            result = run_one(out, run_id, tier, build)
+            result = run_one(out, run_id, tier, build, profile)
             results.append(result)
             (out / "runs.json").write_text(json.dumps(results, indent=2))
             if result.get("failureClass") == "control_infrastructure":
@@ -317,16 +333,17 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--apks", type=Path, default=Path("dist/glass-performance"))
     parser.add_argument("--out", type=Path, default=Path("qa/glass-performance"))
+    parser.add_argument("--profile", choices=PROFILES, default=DEFAULT_PROFILE)
     parser.add_argument("--sha", required=True)
     parser.add_argument("--requested-config", required=True)
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
-    (args.out / "setup.json").write_text(json.dumps({"sourceSha": args.sha, "status": "starting"}, indent=2))
+    (args.out / "setup.json").write_text(json.dumps({"profile": args.profile, "sourceSha": args.sha, "status": "starting"}, indent=2))
     (args.out / "runs.json").write_text("[]\n")
     try:
         return execute(args)
     except Exception as error:
-        blocked = {"sourceSha": args.sha, "status": "blocked", "error": f"{type(error).__name__}: {error}"}
+        blocked = {"profile": args.profile, "sourceSha": args.sha, "status": "blocked", "error": f"{type(error).__name__}: {error}"}
         (args.out / "setup.json").write_text(json.dumps(blocked, indent=2))
         print(json.dumps(blocked), flush=True)
         return False

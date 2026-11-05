@@ -80,6 +80,12 @@ overlays remain a separate verification requirement.
   and source-SHA/viewport/foreground receipts are evidence of the tested main UI,
   not the independent lab. A conservative downgrade is reported, not overridden
   to manufacture Full coverage. Exact run results belong in the delivery report.
+- Deferred page restoration captures route/bookmark ownership at entry, observes
+  navigation focus synchronously, and checks ownership after every suspension and
+  immediately before target/fallback requests. New user navigation/content and
+  cancelled work cannot be overwritten by a stale restoration. Dedicated native
+  regression tests cover interrupted entry frames, lazy preparation/attachment,
+  route changes, missing targets and unchanged normal restoration.
 - Full release still requires the repository's media, D-pad, lifecycle and release
   gates. A targeted glass pass is not complete release acceptance. SwiftShader
   timing is not a physical television GPU or presented-frame guarantee.

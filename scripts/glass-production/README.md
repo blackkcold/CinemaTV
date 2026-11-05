@@ -21,7 +21,12 @@ supplies immersive window chrome and passive observers. It is not in release.
   outgoing Home draws remain in global diagnostics, never mislabelled as Detail.
   Phone catalog navigation is captured for state/input, not claimed glass coverage.
 - `MobileGlassButtonTest` preserves native target/role/disabled behavior.
-  The TV pass on each SDK additionally runs the small `GlassMaterialSmokeTest`.
+  The TV pass on each SDK additionally runs the small `GlassMaterialSmokeTest`,
+  nine `FocusMediaCardMotionTest` cases, and eight `InterruptedFocusRestorationTest`
+  cases. Exact execution is required: 21 tests per TV SDK and three on phone.
+  Interrupted restoration tests pause entry/lazy frame work and inject native
+  D-pad events; newer navigation/content wins, cancellation never falls back,
+  and ordinary saved-target/fallback behavior remains covered.
 - Reduced motion freezes geometry; it never overrides static material or device
   capability. Production startup still waits for a committed lightweight frame,
   window focus, and the following frame. No test forces those gates open.

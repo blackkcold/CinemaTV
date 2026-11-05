@@ -28,9 +28,20 @@ MOTION = [("dev.cinematv.FocusMediaCardMotionTest", method) for method in (
     "productionReducedMotionProviderKeepsApi26SafeAndVisibleFocus",
 )]
 
+FOCUS_RESTORE = [("dev.cinematv.InterruptedFocusRestorationTest", method) for method in (
+    "nativeUpDuringEntryFramesKeepsNavigationAndRightCenterActivatesMovies",
+    "nativeUpDuringLazyPrepareIsObservedBeforeNavigationRecomposition",
+    "interruptedMissingLazyItemMustNotFallBackToHero",
+    "nativeUpBetweenLazyAttachmentFramesKeepsNavigation",
+    "nativeRightWhileLazyPrepareSuspendsPreservesNewContentTarget",
+    "routeChangeDuringPrepareRejectsOldRequestBeforeRecomposition",
+    "uninterruptedLazyRestorationKeepsExactSavedTarget",
+    "missingBookmarkStillUsesNormalEntryFallback",
+)]
+
 
 def expected_for(layout):
-    return [PRODUCTION, BUTTON, BUTTON_EDGE] + ([MATERIAL, *MOTION] if layout == "tv" else [])
+    return [PRODUCTION, BUTTON, BUTTON_EDGE] + ([MATERIAL, *MOTION, *FOCUS_RESTORE] if layout == "tv" else [])
 
 
 ERROR_MARKERS = ("ANR in dev.cinematv", "ANR in com.android", "FATAL EXCEPTION", "Application Not Responding:",

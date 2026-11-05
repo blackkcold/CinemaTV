@@ -54,7 +54,7 @@ emulator. The benchmark does not run on the user's Mac.
   can still allow the remaining tiers to be examined.
 - Every run starts a clean isolated package, loads the synthetic catalog/art/fonts, then
   performs an unmeasured native-input warmup cycle. No startup or shader warmup is timed.
-- 22 real `adb shell input keyevent` presses per measured run, two identical cycles:
+- Default `glass-controls`: 22 real `adb shell input keyevent` presses per measured run, two identical cycles:
   Home hero → navigation Up/Right/Right/Left → activate Movies → Back (navigation retained)
   → Down to hero → hero Right/Left → open detail → Back to hero.
 - KeyDown receives a native monotonic timestamp. A 450 ms active window starts there.
@@ -81,6 +81,61 @@ python3 -m unittest discover -s scripts/glass-performance -p 'test_*.py' -v
 python3 -m py_compile scripts/glass-performance/*.py
 ```
 
+## Selecting one profile
+
+Both driver and analyzer accept `--profile glass-controls|poster-motion`. The default
+is `glass-controls`, preserving its exact 11-key cycle repeated twice (22 measured
+windows, 13 warmup/preparation keys), original route assertions and timing statistics.
+Workflow dispatch exposes the same choice; push-triggered runs remain glass-controls.
+One invocation chooses **one** profile, runs **nine** trials (three interleaved tiers),
+and uses the same build-once APK. It never doubles the default work to 18 trials.
+Use a fresh output directory for each invocation. For example:
+
+```sh
+python3 scripts/glass-performance/drive-performance.py --profile poster-motion \
+  --sha "$GITHUB_SHA" --requested-config "$OBSERVED_CONFIGURATION" --out qa/poster-motion
+python3 scripts/glass-performance/analyze.py --profile poster-motion --directory qa/poster-motion
+```
+
+`poster-motion` begins at native Home hero `hero/primary`. Native Up/Down first exits
+touch mode. One complete unmeasured 12-key cycle then warms the real UI. Measurement
+repeats this exact closed loop twice, for **24 measured windows** (14 warmup/preparation
+keys, measured indices 14–37):
+
+1. Down to `rail:为你精选`, featured index 0.
+2. Right four times: indices 1, 2, 3, 4.
+3. Left twice: indices 3, 2.
+4. Center: real Detail route, selected identity exactly featured[2].
+5. Back: Home, same rail/bookmark at index 2.
+6. Left twice: indices 1, 0.
+7. Up: Home hero `hero/primary` again.
+
+The activity publishes passive `featuredKeys` and `tvShowKeys` (the first five native
+`presentationKey` values each), explicit `movieCount`/`tvShowCount` (24/24), `historyCount`,
+`selectedKey`, and existing route/bookmark state. Limiting key arrays keeps every logcat
+receipt below Android's per-entry payload limit; all five traversed movie identities are
+covered. Assertions use these keys, never baked-in hashes. Clean isolated `pm clear`
+requires 24 movies, 24 shows and no continue history. The reported catalog identities and order must
+remain stable within warmup, both measured cycles and across the nine poster trials.
+The driver and analyzer reject wrong keys, routes, selected identity, bookmarks, origin,
+catalog, warmup or counts. The activity independently refuses poster measurement unless
+its native Home bookmark is hero primary and history is empty. Nothing sets focus,
+scrolls a list, substitutes UI, bypasses policy or changes the production clock.
+
+The expected path is source-derived from `HomeScreen`'s `firstRail`, `ContentRail`'s
+`rail:为你精选` and `presentationKey` targets, and native Detail/Back restoration.
+In particular, Up from the first poster to hero still requires real runtime validation
+on the target Compose/Android configuration. Source and host tests do **not** establish
+that it works on device. A mismatch must produce blocked evidence, not force focus or
+relax the expected path. Android API/Compose differences may therefore block this profile.
+
+All timing remains real `Window.FrameMetrics`: 450 ms windows, at least 700 ms between
+inputs, unchanged production animation clocks, no screenshots or recordings. Profile is
+explicit in launch metadata, every native state, frame export, setup, run results and
+summary. The analyzer's selected profile must match all receipts. Missing profile on old
+reports is rejected; use the original analyzer for those legacy glass-controls artifacts,
+keeping them separate rather than relabeling or mixing them with new evidence.
+
 ## Evidence and interpretation
 
 Artifacts contain the exact APK/build receipt, requested emulator options, actual
@@ -105,3 +160,22 @@ as ANGLE/SwiftShader is reported as observed.
 Never invert `TOTAL_DURATION` to claim FPS. Never use video encoding rate. Never claim
 these cloud software-GPU measurements establish physical TV 60 fps. A blocked or incomplete
 matrix produces a structured incomplete report, not an invented successful tier result.
+
+## Passive focus diagnostics
+
+Each native input includes `focusOwnerBefore`; its after-window status includes
+`focusOwner`. These UI-thread snapshots expose synchronous navigation ownership,
+an acquisition counter, and the latest restoration's route/state/generation and
+monotonic start/request/finish timestamps. They allocate only per input/status,
+not per rendering frame, and never request or redirect focus. An increased
+acquisition proves the navigation received focus since the earlier snapshot; a
+historical bookmark by itself does not. `Pending` starts when `ready` permits
+restoration, so a restore route different from the current route can mean that
+restoration has not begun yet. These diagnostics distinguish a late restore from
+an early input; they are neither frame counts nor an exemption from path gates.
+
+A push to the dedicated performance branch with `[glass-performance]` selects
+only the original glass-controls profile. `[poster-performance]` selects only
+the poster-motion profile. Manual dispatch exposes the same explicit choice.
+Each workflow runs nine trials, never both profiles or an eighteen-trial matrix
+by default. A marker is not permission to change route/timing assertions.

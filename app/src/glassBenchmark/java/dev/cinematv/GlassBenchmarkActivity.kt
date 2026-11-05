@@ -15,7 +15,10 @@ import androidx.activity.viewModels
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.core.view.WindowCompat
+import dev.cinematv.ui.shared.presentationKey
 import dev.cinematv.ui.tv.TvRootApp
+import dev.cinematv.ui.tv.focus.LocalTvFocusOwnerObserver
+import dev.cinematv.ui.tv.focus.TvNavigationFocusOwner
 import dev.cinematv.ui.tv.components.GlassDrawDiagnostics
 import dev.cinematv.ui.tv.components.LocalGlassDrawDiagnostics
 import dev.cinematv.ui.tv.components.LocalProductionGlassObserver
@@ -40,6 +43,7 @@ class GlassBenchmarkActivity : ComponentActivity() {
     private val model: CinemaViewModel by viewModels()
     private val handler = Handler(Looper.getMainLooper())
     private lateinit var fixture: GlassBenchmarkFixtureServer
+    private lateinit var profile: String
     private lateinit var runId: String
     private lateinit var sourceSha: String
     private lateinit var apkSha: String
@@ -47,6 +51,7 @@ class GlassBenchmarkActivity : ComponentActivity() {
     private lateinit var expected: GlassRenderMode
     private var observation: ProductionGlassObservation? = null
     private val draws = GlassDrawDiagnostics()
+    private var focusOwner: TvNavigationFocusOwner? = null
     private var decodedScene: String? = null
     private var fontsReady = false
     private var fontFailures = emptySet<String>()
@@ -66,6 +71,8 @@ class GlassBenchmarkActivity : ComponentActivity() {
         runId = requireNotNull(intent.getStringExtra("benchmark_id")).also { require(it.matches(Regex("[A-Za-z0-9_-]{1,80}"))) }
         sourceSha = requireNotNull(intent.getStringExtra("source_sha")).also { require(it.matches(Regex("[0-9a-f]{40}"))) }
         apkSha = requireNotNull(intent.getStringExtra("apk_sha")).also { require(it.matches(Regex("[0-9a-f]{64}"))) }
+        profile = requireNotNull(intent.getStringExtra("benchmark_profile"))
+        require(profile in setOf("glass-controls", "poster-motion"))
         requested = GlassQuality.valueOf(requireNotNull(intent.getStringExtra("quality")))
         expected = when (requested) {
             GlassQuality.ENHANCED -> GlassRenderMode.FULL
@@ -95,6 +102,7 @@ class GlassBenchmarkActivity : ComponentActivity() {
                 }
                 CompositionLocalProvider(
                     LocalGlassDrawDiagnostics provides draws,
+                    LocalTvFocusOwnerObserver provides { focusOwner = it },
                     LocalProductionGlassObserver provides { value ->
                         observation = value
                         if (measuring && (value.actualMode != expected || value.failed || !value.decision.animationsEnabled))
@@ -133,11 +141,28 @@ class GlassBenchmarkActivity : ComponentActivity() {
             value.decision.reason != GlassDecisionReason.WAITING_FOR_WINDOW &&
             decodedScene == art && art?.startsWith("android.resource://$packageName/") == true
     }
+    private fun focusJson(): JSONObject {
+        val value = focusOwner?.snapshot() ?: return JSONObject().put("observed", false)
+        return JSONObject().put("observed", true).put("navigationHasFocus", value.navigationHasFocus)
+            .put("navigationAcquisition", value.navigationAcquisition)
+            .put("restoreRoute", value.restoreRoute ?: JSONObject.NULL).put("restoreState", value.restoreState)
+            .put("restoreGeneration", value.restoreGeneration)
+            .put("restoreStartedAtNanos", value.restoreStartedAtNanos ?: JSONObject.NULL)
+            .put("restoreRequestedAtNanos", value.restoreRequestedAtNanos ?: JSONObject.NULL)
+            .put("restoreFinishedAtNanos", value.restoreFinishedAtNanos ?: JSONObject.NULL)
+    }
     private fun status(): JSONObject {
         val value = observation
         val bookmark = model.focusCoordinator.last(model.focusRoute)
-        return JSONObject().put("runId", runId).put("ready", ready()).put("route", model.page.name)
+        // Keep native logcat receipts below the per-entry payload limit. These are
+        // the five actual identities traversed by poster-motion, not synthetic keys.
+        return JSONObject().put("runId", runId).put("profile", profile).put("ready", ready()).put("route", model.page.name)
+            .put("movieCount", model.featured.size).put("tvShowCount", model.tvShows.size)
+            .put("featuredKeys", JSONArray(model.featured.take(5).map { it.presentationKey }))
+            .put("tvShowKeys", JSONArray(model.tvShows.take(5).map { it.presentationKey }))
+            .put("historyCount", model.history().size).put("selectedKey", model.selected?.presentationKey ?: "")
             .put("bookmarkRegion", bookmark?.region ?: "").put("bookmarkItem", bookmark?.itemKey ?: "")
+            .put("focusOwner", focusJson())
             .put("requested", requested.name).put("expectedMode", expected.name)
             .put("actualMode", value?.actualMode?.name ?: "PENDING")
             .put("reason", value?.decision?.reason?.name ?: "PENDING").put("failed", value?.failed ?: false)
@@ -172,7 +197,9 @@ class GlassBenchmarkActivity : ComponentActivity() {
                 GlassRenderMode.BLUR -> draws.blurDraws
                 GlassRenderMode.BASIC -> draws.basicDraws
             }
-            if (!ready() || model.page != Page.HOME || observation?.actualMode != expected || observation?.failed != false ||
+            val posterOrigin = profile != "poster-motion" ||
+                (startStatus.optString("bookmarkRegion") == "hero" && startStatus.optString("bookmarkItem") == "primary" && model.history().isEmpty())
+            if (!posterOrigin || !ready() || model.page != Page.HOME || observation?.actualMode != expected || observation?.failed != false ||
                 observation?.decision?.animationsEnabled != true || expectedDraws == 0) {
                 Log.i(TAG, "blocked $startStatus")
                 return
@@ -185,7 +212,7 @@ class GlassBenchmarkActivity : ComponentActivity() {
         if (intent.getBooleanExtra("benchmark_stop", false)) {
             measuring = false
             recorder?.finish(runId, JSONObject().put("sourceSha", sourceSha).put("apkSha256", apkSha)
-                .put("package", packageName).put("requested", requested.name).put("expectedMode", expected.name)
+                .put("profile", profile).put("package", packageName).put("requested", requested.name).put("expectedMode", expected.name)
                 .put("root", "TvRootApp").put("viewModel", "CinemaViewModel").put("provider", "ProductionGlassProvider")
                 .put("screenrecordConcurrent", false).put("start", startStatus).put("end", status())
                 .put("inputs", inputs).put("policyViolations", JSONArray(violations.toList())))
@@ -199,6 +226,7 @@ class GlassBenchmarkActivity : ComponentActivity() {
             val input = JSONObject().put("index", inputIndex++).put("key", event.keyCode)
                 .put("deviceId", event.deviceId).put("source", event.source).put("routeBefore", model.page.name)
                 .put("measured", measuring).put("receivedNs", start).put("drawsBefore", drawJson())
+                .put("focusOwnerBefore", focusJson())
             recorder?.mark(input, start)
             // Passive diagnostics are taken after the 450 ms active window, not in a frame callback.
             handler.postDelayed({
