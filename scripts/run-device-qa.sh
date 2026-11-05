@@ -55,6 +55,9 @@ finish() {
     qa_adb shell dumpsys activity top > qa/activity.txt || true
     qa_adb shell dumpsys window windows > qa/windows.txt || true
   fi
+  if [ -n "${CINEMA_OFFICIAL_CREDENTIAL_FILE:-}" ]; then
+    qa_adb shell run-as dev.cinematv rm -f files/official-acceptance.json >/dev/null 2>&1 || true
+  fi
   qa_adb logcat -d -s AndroidRuntime:E > qa/android-crash.log || true
   printf 'device-total\t%s\t%s\n' "$status" "$((SECONDS - QA_STARTED))" >> qa/stages.tsv
   exit "$status"
@@ -142,11 +145,27 @@ while True:
 PY
 QA_HEARTBEAT_PID=$!
 
+# UTP may reinstall apps. Run official acceptance separately only after UTP finishes,
+# then transfer the disposable credential into the already-installed app via stdin.
+CINEMA_CLASSES=$3
+CINEMA_OFFICIAL_CLASS=dev.cinematv.OfficialLibreTvPlaybackAcceptanceTest
+if [[ "$3" == *OfficialLibreTvPlaybackAcceptanceTest* ]]; then
+  [ -n "${CINEMA_OFFICIAL_CREDENTIAL_FILE:-}" ] && [ -f "$CINEMA_OFFICIAL_CREDENTIAL_FILE" ] || {
+    echo 'Official acceptance requires the isolated lifecycle wrapper' >&2; exit 2;
+  }
+  CINEMA_CLASSES=$(printf '%s' "$3" | tr ',' '\n' | grep -Fxv "$CINEMA_OFFICIAL_CLASS" | paste -sd, -)
+  [ -n "$CINEMA_CLASSES" ] || { echo 'Normal UTP suite must install APKs before official acceptance' >&2; exit 2; }
+fi
+
 CINEMA_TEST_STATUS=0
 run_stage instrumentation timeout --signal=TERM --kill-after=30s 12m \
   gradle --no-daemon --max-workers=2 '-Dorg.gradle.jvmargs=-Xmx1024m -Dfile.encoding=UTF-8' \
   -Pkotlin.compiler.execution.strategy=in-process :app:connectedDebugAndroidTest \
-  "-Pandroid.testInstrumentationRunnerArguments.class=$3" || CINEMA_TEST_STATUS=$?
+  "-Pandroid.testInstrumentationRunnerArguments.class=$CINEMA_CLASSES" || CINEMA_TEST_STATUS=$?
+if [ "$CINEMA_TEST_STATUS" -eq 0 ] && [[ "$3" == *OfficialLibreTvPlaybackAcceptanceTest* ]]; then
+  run_stage official-instrumentation timeout --signal=TERM --kill-after=10s 9m \
+    python3 scripts/libretv-contracts/run_android_test.py || CINEMA_TEST_STATUS=$?
+fi
 CINEMA_EXPORT_STATUS=0
 run_stage evidence-export timeout --kill-after=5s 30s python3 scripts/merge-ui-evidence.py \
   --source app/build/outputs/connected_android_test_additional_output \

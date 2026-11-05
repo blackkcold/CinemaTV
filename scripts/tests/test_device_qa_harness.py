@@ -54,9 +54,9 @@ class DeviceMatrixTest(unittest.TestCase):
     def test_default_retains_all_acceptance_targets_and_classes(self):
         self.assertEqual(matrix.select("all"), {"include": [
             {"name": "phone", "target": "google_apis", "api": 30, "size": "1080x1920", "density": 420,
-             "classes": "dev.cinematv.MobileNavigationSmokeTest,dev.cinematv.TvLaunchSmokeTest,dev.cinematv.MobilePlaybackSmokeTest,dev.cinematv.data.LocalMediaLibraryTest,dev.cinematv.data.LocalWorkAssociationPersistenceTest,dev.cinematv.data.RepositoryContractTest,dev.cinematv.data.LibreTvProtocolTest,dev.cinematv.MobileWorkNavigationTest,dev.cinematv.MobileManualWorkAssociationTest,dev.cinematv.MobileLibraryCatalogControlsTest,dev.cinematv.MobileGlassButtonTest,dev.cinematv.CinemaBrandStartupTest,dev.cinematv.ui.typography.NotoFontsDeviceTest"},
+             "classes": "dev.cinematv.MobileNavigationSmokeTest,dev.cinematv.OfficialLibreTvPlaybackAcceptanceTest,dev.cinematv.TvLaunchSmokeTest,dev.cinematv.MobilePlaybackSmokeTest,dev.cinematv.data.LocalMediaLibraryTest,dev.cinematv.data.LocalWorkAssociationPersistenceTest,dev.cinematv.data.RepositoryContractTest,dev.cinematv.data.LibreTvProtocolTest,dev.cinematv.MobileWorkNavigationTest,dev.cinematv.MobileManualWorkAssociationTest,dev.cinematv.MobileLibraryCatalogControlsTest,dev.cinematv.MobileGlassButtonTest,dev.cinematv.CinemaBrandStartupTest,dev.cinematv.ui.typography.NotoFontsDeviceTest"},
             {"name": "tv1080", "target": "default", "api": 33, "size": "1920x1080", "density": 320,
-             "classes": "dev.cinematv.TvUiRegressionTest,dev.cinematv.TvWorkNavigationTest,dev.cinematv.TvManualWorkAssociationTest,dev.cinematv.TvLibraryCatalogControlsTest,dev.cinematv.GlassMaterialSmokeTest,dev.cinematv.ui.typography.NotoFontsDeviceTest"},
+             "classes": "dev.cinematv.TvUiRegressionTest,dev.cinematv.OfficialLibreTvPlaybackAcceptanceTest,dev.cinematv.TvWorkNavigationTest,dev.cinematv.TvManualWorkAssociationTest,dev.cinematv.TvLibraryCatalogControlsTest,dev.cinematv.GlassMaterialSmokeTest,dev.cinematv.ui.typography.NotoFontsDeviceTest"},
             {"name": "tv4k", "target": "default", "api": 33, "size": "3840x2160", "density": 640,
              "classes": "dev.cinematv.TvUiRegressionTest,dev.cinematv.TvWorkNavigationTest,dev.cinematv.TvManualWorkAssociationTest,dev.cinematv.TvLibraryCatalogControlsTest,dev.cinematv.GlassMaterialSmokeTest,dev.cinematv.ui.typography.NotoFontsDeviceTest"},
             {"name": "compat26", "target": "google_apis", "api": 26, "size": "1920x1080", "density": 320,
@@ -86,6 +86,11 @@ class DeviceMatrixTest(unittest.TestCase):
             self.assertEqual(phone.count(suite), 1)
         for target in ("tv1080", "tv4k"):
             self.assertEqual(matrix.select(target)["include"][0]["classes"].split(",").count("dev.cinematv.TvManualWorkAssociationTest"), 1)
+
+    def test_official_playback_runs_on_phone_and_one_tv_only(self):
+        targets = [device["name"] for device in matrix.DEVICES
+                   if "dev.cinematv.OfficialLibreTvPlaybackAcceptanceTest" in device["classes"].split(",")]
+        self.assertEqual(targets, ["phone", "tv1080"])
 
     def test_each_target_is_exact_subset(self):
         for target in matrix.DEVICES:
