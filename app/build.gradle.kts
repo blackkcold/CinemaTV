@@ -29,6 +29,16 @@ if (updateChannel == "stable") {
 val updatesEnabled = providers.gradleProperty("cinematvUpdatesEnabled").getOrElse("false").toBooleanStrict()
 // CI prepares public unsigned bytes. Only the authorized external signer may finish them.
 val unsignedCandidate = providers.gradleProperty("cinematvUnsignedCandidate").getOrElse("false").toBooleanStrict()
+// Explicit test-only source selection. Never pull the debug UI hosts into release tests.
+val updateAcceptance = providers.gradleProperty("cinematvUpdateAcceptance").getOrElse("false").toBooleanStrict()
+if (updateAcceptance) {
+    require(unsignedCandidate && updatesEnabled && updateChannel == "dev") {
+        "Update acceptance requires an unsigned, update-enabled dev release candidate"
+    }
+    require(providers.gradleProperty("cinematvVersionCode").orNull == "100") {
+        "Update acceptance must target the disposable version-100 base fixture"
+    }
+}
 val externalSigningNames = listOf("CINEMATV_KEYSTORE_PATH", "CINEMATV_KEYSTORE_PASSWORD", "CINEMATV_KEY_ALIAS", "CINEMATV_KEY_PASSWORD")
 require(System.getenv("GITHUB_ACTIONS") != "true" || externalSigningNames.none { !System.getenv(it).isNullOrBlank() }) {
     "Private production signing credentials must never be configured in GitHub Actions"
@@ -49,6 +59,7 @@ if (updatesEnabled) {
 
 android {
     namespace = "dev.cinematv"
+    if (updateAcceptance) testBuildType = "release"
     compileSdk = 36
     defaultConfig {
         applicationId = "dev.cinematv"
@@ -104,7 +115,11 @@ android {
     // Keep fonts mmap-eligible; avoid inflating a ~19 MB collection for asset buffer access.
     androidResources { noCompress += listOf("ttc", "ttf") }
     sourceSets["main"].assets.srcDir(layout.buildDirectory.dir("generated/notoAssets"))
-    sourceSets["androidTest"].assets.srcDir("$projectDir/schemas")
+    if (updateAcceptance) {
+        sourceSets["androidTest"].setRoot("src/updateAcceptance")
+    } else {
+        sourceSets["androidTest"].assets.srcDir("$projectDir/schemas")
+    }
     sourceSets["glassBenchmark"].res.srcDir("src/debug/res")
     packaging { resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" } }
 }
@@ -152,6 +167,7 @@ dependencies {
     testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:runner:1.6.2")
+    if (updateAcceptance) androidTestImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-test-manifest")

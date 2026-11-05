@@ -192,3 +192,61 @@ Machine-readable public metadata is in `release/signing-identity.json`. The priv
 key remains outside GitHub; this file contains no private key or password.
 Creation and encrypted backup verification do not certify an APK. No previously
 distributed debug build is claimed to share this signing identity.
+
+
+## Real updater instrumentation (TEST ONLY)
+
+The `repository-acceptance` API26/API35 jobs execute the real `UpdateRepository`
+against disposable, non-debug release fixtures. This is separate from adb installer
+upgrade probes and does not publish any feed or production-signed APK.
+
+- `-PcinematvUpdateAcceptance=true` selects `testBuildType=release` and the isolated
+  `app/src/updateAcceptance` instrumentation source set. It requires explicit
+  unsigned-candidate mode, updates enabled, dev channel and version code 100.
+  Ordinary debug UI tests and their hosts are not part of this suite. APK dex
+  inspection also checks that test classes do not ship in the release target.
+- `build-installer-fixtures.sh` builds the existing dev100/stable101/dev102 fixtures
+  with updates enabled, signs target/test APKs outside Gradle with disposable
+  TEST ONLY certificates, and creates public signed envelopes through the separate
+  `TestOnlySignUpdateManifest` helper. The production signing helper remains
+  forbidden on GitHub. Keys stay outside checkout/artifact directories and are
+  deleted by an EXIT trap; artifacts contain only public APKs, receipts and signatures.
+- The instrumentation runner streams public fixtures from a host loopback HTTP
+  server through adb reverse into private test cache. There is no external-storage
+  permission, exported provider, run-as requirement, bundled duplicate APK asset,
+  production endpoint override or trust-anchor bypass. An internal client seam
+  rewrites validated official HTTPS requests to MockWebServer only in test code.
+- The suite covers valid check/download/recheck for both channels, tampered,
+  wrong-key and expired envelopes without watermark advancement, invalid signed
+  package/channel/version/minSdk/URLs, stale manifests, SHA-256 and length failures,
+  real archive package/channel/version/minSdk/signer mismatch, cancellation cleanup,
+  private-path confinement, post-download tampering and untrusted redirects.
+  The archive minSdk negative is a tiny non-debug fixture declaring 25 with a signed
+  envelope claiming 26, so both API26 and API35 exercise identity rejection without
+  an OS-incompatibility parse failure or an assumption skip. All 18 cases run on both.
+
+Run on a clean checkout with Java17, Gradle8.13 and Android platform/build-tools36:
+
+```sh
+# Generates only disposable TEST ONLY keys; RUNNER_TEMP must be outside the checkout.
+export RUNNER_TEMP="$(mktemp -d)"
+bash scripts/updates/build-installer-fixtures.sh
+# Fresh isolated API26 or API35 emulator, with adb connected and no existing target/test package:
+bash scripts/updates/test-update-repository.sh "$RUNNER_TEMP/update-fixtures" repository-evidence
+```
+
+The fixture builder uses this base build invocation before external test-only signing:
+
+```sh
+gradle --no-daemon --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process \
+  -PcinematvChannel=dev -PcinematvVersionCode=100 \
+  -PcinematvVersionName=0.0.0-base.TEST-ONLY \
+  -PcinematvUnsignedCandidate=true -PcinematvUpdatesEnabled=true \
+  -PcinematvUpdateAcceptance=true :app:assembleRelease :app:assembleReleaseAndroidTest
+```
+
+Passing this test establishes only the test-certificate repository pipeline. It does
+not exercise the Android installer confirmation UI, real application Room migrations,
+physical TV behavior, or final production-certificate signed-feed/APK acceptance.
+Those remain required before active feed publication. Local source checks alone do
+not establish that these instrumentation jobs compiled or passed.

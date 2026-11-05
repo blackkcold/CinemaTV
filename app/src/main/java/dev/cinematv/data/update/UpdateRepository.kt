@@ -23,10 +23,13 @@ import java.util.concurrent.TimeUnit
 import kotlin.coroutines.coroutineContext
 
 /** Isolated from media clients: no source cookies, tokens, interceptors or public-storage downloads. */
-class UpdateRepository(private val context: Context) {
-    private val client = OkHttpClient.Builder().followRedirects(false).followSslRedirects(false)
+class UpdateRepository internal constructor(private val context: Context, private val client: OkHttpClient) {
+    // Only the internal instrumentation seam accepts a client. All application callers use this
+    // isolated, strict transport; no endpoint, trust-anchor or verification switches are exposed.
+    constructor(context: Context) : this(context, OkHttpClient.Builder()
+        .followRedirects(false).followSslRedirects(false)
         .connectTimeout(15, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS)
-        .callTimeout(120, TimeUnit.SECONDS).build()
+        .callTimeout(120, TimeUnit.SECONDS).build())
     private val preferences = context.getSharedPreferences("cinematv_updates", Context.MODE_PRIVATE)
     val selectedChannel: UpdateChannel get() = runCatching {
         UpdateChannel.parse(preferences.getString("channel", BuildConfig.UPDATE_CHANNEL)!!)
@@ -58,10 +61,14 @@ class UpdateRepository(private val context: Context) {
         }
         val release = UpdateManifest.decode(envelope, publicKey)
         validate(release, channel)
-        val highest = preferences.getLong("highest_${channel.id}", 0)
-        require(release.versionCode >= highest) { "已拒绝过时的更新清单" }
-        check(preferences.edit().putLong("highest_${channel.id}", release.versionCode).commit()) {
-            "无法保存更新校验状态，请稍后重试"
+        // All repository instances share this process-local preferences object. Keep
+        // compare-and-persist atomic so two settings instances cannot lower the watermark.
+        synchronized(preferences) {
+            val highest = preferences.getLong("highest_${channel.id}", 0)
+            require(release.versionCode >= highest) { "已拒绝过时的更新清单" }
+            check(preferences.edit().putLong("highest_${channel.id}", release.versionCode).commit()) {
+                "无法保存更新校验状态，请稍后重试"
+            }
         }
         release
     }

@@ -4,11 +4,13 @@ on:
     paths:
       - 'app/src/**/update/**'
       - 'app/src/androidTest/**/UpdateSettingsUiTest.kt'
+      - 'app/src/updateAcceptance/**'
       - 'app/src/main/AndroidManifest.xml'
       - 'app/build.gradle.kts'
       - 'app/src/main/res/**'
       - 'scripts/updates/**'
       - 'scripts/tests/test_update_channels.py'
+      - 'scripts/tests/test_update_pipeline.py'
       - '.github/workflows/update-channels.yml'
       - '.github/workflows/release.yml'
   workflow_dispatch:
@@ -141,7 +143,7 @@ jobs:
 
   installer-fixtures:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
@@ -161,7 +163,7 @@ jobs:
         with:
           path: .cache/cinematv-noto-fonts
           key: noto-fonts-v2-${{ hashFiles('scripts/fonts/noto-fonts.lock.json') }}
-      - name: Build disposable release-signed installer fixtures
+      - name: Build disposable release-signed installer and repository fixtures
         run: bash scripts/updates/build-installer-fixtures.sh
       - uses: actions/upload-artifact@v4
         with:
@@ -203,6 +205,42 @@ jobs:
         with:
           name: update-installer-api-${{ matrix.api }}
           path: installer-evidence/
+          if-no-files-found: error
+
+  repository-acceptance:
+    needs: installer-fixtures
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [26, 35]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: TEST-ONLY-update-installer-fixtures
+          path: fixtures
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -memory 2048
+          script: bash scripts/updates/test-update-repository.sh fixtures repository-evidence
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: update-repository-api-${{ matrix.api }}
+          path: repository-evidence/
           if-no-files-found: error
 
   unsigned-stable-candidate:
