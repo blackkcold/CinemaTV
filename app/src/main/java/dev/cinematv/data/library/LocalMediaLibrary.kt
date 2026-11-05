@@ -103,6 +103,38 @@ class LocalMediaLibrary(
         ))
     }
 
+    /** Explicit personal import. Exact Douban IDs only; recheck conflicts in the database transaction. */
+    suspend fun importDouban(entries: List<dev.cinematv.data.douban.DoubanEntry>): Pair<Int, Int> {
+        var added = 0
+        var conflicts = 0
+        mutate {
+            val known = dao.sources().map { MediaItemCodec.decode(it.itemJson) }
+            entries.groupBy { it.subjectId }.forEach { (id, records) ->
+                if (records.map { it.shelf }.distinct().size != 1) { conflicts++; return@forEach }
+                val record = records.first()
+                val target = when (record.shelf) {
+                    dev.cinematv.data.douban.DoubanShelf.WATCHED -> LibraryStatus.WATCHED
+                    dev.cinematv.data.douban.DoubanShelf.WANT -> LibraryStatus.WANT_TO_WATCH
+                    dev.cinematv.data.douban.DoubanShelf.WATCHING -> LibraryStatus.WATCHING
+                }
+                val matches = known.filter { it.metadataIds["douban"] == id }
+                // Preserve all providers and existing progress. Do not fabricate movie/series metadata or scores.
+                val targets = matches.ifEmpty { listOf(MediaItem("douban:$id", record.title,
+                    metadataIds = mapOf("douban" to id), mediaTypeKnown = false)) }
+                targets.forEach { item ->
+                    val current = entryLocked(item)
+                    if (current.status != null && current.status != target.name) conflicts++
+                    else if (current.status == null) {
+                        val saved = currentItemOrBootstrapLocked(item)
+                        dao.upsertEntry(entryLocked(saved).copy(status = target.name, updatedAt = now()))
+                        added++
+                    }
+                }
+            }
+        }
+        return added to conflicts
+    }
+
     /** Favorite is independent of watching/watched status, so toggling it does not erase a status. */
     suspend fun toggleFavorite(item: MediaItem) = mutate {
         require(item.id.isNotBlank()) { "A favorite needs a provider ID" }

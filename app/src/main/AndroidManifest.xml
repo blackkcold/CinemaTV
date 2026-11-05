@@ -16,6 +16,7 @@
     android:theme="@android:style/Theme.Material.NoActionBar"
     android:usesCleartextTraffic="true"
     android:supportsRtl="true">
+    <activity android:name=".ui.douban.DoubanLoginActivity" android:exported="false" android:excludeFromRecents="true"/>
     <activity android:name=".MainActivity" android:exported="true"
       android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|uiMode">
       <intent-filter>
