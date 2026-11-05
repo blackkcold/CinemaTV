@@ -125,9 +125,22 @@ private fun captureDashboard(rule: ComposeContentTestRule, activity: ComponentAc
     tag: String = "recommendation-dashboard") {
     val directory = File(InstrumentationRegistry.getArguments().getString("additionalTestOutputDir")
         ?: activity.getExternalFilesDir(null)!!.absolutePath, "ui-evidence").apply { mkdirs() }
-    // This captures the Compose dialog viewport, not a claim about physical display readback.
-    val bitmap = rule.onNodeWithTag(tag).captureToImage().asAndroidBitmap()
-    File(directory, "recommendation-${if (tv) "tv" else "phone"}-$stage.png").outputStream().use {
+    rule.onNodeWithTag(tag).assertIsDisplayed()
+    rule.waitForIdle()
+    // Compose cannot capture Dialog windows below API 28. Retain every UI assertion
+    // and collect the emulator compositor instead of skipping compatibility evidence.
+    val compositor = android.os.Build.VERSION.SDK_INT < 28
+    val bitmap = if (compositor) {
+        checkNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()) {
+            "API 26 compositor screenshot unavailable"
+        }
+    } else rule.onNodeWithTag(tag).captureToImage().asAndroidBitmap()
+    val name = "recommendation-${if (tv) "tv" else "phone"}-$stage"
+    File(directory, "$name.capture.txt").writeText(
+        if (compositor) "Emulator compositor screenshot; API ${android.os.Build.VERSION.SDK_INT}\n"
+        else "Compose dialog viewport capture; API ${android.os.Build.VERSION.SDK_INT}\n")
+    File(directory, "$name.png").outputStream().use {
         check(bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it))
     }
+    if (compositor) bitmap.recycle()
 }
