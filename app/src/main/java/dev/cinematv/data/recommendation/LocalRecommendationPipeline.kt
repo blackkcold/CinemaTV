@@ -67,6 +67,24 @@ object LocalRecommendationPipeline {
             val bIds = ids(b)
             return namespaces.all { namespace -> aIds[namespace] != null && aIds[namespace] == bIds[namespace] }
         }
+
+        fun group(items: List<MediaItem>, checkCancelled: () -> Unit): List<SearchResultGroup> =
+            SearchAggregator.groupWithAlternatives(items).flatMap { preliminary ->
+                // A conflict may exist only in saved feedback, not in today's catalog. Refine
+                // catalog and evidence groups using the SAME complete identity context.
+                val partitions = mutableListOf<MutableList<MediaItem>>()
+                for (item in preliminary.alternatives) {
+                    checkCancelled()
+                    val existing = partitions.firstOrNull { entries -> entries.all { other ->
+                        checkCancelled(); matches(item, other)
+                    } }
+                    if (existing != null) existing.add(item) else partitions.add(mutableListOf(item))
+                }
+                partitions.map { entries ->
+                    val preferred = entries.firstOrNull { it.poster.isNotBlank() } ?: entries.first()
+                    SearchResultGroup(SearchAggregator.withSourceCount(preferred, entries), entries.toList())
+                }
+            }
     }
 
     private class SignalIndex(signals: List<RecommendationSignal>, private val identity: IdentityContext) {
@@ -90,8 +108,8 @@ object LocalRecommendationPipeline {
     ): LocalRecommendationSnapshot {
         checkCancelled()
         val available = catalog.filter { checkCancelled(); CatalogLicensePolicy.isAvailable(it, nowMs) }
-        val groups = SearchAggregator.groupWithAlternatives(available)
         val identity = IdentityContext(available + signals.map { it.item })
+        val groups = identity.group(available, checkCancelled)
         val negative = signals.filter { it.notInterested || it.status == LibraryStatus.DROPPED }
         val negatives = SignalIndex(negative, identity)
         val rejected = groups.indices.filter { index -> groups[index].alternatives.any { item ->
@@ -102,7 +120,7 @@ object LocalRecommendationPipeline {
             negatives.match(it.item).isEmpty() }
         val positiveByItem = positive.groupBy { it.item }
         // Reuse the catalog's conservative identity grouping, including explicit-ID conflict splits.
-        val seeds = SearchAggregator.groupWithAlternatives(positive.map { it.item }).mapIndexed { index, group ->
+        val seeds = identity.group(positive.map { it.item }, checkCancelled).mapIndexed { index, group ->
             checkCancelled()
             val matching = group.alternatives.flatMap { positiveByItem[it].orEmpty() }.distinct()
             val strongest = matching.maxBy { LocalRecommendationWeights.signal(it) }

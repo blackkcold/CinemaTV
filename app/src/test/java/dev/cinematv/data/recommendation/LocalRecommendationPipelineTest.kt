@@ -73,6 +73,26 @@ class LocalRecommendationPipelineTest {
             listOf(RecommendationSignal(old, notInterested = true))).rows.map { it.item.id })
     }
 
+    @Test fun conflictKnownOnlyInSavedFeedbackSplitsCatalogBeforeApplyingStatus() {
+        val first = film("a").copy(title = "Same title", source = sourceA, metadataIds = mapOf("tmdb" to "1"))
+        val missing = first.copy(id = "b", source = sourceB, metadataIds = emptyMap())
+        val saved = missing.copy(metadataIds = mapOf("tmdb" to "2"))
+        val negative = LocalRecommendationPipeline.rank(listOf(first, missing), listOf(RecommendationSignal(saved, LibraryStatus.DROPPED)))
+        assertEquals(listOf("a"), negative.rows.map { it.item.id })
+        val watched = LocalRecommendationPipeline.rank(listOf(first, missing), listOf(RecommendationSignal(saved, LibraryStatus.WATCHED)))
+        assertEquals(mapOf("a" to 0, "b" to 2), watched.rows.associate { it.item.id to it.trace.seenTier })
+    }
+
+    @Test fun conflictKnownOnlyInCatalogKeepsPositiveEvidenceSeparate() {
+        val first = film("a", "科幻").copy(title = "Same title", source = sourceA, metadataIds = mapOf("tmdb" to "1"))
+        val missing = first.copy(id = "b", source = sourceB, category = "喜剧", metadataIds = emptyMap())
+        val known = missing.copy(metadataIds = mapOf("tmdb" to "2"))
+        val result = LocalRecommendationPipeline.rank(listOf(first, known), listOf(
+            RecommendationSignal(first, favorite = true), RecommendationSignal(missing, LibraryStatus.WANT_TO_WATCH)))
+        assertEquals(2, result.ranking.positiveWorkCount)
+        assertEquals(setOf("genre:科幻", "genre:喜剧"), result.ranking.profile.keys)
+    }
+
     @Test fun expiredMetadataCannotTrainOrAppearButRejectionSurvivesExpiry() {
         val expired = film("expired").copy(catalogLicenseExpiresAt = 999)
         val result = LocalRecommendationPipeline.rank(listOf(expired, film("safe")), listOf(RecommendationSignal(expired, favorite = true)), nowMs = 1_000)
