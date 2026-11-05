@@ -1,10 +1,12 @@
 package dev.cinematv
 
+import android.content.Context
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebView
 import androidx.activity.ComponentActivity
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.junit4.AndroidComposeTestRule
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -17,6 +19,7 @@ import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.pressKey
 import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ActivityScenario
+import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.Espresso
 import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.action.ViewActions.click
@@ -30,6 +33,7 @@ import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
 import androidx.test.runner.lifecycle.Stage
 import dev.cinematv.data.douban.DoubanDeveloperOptions
 import dev.cinematv.ui.douban.DoubanLoginActivity
+import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -38,9 +42,18 @@ import org.junit.Test
 import org.junit.rules.TestRule
 import org.junit.runner.RunWith
 
+/** Activity and dialog transitions can outlast Compose's current idle frame. */
+private fun <R : TestRule, A : ComponentActivity> AndroidComposeTestRule<R, A>.waitForTag(tag: String) {
+    waitUntil(10_000) {
+        onAllNodesWithTag(tag).fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty()
+    }
+    onNodeWithTag(tag).assertIsDisplayed()
+}
+
 private fun <R : TestRule, A : ComponentActivity> AndroidComposeTestRule<R, A>.settings() {
     runOnIdle { androidx.lifecycle.ViewModelProvider(activity)[CinemaViewModel::class.java].navigate(Page.SETTINGS) }
     waitUntil(10_000) { !DoubanDeveloperOptions.get(activity).busy.value }
+    waitForTag("developer-options-entry")
 }
 
 /** Always use both UI confirmations. No login or session authorization is granted. */
@@ -49,19 +62,23 @@ private fun <R : TestRule, A : ComponentActivity> AndroidComposeTestRule<R, A>.s
     val options = DoubanDeveloperOptions.get(activity)
     if (options.access.isEnabled == enabled) return
     onNodeWithTag("developer-options-entry").performClick()
+    waitForTag("douban-experiment-toggle")
     onNodeWithTag("douban-experiment-toggle").performClick()
     assertEquals(!enabled, options.access.isEnabled)
+    waitForTag("douban-experiment-confirm")
     onNodeWithTag("douban-experiment-confirm").performClick()
     waitUntil(10_000) { options.access.isEnabled == enabled && !options.busy.value }
     onNodeWithText("返回").performClick()
     waitForIdle()
+    waitForTag("developer-options-entry")
+    if (enabled) waitForTag("douban-account-entry")
 }
 
 private fun <R : TestRule, A : ComponentActivity> AndroidComposeTestRule<R, A>.resetExperiment() {
     // Recover UI state even if a test failed while a native account/options dialog was open.
     repeat(3) {
         if (listOf("douban-experiment-confirm", "douban-experiment-toggle", "douban-account-status")
-                .any { onAllNodesWithTag(it).fetchSemanticsNodes().isNotEmpty() }) {
+                .any { onAllNodesWithTag(it).fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty() }) {
             Espresso.pressBack()
             waitForIdle()
         }
@@ -79,35 +96,90 @@ class DoubanAccountUiTest {
     @Test fun accountEntryHiddenUntilExplicitDeveloperConfirmation() {
         rule.onNodeWithTag("douban-account-entry").assertDoesNotExist()
         rule.onNodeWithTag("developer-options-entry").performClick()
+        rule.waitForTag("douban-experiment-state")
         rule.onNodeWithTag("douban-experiment-state").assertExists()
+        rule.waitForTag("douban-experiment-toggle")
         rule.onNodeWithTag("douban-experiment-toggle").performClick()
         assertFalse(DoubanDeveloperOptions.get(rule.activity).access.isEnabled)
         rule.onNodeWithTag("douban-account-entry").assertDoesNotExist()
+        rule.waitForTag("douban-experiment-confirm")
         // Dismissing the second confirmation must not grant access.
         rule.onNodeWithText("取消").performClick()
         assertFalse(DoubanDeveloperOptions.get(rule.activity).access.isEnabled)
+        rule.waitForTag("douban-experiment-toggle")
         rule.onNodeWithTag("douban-experiment-toggle").performClick()
+        rule.waitForTag("douban-experiment-confirm")
         rule.onNodeWithTag("douban-experiment-confirm").performClick()
         rule.waitUntil(10_000) { DoubanDeveloperOptions.get(rule.activity).access.isEnabled }
         rule.onNodeWithText("返回").performClick()
+        rule.waitForTag("douban-account-entry")
         rule.onNodeWithTag("douban-account-entry").assertExists()
     }
 
     @Test fun accountEntryAndCancelledOfficialLoginReturnToNativePanel() {
         rule.setExperiment(true)
         rule.onNodeWithTag("douban-account-entry").performClick()
+        rule.waitForTag("douban-account-status")
         rule.onNodeWithTag("douban-account-status").assertExists()
         rule.onNodeWithText("官方扫码登录").performClick()
         onView(withText("在这台设备登录豆瓣")).inRoot(androidx.test.espresso.matcher.RootMatchers.isDialog()).check(matches(isDisplayed()))
         onView(withText("取消")).inRoot(androidx.test.espresso.matcher.RootMatchers.isDialog()).perform(click())
-        rule.waitForIdle()
+        rule.waitUntil(10_000) { rule.activity.lifecycle.currentState == Lifecycle.State.RESUMED }
+        rule.waitForTag("douban-account-status")
         rule.onNodeWithTag("douban-account-status").assertExists()
         InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
         rule.waitForIdle()
+        rule.waitForTag("douban-account-entry")
         rule.onNodeWithTag("douban-account-entry").assertExists()
     }
+}
 
+/** TV presentation host on a controlled emulator; not physical Android TV certification. */
+@RunWith(AndroidJUnit4::class)
+class TvDoubanAccountUiTest {
+    @get:Rule val rule = createAndroidComposeRule<TvTestActivity>()
+    @Before fun startDisabled() { rule.resetExperiment() }
+    @After fun leaveDisabled() { rule.resetExperiment() }
+
+    @OptIn(androidx.compose.ui.test.ExperimentalTestApi::class)
+    @Test fun nativeTvPanelRestoresRemoteFocusAfterBack() {
+        rule.setExperiment(true)
+        val entry = rule.onNodeWithTag("douban-account-entry")
+        entry.performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.RequestFocus) { it() }
+        entry.assertIsFocused()
+        entry.performKeyInput { pressKey(androidx.compose.ui.input.key.Key.DirectionCenter) }
+        rule.waitForTag("douban-account-status")
+        rule.onNodeWithTag("douban-account-status").assertExists()
+        rule.onNodeWithText("官方扫码登录").assertIsFocused()
+        onView(androidx.test.espresso.matcher.ViewMatchers.isRoot())
+            .inRoot(androidx.test.espresso.matcher.RootMatchers.isDialog())
+            .perform(androidx.test.espresso.action.ViewActions.pressBack())
+        rule.waitForTag("douban-account-entry")
+        rule.onNodeWithTag("douban-account-entry").assertIsFocused()
+    }
+
+    @Test fun disablingHidesAccountEntryAndRestoresDeveloperOptionsFocus() {
+        rule.onNodeWithTag("douban-account-entry").assertDoesNotExist()
+        rule.setExperiment(true)
+        rule.waitForTag("douban-account-entry")
+        rule.onNodeWithTag("douban-account-entry").assertExists()
+        rule.setExperiment(false)
+        rule.onNodeWithTag("douban-account-entry").assertDoesNotExist()
+        rule.onNodeWithTag("developer-options-entry").assertIsFocused()
+    }
+}
+
+/** No Compose host: launching an ActivityScenario may replace the test application's task. */
+@RunWith(AndroidJUnit4::class)
+class DoubanDisabledLoginActivityTest {
     @Test fun directLoginActivityWhileDisabledFinishesWithoutWebView() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val options = DoubanDeveloperOptions.get(context)
+        runBlocking {
+            options.initialize()
+            assertTrue(options.disableAndClear())
+        }
+        assertFalse(options.access.isEnabled)
         val monitor = ActivityLifecycleMonitorRegistry.getInstance()
         var observedCreation = false
         var finishedAtCreation = false
@@ -133,37 +205,5 @@ class DoubanAccountUiTest {
         } finally {
             InstrumentationRegistry.getInstrumentation().runOnMainSync { monitor.removeLifecycleCallback(observer) }
         }
-    }
-}
-
-/** TV presentation host on a controlled emulator; not physical Android TV certification. */
-@RunWith(AndroidJUnit4::class)
-class TvDoubanAccountUiTest {
-    @get:Rule val rule = createAndroidComposeRule<TvTestActivity>()
-    @Before fun startDisabled() { rule.resetExperiment() }
-    @After fun leaveDisabled() { rule.resetExperiment() }
-
-    @OptIn(androidx.compose.ui.test.ExperimentalTestApi::class)
-    @Test fun nativeTvPanelRestoresRemoteFocusAfterBack() {
-        rule.setExperiment(true)
-        val entry = rule.onNodeWithTag("douban-account-entry")
-        entry.performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.RequestFocus) { it() }
-        entry.assertIsFocused()
-        entry.performKeyInput { pressKey(androidx.compose.ui.input.key.Key.DirectionCenter) }
-        rule.onNodeWithTag("douban-account-status").assertExists()
-        rule.onNodeWithText("官方扫码登录").assertIsFocused()
-        onView(androidx.test.espresso.matcher.ViewMatchers.isRoot())
-            .inRoot(androidx.test.espresso.matcher.RootMatchers.isDialog())
-            .perform(androidx.test.espresso.action.ViewActions.pressBack())
-        rule.onNodeWithTag("douban-account-entry").assertIsFocused()
-    }
-
-    @Test fun disablingHidesAccountEntryAndRestoresDeveloperOptionsFocus() {
-        rule.onNodeWithTag("douban-account-entry").assertDoesNotExist()
-        rule.setExperiment(true)
-        rule.onNodeWithTag("douban-account-entry").assertExists()
-        rule.setExperiment(false)
-        rule.onNodeWithTag("douban-account-entry").assertDoesNotExist()
-        rule.onNodeWithTag("developer-options-entry").assertIsFocused()
     }
 }

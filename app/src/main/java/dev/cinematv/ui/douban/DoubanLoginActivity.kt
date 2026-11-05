@@ -32,8 +32,8 @@ class DoubanLoginActivity : ComponentActivity() {
     private val options by lazy { dev.cinematv.data.douban.DoubanDeveloperOptions.get(this) }
     private var ticket: Long? = null
     private var revocation: AutoCloseable? = null
-    private var webLease: Long? = null
-    private var destroyed = false
+    @Volatile private var webLease: Long? = null
+    @Volatile private var destroyed = false
     private var saving = false
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
