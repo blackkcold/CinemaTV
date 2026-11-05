@@ -110,8 +110,7 @@ frame, but did not wait for the separate window-entry completion.
 The debug-only, non-exported `NotoTestActivity` now records the real
 `onEnterAnimationComplete()` callback in a per-instance latch. The instrumentation
 thread waits at most ten seconds before creating/capturing the specimen content.
-There is no fixed sleep, injected callback, no-animation shortcut or screenshot
-retry. A host that stops is rejected rather than reusing stale readiness; recreation
+There is no fixed sleep, injected callback or screenshot retry. A host that stops is rejected rather than reusing stale readiness; recreation
 creates a new latch. The callback is not itself a physical-presentation fence, so
 the existing fresh-frame, Compose-idle, focus/package and coordinate gates remain.
 The full-app TV test host and device animation settings are unchanged.
@@ -133,6 +132,34 @@ Callback sources:
 - https://developer.android.com/reference/android/app/Activity#onEnterAnimationComplete()
 - https://android.googlesource.com/platform/frameworks/base/+/android-8.0.0_r36/services/core/java/com/android/server/wm/AppWindowToken.java
 - https://android.googlesource.com/platform/frameworks/base/+/android-13.0.0_r1/services/core/java/com/android/server/wm/AppTransitionController.java
+
+### v0.7 specimen launch and epoch fence
+
+Candidate run `41964523868` exposed a smaller tonal contamination on API33 TV1080:
+black became RGB (1,1,1) and glyph interiors (251,251,251), despite the real entry
+callback. Against the passing v0.6 same-target images, background and white glyph
+masks had identical geometry, and each old gray value mapped to just one new gray
+value (approximately `new = 0.9806 * old + 1`, RMS 0.07 gray levels). The font,
+host and capture source had not changed. This is evidence of compositor tonal
+contamination, not a CJK stroke or weight change; the specific layer is not proven.
+
+The font specimen rule now requests `FLAG_ACTIVITY_NO_ANIMATION` only for its
+own `NotoTestActivity` launch. This test isolates font rendering and is not an
+Activity-transition acceptance test. Product activities, the shared host and global
+animation settings are unchanged. The real entry callback, uninterrupted-host
+requirement and exact opaque-black/pixel-hash assertions remain mandatory.
+
+The previous fresh-frame fence could accept a late old metrics callback after a
+new epoch had drawn. The replacement arms before mutation, takes timestamps from
+public `Choreographer.FrameCallback` callbacks, records only the first actual draw
+of the target epoch, and waits at most ten seconds for a matching-or-later
+`FrameMetrics.VSYNC_TIMESTAMP`. Unarmed/wrong epochs, stale metrics and redraws
+that would move the first-draw fence are covered by a device regression test.
+Callbacks/listeners are removed in `finally`; no pixel retries or relaxed gates
+are introduced. Each capture JSON records target epoch, first-draw timestamp and
+matched actual-vsync timestamp. This proves the app-frame ordering, **not** physical
+SurfaceFlinger presentation; display readback and black-background guards remain
+separate requirements. Exact-candidate full device execution is still required.
 
 ### API26 readback compatibility
 

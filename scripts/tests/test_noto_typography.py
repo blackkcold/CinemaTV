@@ -42,7 +42,7 @@ class NotoTypographyContractTest(unittest.TestCase):
         capture = (ROOT / 'app/src/androidTest/java/dev/cinematv/ui/typography/NotoCompositorCapture.kt').read_text()
         for required in ('getLocationOnScreen', 'getLocationInWindow', 'automation.takeScreenshot()',
                          'future.get(TIMEOUT_SECONDS', 'if (abandoned)', 'bitmap.recycle()',
-                         'settleFreshFrame', 'rendered()', 'activity.hasWindowFocus()',
+                         'settleFreshFrame', 'isFrameAtOrAfterDraw(draw, targetEpoch, actualVsync)', 'activity.hasWindowFocus()',
                          'if (!waitForRoot) check(windowReady)',
                          'if (windowReady && lastPackage == activity.packageName) return'):
             self.assertIn(required, capture)
@@ -91,7 +91,8 @@ class NotoTypographyContractTest(unittest.TestCase):
         self.assertIn('<activity android:name=".NotoTestActivity" android:exported="false" />', manifest)
         self.assertNotIn('NotoTestActivity', (ROOT / 'app/src/main/AndroidManifest.xml').read_text())
         test = (ROOT / 'app/src/androidTest/java/dev/cinematv/ui/typography/NotoFontsDeviceTest.kt').read_text()
-        self.assertIn('createAndroidComposeRule<NotoTestActivity>()', test)
+        self.assertIn('val compose = AndroidComposeTestRule(', test)
+        self.assertIn('ActivityScenarioRule<NotoTestActivity>(Intent(', test)
         self.assertLess(test.index('compose.activity.awaitEnterAnimationComplete(10_000)'),
                         test.index('NotoComposeWeightEvidence.capture('))
         self.assertIn('noAnimationLaunchStillReportsEnterTransitionComplete', test)
@@ -105,6 +106,27 @@ class NotoTypographyContractTest(unittest.TestCase):
         self.assertIn('compose.waitForIdle()', evidence)
         capture = (ROOT / 'app/src/androidTest/java/dev/cinematv/ui/typography/NotoCompositorCapture.kt').read_text()
         self.assertIn('activity !is NotoTestActivity || !activity.hasStopped', capture)
+
+    def test_font_frame_fence_binds_first_target_draw_to_public_actual_vsync(self):
+        source = ROOT / 'app/src/androidTest/java/dev/cinematv/ui/typography'
+        capture = (source / 'NotoCompositorCapture.kt').read_text()
+        for required in ('object : Choreographer.FrameCallback', 'override fun doFrame(frameTimeNanos: Long)',
+                         'epoch.frameTime.set(frameTimeNanos)', 'firstDraw.compareAndSet(null, DrawStamp(epoch, timestamp))',
+                         'FrameMetrics.VSYNC_TIMESTAMP', 'draw.epoch == targetEpoch',
+                         'metricsVsyncNanos >= draw.frameTimeNanos', 'removeFrameCallback(frameCallback)',
+                         'tracker.disarm(epoch)'):
+            self.assertIn(required, capture)
+        for forbidden in ('INTENDED_VSYNC_TIMESTAMP', 'System.nanoTime()', 'getFrameTimeNanos', 'rendered()'):
+            self.assertNotIn(forbidden, capture)
+        self.assertLess(capture.index('addOnFrameMetricsAvailableListener'),
+                        capture.index('choreographer!!.postFrameCallback(frameCallback)'))
+        evidence = (source / 'NotoComposeWeightEvidence.kt').read_text()
+        self.assertLess(evidence.index('drawContent()'), evidence.index('drawTracker.recordDraw(currentEpoch)'))
+        for required in ('firstDrawFrameTimeNanos', 'matchedActualVsyncNanos', 'freshDrawEpoch'):
+            self.assertIn(required, evidence)
+        test = (source / 'NotoFontsDeviceTest.kt').read_text()
+        self.assertIn('drawEpochFenceRejectsUnarmedAndStaleFrameMetrics', test)
+        self.assertIn('Redraws must not move the first-draw fence', test)
 
     def test_ci_font_cache_uses_only_exact_lock_and_asset_path(self):
         expected_key = "noto-fonts-v2-${{ hashFiles('scripts/fonts/noto-fonts.lock.json') }}"
