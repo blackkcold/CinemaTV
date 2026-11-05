@@ -60,7 +60,8 @@ class ReadmeAssetsTest(unittest.TestCase):
         images = set(re.findall(r'src="docs/images/([^"/]+)"', body))
         self.assertEqual(images, {entry['file'] for entry in manifest['images']})
         self.assertIn('docs/images/README.md', body)
-        self.assertIn('include_prereleases', body)
+        self.assertIn('https://img.shields.io/github/v/release/blackkcold/CinemaTV?label=stable', body)
+        self.assertNotIn('include_prereleases', body)
         self.assertNotIn('/releases/latest', body)
 
 

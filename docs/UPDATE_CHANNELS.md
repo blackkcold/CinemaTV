@@ -1,11 +1,20 @@
 # Stable / dev updates
 
-This is an **opt-in implementation, not an active production update service**.
-The current public signing identity is recorded in `release/signing-identity.json`.
-Private signing material remains outside GitHub.
-No update feed or release is published by the PR. Existing preview pipelines remain
-unchanged. The obsolete production workflow is now a fail-closed safety notice;
-it has no signing-secret references or publication permissions. Network updates are disabled by default and always disabled in debug APKs.
+This publication contains only production-signed stable **0.8.0 / code 10**
+and the stable channel manifest. Dev11 is an unpublished, same-certificate
+acceptance target, not a downloadable release. The dev channel publication is
+frozen pending a later reviewed candidate. Stable uses the public identity in
+`release/signing-identity.json`; private signing material remains outside GitHub.
+This release APK explicitly enables user-initiated update checks. Ordinary builds
+still default to disabled network updates, and debug APKs always disable them.
+
+APK publication and active feed verification are separate records. Verify the stable
+endpoint and manifest expiry before describing its feed as live; channel-dev
+is not activated by this publication. The
+final production APKs have not yet completed a remote feed/download/installer
+end-to-end acceptance run. Existing preview pipelines remain unchanged. The
+obsolete production workflow is a fail-closed notice with no signing-secret
+references or publication permissions.
 
 ## User behavior
 
@@ -30,8 +39,9 @@ it has no signing-secret references or publication permissions. Network updates 
 
 1. Fixed HTTPS endpoints:
    `https://github.com/blackkcold/CinemaTV/releases/download/channel-dev/update.json`
-   and `.../channel-stable/update.json`. They are future publication contracts, not
-   claims that feeds currently exist.
+   and `.../channel-stable/update.json`. These are the fixed channel locations.
+   A release APK alone does not prove a feed is present, current or valid; verify
+   the actual response, signature, payload identity and expiry independently.
 2. Envelope: `{ "schema": 1, "payload": "<base64 UTF-8 JSON>", "signature": "<base64>" }`.
    Exact payload bytes are signed using SHA256withRSA (or SHA256withECDSA for EC).
    The trust anchor is the **current installed APK signing certificate**, not a key
@@ -54,6 +64,11 @@ it has no signing-secret references or publication permissions. Network updates 
    read permission. There is no storage permission, DownloadManager, trust-all TLS,
    unsigned fallback, untrusted URL setting, background polling or silent install.
 
+The first stable manifest expires at **2026-11-12 14:40:12 UTC**. Its exact
+payload-byte signature was verified locally with OpenSSL; publication and remote
+retrieval verification are separate. Expiry blocks obtaining updates from that
+manifest, not use of an already installed APK.
+
 Expired feeds need a newly signed manifest, even if the latest APK is unchanged.
 First-ever install still needs an independently verified download and certificate.
 A compromised signing key is outside this v1 mechanism's recovery capability.
@@ -66,8 +81,10 @@ A compromised signing key is outside this v1 mechanism's recovery capability.
 - Maintain **one increasing versionCode ledger across both channels**. Reserve a
   new code for each public APK; never derive it separately from branch commit counts
   or reuse a code. Example: dev code 100, dev 101, stable 102, next dev 103.
-- Only publish stable after the repository's full exact-commit test/hardware gates.
-  A successful unit test or a debug build does not certify a signed update.
+- Publish against a recorded source tree, final signed APK hashes and an explicit
+  acceptance scope. Identify hardware and end-to-end checks that remain unverified
+  rather than treating a stable channel label as physical-device certification.
+  A successful unit test or debug build does not certify a signed update.
 - Channel build selection uses `-PcinematvChannel=dev|stable`; it does not rename
   existing build types, tasks or APK output paths. Enable live updates only with
   `-PcinematvUpdatesEnabled=true -PcinematvVersionCode=<reserved-code>
@@ -103,17 +120,34 @@ environment variables, refuses GitHub Actions and keys located in a Git checkout
 self-verifies its signature, never exports private material and refuses to
 overwrite an existing output. It is not called by any workflow in this PR.
 
-## Verification still required before enabling
+## Recorded acceptance and remaining coverage
 
-- Full app build/lint/JVM and Python tests for the exact PR head.
-- TV D-pad and phone channel selection/persistence, cancel/retry, reopening settings.
-- Test-only signed release fixtures: valid signed manifest/APK; corrupted payload,
-  wrong key, digest, size, package, version, channel, minSdk and expired manifest.
-- Real Android installer: grant/deny/revoke unknown-app permission, return/back,
-  cancel installation, successful same-key upgrade preserving data, wrong-key
-  rejection, low storage, interrupted download, process death and missing installer.
-- API 26 / current Android / actual low-end TV. No production signing, 1Password
-  integration or complete device install loop is claimed by source changes alone.
+- Exact-tree Android build/lint/unit/backend checks and all 11 update-channel
+  safety jobs passed for PR32. Phone/TV settings tests and API26/35 repository
+  and installer probes use debug or disposable test identities as documented below.
+- Final stable/code10 and the unpublished dev/code11 acceptance target passed an API26
+  isolated-emulator `adb install -r` chain. APKs pulled from the installed package
+  match their recorded signed hashes; only stable is published. One actual synthetic Favorite/Want to Watch
+  record, server setting and subscription preference persisted through upgrade and
+  restart. This is not complete Room/schema/history migration coverage.
+- API33 final-APK installation is infrastructure-unverified: Android booted, but
+  the emulator was killed during install before an installed hash or app launch
+  could be obtained. This is neither an application pass nor an application failure.
+- A separate empty-device API26 final-stable installation passed, with matching
+  installed APK hash, rendered first launch, default stable/code10 and empty server
+  setting, an empty library, unknown-source authorization OFF, successful Back
+  return and correct state after restart. Cold launch exceeded the am-start wait threshold; ActivityManager later
+  recorded display at 10.746 seconds. This is not a performance pass.
+- Final-production remote feed verification/download, unknown-app permission
+  grant/deny/revoke, package-installer confirmation/cancel/return and end-to-end
+  installation have not all been exercised. `adb install` is not that workflow.
+- Low storage, interrupted download, process death, missing installer, real low-end
+  TV/4K hardware, four-hour playback, codec/HDR breadth and hardware frame rates
+  remain outside this release's verified final-byte coverage.
+
+See [release acceptance scope](RELEASE_CHECKLIST.md) and the versioned release
+notes for exact hashes, source provenance and the distinction between test-key
+coverage and final production APK checks.
 
 Official references:
 [Android signing](https://developer.android.com/studio/publish/app-signing),
@@ -132,7 +166,7 @@ This is a source-presence guard, not a hidden runtime toggle. Existing public
 catalogue ratings/Top250 are unrelated and remain supported. Dev may integrate
 that branch independently; do not merge its unaccepted code into `main`.
 
-A stable label is not certification. Production publication additionally needs:
+A stable label is not hardware certification. Each publication records:
 
 1. A reserved globally increasing versionCode, clean approved source commit/tree,
    stable channel, and no unaccepted personal-account sources.
@@ -140,11 +174,11 @@ A stable label is not certification. Production publication additionally needs:
    fingerprint. Disposable debug certificates and retired keys are not that identity.
 3. Build/lint/unit/backend checks plus complete phone/API26/TV1080/TV4K UI evidence
    for the candidate source. Do not reuse a debug APK hash for a release APK.
-4. Acceptance tied to the **final signed APK bytes and certificate**: explicit
-   installer permissions/cancel/return, same-key channel upgrades, real library
-   data preservation, API26/current Android and physical TV. Run those checks on
-   the signed artifact, then publish those unchanged bytes. Do not re-sign or
-   rebuild after acceptance and call it the tested binary.
+4. Acceptance tied to the **final signed APK bytes and certificate**, listing
+   completed checks and remaining limitations separately. Distinguish adb upgrades
+   from user-facing installer flows, individual retained records from complete
+   migration coverage, and emulators from physical TV. Publish the unchanged
+   tested bytes; re-signing or rebuilding requires a new hash and evidence record.
 5. Public APK hash, certificate fingerprint, source commit/tree and acceptance
    evidence recorded together. Feed payload preparation is not a substitute for
    this review, and no current workflow automatically publishes stable.
@@ -157,7 +191,8 @@ wrong-certificate and downgrade rejection on API26/35, and retains public hashes
 and test logs. The fixture APK artifact is explicitly TEST ONLY and expires after
 one day. This checks Android PackageManager via adb, **not** the user-facing
 installer permission screens, a real production key, all library migrations, or
-physical TV. These remaining production gates must not be reported as passed.
+physical TV. These unverified areas must remain explicit and must not be
+reported as passed by this test-only suite.
 
 If an existing preview has a different signing certificate, stop: there is no
 same-package in-place migration to the new key. Do not uninstall, clear data or
@@ -262,5 +297,6 @@ gradle --no-daemon --max-workers=2 -Pkotlin.compiler.execution.strategy=in-proce
 Passing this test establishes only the test-certificate repository pipeline. It does
 not exercise the Android installer confirmation UI, real application Room migrations,
 physical TV behavior, or final production-certificate signed-feed/APK acceptance.
-Those remain required before active feed publication. Local source checks alone do
-not establish that these instrumentation jobs compiled or passed.
+Those remain separate acceptance work and must not be implied by an active feed.
+Local source checks alone do not establish that these instrumentation jobs compiled
+or passed; use the recorded CI run for the actual result.
