@@ -48,6 +48,7 @@ import dev.cinematv.data.LibraryStatus
 import dev.cinematv.data.MediaItem
 import dev.cinematv.data.SearchFilters
 import dev.cinematv.ui.shared.metadataLine
+import dev.cinematv.ui.shared.ManualWorkAssociationPanel
 import dev.cinematv.ui.shared.WorkNavigationPanel
 import dev.cinematv.ui.shared.TmdbLogo
 import dev.cinematv.ui.shared.CinemaBrandStartup
@@ -404,6 +405,7 @@ private fun MobileDetail(model: CinemaViewModel) {
                 }
             }
             WorkNavigationPanel(model, tv = false)
+            ManualWorkAssociationPanel(model, tv = false)
             Text("加入片库", fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
             LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 items(LibraryStatus.entries) { status ->

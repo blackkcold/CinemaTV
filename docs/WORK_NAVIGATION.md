@@ -17,29 +17,43 @@ catalog data does not continue associating sources; metadata and attribution are
 the selected source, not arbitrarily taken from another season. Equal titles alone do not
 group anything. This is local library navigation, not discovery of every season on a server.
 
-## Remaining limitation: user-confirmed mapping (not implemented)
+## User-confirmed local mapping
 
-Many LibreTV providers supply no trustworthy external work ID or season number. Those
-listings intentionally remain separate works or unknown seasons. A graph cannot establish
-missing identity. The next feature should be an explicit local mapping editor:
+Phone and TV detail pages include “管理本地作品关联”. The editor lists only retained local
+entries, never server discovery or title-similarity matches. It displays the selected source
+and target's provider, service URL, listing ID, title, year, media type, original season and
+external IDs. Different years/types or conflicting external IDs produce an explicit warning.
+The final evidence-review button is required before linking. Season unknown, specials/zero,
+and numbered seasons are explicit manual labels. These labels never change `MediaItem`,
+external IDs, episode keys or playback checkpoints. “手动关联” is not catalog verification.
 
-1. Offer “associate with a work” from a source detail page, showing provider, listing ID,
-   title, year, media type, and existing external IDs side by side. Title similarity may
-   propose candidates but must not confirm a match.
-2. Require a user-confirmed target work and optional season number. “Unknown” remains an
-   explicit choice; specials/season zero should be supported. Conflicting trusted IDs need
-   a distinct warning and must not silently overwrite provider metadata.
-3. Store a versioned, reversible local association overlay with original source entry IDs,
-   creation/update provenance and explicit user-confirmed origin. Keep external IDs intact.
-   Show “manually associated” rather than implying catalog verification.
-4. Preview affected sources/seasons before confirming; provide unlink and undo. Unlinking
-   must restore original grouping without deleting source flags or history.
-5. Keep source entry and episode identities unchanged. No checkpoint transfer, even with
-   the same episode number. Manual episode equivalence and progress copying would need a
-   separate explicit policy and confirmation, not a side effect of grouping.
-6. Add migration, expiry, conflicting-ID, undo, accessibility and multi-device conflict tests
-   before exposing the editor. The overlay should survive catalog refresh without reviving
-   expired descriptions, artwork or licensed attribution.
+The versioned `local_work_associations_v1` Room metadata overlay contains immutable original
+entry IDs, random local work IDs, created/updated timestamps and `user-confirmed` provenance.
+No Room schema change, destructive migration or legacy import rewrite is required. Unsupported
+versions and malformed payloads disable editing and are retained verbatim. Transactional
+revision checks reject stale concurrent writers; complete preview membership plus current-source and every target-member identity evidence
+are rechecked before commit, including metadata changes that do not bump the overlay revision. A rejected write reloads the winning state for another review. This is **local-only**:
+there is no multi-device sync or distributed conflict resolution. Concurrent-instance tests
+are not a claim of cross-device synchronization.
+
+Joining an unassociated target creates a group containing exactly that target and current
+source. It does not drag other catalog-linked listings into the manual group. Joining an
+existing manual group moves only the selected source, not its former group. Singleton
+manual groups are removed. The preview lists affected target members. Unlink restores original
+grouping; one-level undo of the last association change is persisted across restart. Undo is
+global to this device's association overlay and the control says so. Source-specific flags,
+status and checkpoints are never merged, rekeyed, deleted or copied by these operations.
+
+The navigation and shelf projections apply metadata expiry before applying manual groups.
+Local confirmations survive catalog refresh/expiry, but cannot revive licensed artwork,
+descriptions, IDs or attribution. Original library domain graphs remain provider-native;
+manual IDs are presentation-only and must not be passed to episode or progress mapping.
+
+Remaining limits: no candidate search/ranking or bulk editing, no import/export/sync of
+associations, no episode equivalence/progress transfer, and only the latest edit can be undone.
+Large libraries use a scrollable candidate list. Season +/- controls support 0–9999; unknown
+is distinct from zero. Device D-pad focus/Back, accessibility and durable Room tests are
+included in the instrumentation gate and still require an Android SDK/emulator run.
 
 ## Tests and registration
 
@@ -52,3 +66,7 @@ Register the phone class in the phone matrix and the TV class in the TV input/fo
 They cover two known seasons, two sources, unknown seasons, conflicting work IDs, stale
 selection callbacks, independent progress/status/favorites and Back. TV activation uses
 D-pad center with focused-control assertions. No screenshot baselines or thresholds change.
+
+Manual association coverage: JVM `LocalWorkAssociationTest`; Android
+`dev.cinematv.data.LocalWorkAssociationPersistenceTest` exercises actual Room persistence,
+codec version guards, undo after reopening, evidence changes and concurrent stale writers.
