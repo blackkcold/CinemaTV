@@ -47,11 +47,16 @@ focusable in touch-capable emulator environments; phone UI stays independent.
 
 - `GET /api/status`: password/verification state and source configurations
 - `POST /api/auth`: explicit password submit and in-memory session cookie
-- `GET /api/douban?type=movie|tv`: recommendations; optional supplied art/metadata
 - `POST /api/search[?stream=1]`: aggregate JSON or progressive NDJSON search
 - `GET /api/detail?id=...&source=...`: episode URLs and work information
 - `GET /api/live/playlist?url=...`: M3U channels
 - `GET /api/live/epg?url=...&channel=...`: XMLTV programs
+
+The client never calls LibreTV’s `/api/douban` proxy. Home uses the explicitly
+configured BFF catalog, falling back to local records when it is absent or unavailable.
+An empty local library stays empty until the user searches LibreTV or configures a
+catalog; transport availability does not establish metadata authorization. Scores retain
+the catalog’s validated provenance and are never relabeled as LibreTV recommendations.
 
 The optional BFF receives only title, year and type for metadata. It rejects
 ambiguous matches and absent requested release years; image paths are validated.

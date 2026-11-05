@@ -58,6 +58,7 @@ object RatingPolicy {
 
     fun score(item: MediaItem, nowMs: Long = System.currentTimeMillis()): Double? {
         if (!CatalogLicensePolicy.isAvailable(item, nowMs)) return null
+        if (provider(item) == "libretv") return null // A transport is not a rating authority.
         if (provider(item) == "douban" && !hasLicensedDoubanMetadata(item, nowMs)) return null
         return item.rating.trim().toDoubleOrNull()?.takeIf { it.isFinite() && it in 0.0..10.0 }
     }

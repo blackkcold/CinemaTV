@@ -115,9 +115,10 @@ class TvUiRegressionTest {
     @Before fun connectFixture() {
         awaitBundledFonts()
         rule.waitUntil(10000) { rule.activity.hasWindowFocus() }
-        server = UiFixtureServer(InstrumentationRegistry.getInstrumentation().context)
+        server = UiFixtureServer(InstrumentationRegistry.getInstrumentation().context).apply { homeCatalog = true }
         rule.runOnIdle {
             model.updateReducedMotion(true)
+            model.repo.configureMetadata(server.base, "offline-fixture-token")
             model.serverAddress = server.base
             model.connect()
             model.navigate(Page.HOME)

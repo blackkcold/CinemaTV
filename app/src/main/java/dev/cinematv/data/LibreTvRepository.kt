@@ -34,7 +34,7 @@ import kotlinx.coroutines.sync.withLock
  *
  * LibreTV search: POST /api/search { wd, sources, filterAdult }
  * LibreTV detail: GET /api/detail?id=...&source=<json>
- * LibreTV metadata: GET /api/douban?type=movie|tv
+ * Metadata catalog: explicitly configured BFF /v1/catalog (never LibreTV Douban proxy)
  * LibreTV live: GET /api/live/playlist?url=...
  *
  * IMPORTANT: supply sources you are authorized to use. The app does not ship any feeds.
@@ -376,25 +376,24 @@ class LibreTvRepository(context: Context, val library: LocalMediaLibrary = Local
         request("/api/auth", "POST", JSONObject().put("password", password)).optBoolean("success")
     }
 
-    suspend fun recommend(isTv: Boolean = false, count: Int = 24): List<MediaItem> = withContext(Dispatchers.IO) {
-        val type = if (isTv) "tv" else "movie"
-        val data = request("/api/douban?type=$type&pageSize=$count")
-        parseArray(data.optJSONArray("items")) { j ->
-            val title = j.optString("title")
-            if (title.isBlank()) null else MediaItem(
-                id = "recommend:$type:${j.optString("id", title)}",
-                title = title,
-                poster = j.optString("cover"),
-                backdrop = j.optString("backdrop"),
-                year = j.optString("year"),
-                category = j.optString("typeName"),
-                description = j.optString("description"),
-                rating = j.optString("rating"),
-                ratingSource = "LibreTV",
-                aliases = strings(j.opt("aliases")), actors = strings(j.opt("actors")),
-                isTv = isTv
-            )
-        }
+    /**
+     * Compatibility preview for callers without paging. Never use LibreTV's Douban
+     * proxy: transport availability is not permission to acquire Douban data.
+     * Scores and their provenance come only from the configured catalog decoder.
+     * Personalization remains in RecommendationEngine and never leaves the device.
+     */
+    suspend fun recommend(isTv: Boolean = false, count: Int = 24): List<MediaItem> {
+        if (count <= 0) return emptyList()
+        val items = if (hasMetadataCatalog) {
+            try {
+                catalog(isTv = isTv).let { if (it.available) it.items else emptyList() }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                emptyList()
+            }
+        } else emptyList()
+        return items.ifEmpty { localItems().filter { it.isTv == isTv } }.take(count)
     }
 
     private fun mediaType(data: JSONObject): Boolean? = when {
@@ -423,7 +422,8 @@ class LibreTvRepository(context: Context, val library: LocalMediaLibrary = Local
                 mediaTypeKnown = mediaType(j) != null,
                 aliases = strings(j.opt("aliases")).ifEmpty { strings(j.opt("vod_sub")) },
                 actors = strings(j.opt("actors")).ifEmpty { strings(j.opt("vod_actor")) },
-                rating = j.optString("rating"), ratingSource = "LibreTV",
+                // Search transport supplies no verified score provenance.
+                rating = "", ratingSource = "",
                 seasonNumber = j.optInt("season", 0).takeIf { it > 0 },
                 source = source
             )

@@ -40,6 +40,7 @@ private fun workNavigationScenario(rule: ComposeContentTestRule, activity: Compo
             episodes = (0 until 36).map { "${server.base}/stream.mp4?episode=$it" }, playlistKnown = true)
         val a = item("a", 1); val b = item("b", 1); val second = item("a", 2)
         val unknown = item("c", null); val conflict = item("d", 1, "different-work")
+        listOf(a, b, second, unknown, conflict).forEach(server::registerDetail)
         runBlocking {
             model.repo.library.initialize()
             listOf(a, b, second, unknown, conflict).forEach { model.repo.library.cacheItem(it) }

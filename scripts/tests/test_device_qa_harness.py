@@ -54,14 +54,31 @@ class DeviceMatrixTest(unittest.TestCase):
     def test_default_retains_all_acceptance_targets_and_classes(self):
         self.assertEqual(matrix.select("all"), {"include": [
             {"name": "phone", "target": "google_apis", "api": 30, "size": "1080x1920", "density": 420,
-             "classes": "dev.cinematv.MobileNavigationSmokeTest,dev.cinematv.TvLaunchSmokeTest,dev.cinematv.MobilePlaybackSmokeTest,dev.cinematv.data.LocalMediaLibraryTest,dev.cinematv.data.RepositoryContractTest,dev.cinematv.MobileGlassButtonTest,dev.cinematv.CinemaBrandStartupTest,dev.cinematv.ui.typography.NotoFontsDeviceTest"},
+             "classes": "dev.cinematv.MobileNavigationSmokeTest,dev.cinematv.TvLaunchSmokeTest,dev.cinematv.MobilePlaybackSmokeTest,dev.cinematv.data.LocalMediaLibraryTest,dev.cinematv.data.RepositoryContractTest,dev.cinematv.data.LibreTvProtocolTest,dev.cinematv.MobileWorkNavigationTest,dev.cinematv.MobileLibraryCatalogControlsTest,dev.cinematv.MobileGlassButtonTest,dev.cinematv.CinemaBrandStartupTest,dev.cinematv.ui.typography.NotoFontsDeviceTest"},
             {"name": "tv1080", "target": "default", "api": 33, "size": "1920x1080", "density": 320,
-             "classes": "dev.cinematv.TvUiRegressionTest,dev.cinematv.GlassMaterialSmokeTest,dev.cinematv.ui.typography.NotoFontsDeviceTest"},
+             "classes": "dev.cinematv.TvUiRegressionTest,dev.cinematv.TvWorkNavigationTest,dev.cinematv.TvLibraryCatalogControlsTest,dev.cinematv.GlassMaterialSmokeTest,dev.cinematv.ui.typography.NotoFontsDeviceTest"},
             {"name": "tv4k", "target": "default", "api": 33, "size": "3840x2160", "density": 640,
-             "classes": "dev.cinematv.TvUiRegressionTest,dev.cinematv.GlassMaterialSmokeTest,dev.cinematv.ui.typography.NotoFontsDeviceTest"},
+             "classes": "dev.cinematv.TvUiRegressionTest,dev.cinematv.TvWorkNavigationTest,dev.cinematv.TvLibraryCatalogControlsTest,dev.cinematv.GlassMaterialSmokeTest,dev.cinematv.ui.typography.NotoFontsDeviceTest"},
             {"name": "compat26", "target": "google_apis", "api": 26, "size": "1920x1080", "density": 320,
              "classes": "dev.cinematv.ui.typography.NotoFontsDeviceTest,dev.cinematv.GlassMaterialSmokeTest#materialSurvivesFocusPressReducedMotionMissingArtAndFailure,dev.cinematv.CinemaBrandStartupTest"},
         ]})
+
+    def test_catalog_library_navigation_and_protocol_suites_are_registered(self):
+        phone = matrix.select("phone")["include"][0]["classes"].split(",")
+        for suite in ("dev.cinematv.data.LibreTvProtocolTest", "dev.cinematv.MobileWorkNavigationTest",
+                      "dev.cinematv.MobileLibraryCatalogControlsTest"):
+            self.assertEqual(phone.count(suite), 1)
+        for target in ("tv1080", "tv4k"):
+            classes = matrix.select(target)["include"][0]["classes"].split(",")
+            for suite in ("dev.cinematv.TvWorkNavigationTest", "dev.cinematv.TvLibraryCatalogControlsTest"):
+                self.assertEqual(classes.count(suite), 1)
+        root = SCRIPTS.parent / "app/src/androidTest/java/dev/cinematv"
+        protocol = (root / "data/LibreTvProtocolTest.kt").read_text()
+        self.assertGreaterEqual(protocol.count("@Test"), 15)
+        controls = (root / "LibraryCatalogControlsUiTest.kt").read_text()
+        for method in ("browseAndSearchLoadMore", "partialThenExpiredPage", "cleanupCancelBackConfirmAndStatusRemoval",
+                       "unconfiguredCatalogNeverRequestsUpstream"):
+            self.assertEqual(controls.count("@Test fun " + method + "("), 2)
 
     def test_each_target_is_exact_subset(self):
         for target in matrix.DEVICES:
@@ -75,6 +92,12 @@ class DeviceMatrixTest(unittest.TestCase):
             for selector in device["classes"].split(","):
                 class_name, _, method = selector.partition("#")
                 path = root / "app/src/androidTest/java" / (class_name.replace(".", "/") + ".kt")
+                if not path.exists():
+                    # Kotlin permits several independently runnable test classes per file.
+                    candidates = [candidate for candidate in path.parent.glob("*.kt")
+                                  if "class " + class_name.rsplit(".", 1)[1] + " {" in candidate.read_text()]
+                    self.assertEqual(len(candidates), 1, class_name)
+                    path = candidates[0]
                 source = path.read_text()
                 self.assertIn("package " + class_name.rsplit(".", 1)[0], source)
                 if method:
