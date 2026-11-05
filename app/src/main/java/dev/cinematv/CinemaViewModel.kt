@@ -7,6 +7,10 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import dev.cinematv.data.*
+import dev.cinematv.data.recommendation.LocalRecommendationPipeline
+import dev.cinematv.data.recommendation.LocalRecommendationSnapshot
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -201,6 +205,9 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
     private var movieChart = CatalogChartSnapshot()
     private var seriesChart = CatalogChartSnapshot()
     private var chartNotice = ""
+    var recommendationSnapshots by mutableStateOf<List<Pair<String, LocalRecommendationSnapshot>>>(emptyList())
+        private set
+    private var recommendationJob: Job? = null
     var recommendationReasons by mutableStateOf<Map<String, String>>(emptyMap())
         private set
     var searchHits by mutableStateOf<List<SearchHit>>(emptyList())
@@ -371,19 +378,37 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     private fun rebuildRecommendations() {
-        val records = repo.library.snapshot.records
+        recommendationJob?.cancel()
+        val records = repo.library.snapshot.records.toList()
         val signals = records.filter { it.status != null || it.favorite || it.historyAt != null }.map {
-            RecommendationSignal(it.item, it.status ?: if (it.historyAt != null) LibraryStatus.WATCHING else null,
+            RecommendationSignal(it.item, it.status,
                 favorite = it.favorite, notInterested = it.status == LibraryStatus.DROPPED)
         }
         val offline = repo.localItems()
-        val movies = RecommendationEngine.recommend(catalogMovies.ifEmpty { offline.filter { !it.isTv } }, signals, 50)
-        val series = RecommendationEngine.recommend(catalogSeries.ifEmpty { offline.filter { it.isTv } }, signals, 50)
-        featured = movies.map { it.item }
-        tvShows = series.map { it.item }
-        recommendationReasons = (movies + series).associate { it.item.presentationKey to it.reason }
-        catalogAttribution = (featured + tvShows + queryCatalog).mapNotNull { it.usableMetadata() }
-            .map { it.catalogAttribution }.filter(String::isNotBlank).distinct().joinToString("\n")
+        val movieInput = catalogMovies.ifEmpty { offline.filter { !it.isTv } }.toList()
+        val seriesInput = catalogSeries.ifEmpty { offline.filter { it.isTv } }.toList()
+        recommendationJob = viewModelScope.launch {
+            // Coalesce Room/catalog updates; ranking must never block D-pad or playback input.
+            delay(50)
+            val now = System.currentTimeMillis()
+            val snapshots = withContext(Dispatchers.Default) {
+                val checkCancelled: () -> Unit = { ensureActive() }
+                val movies = LocalRecommendationPipeline.rank(movieInput, signals, 50, now, checkCancelled = checkCancelled)
+                ensureActive()
+                val series = LocalRecommendationPipeline.rank(seriesInput, signals, 50, now, checkCancelled = checkCancelled)
+                listOf("电影" to movies, "剧集" to series)
+            }
+            ensureActive()
+            val movies = snapshots[0].second.rows
+            val series = snapshots[1].second.rows
+            featured = movies.map { it.item }
+            tvShows = series.map { it.item }
+            recommendationReasons = (movies + series).associate { it.item.presentationKey to it.reason }
+            // Publish the same immutable snapshots used for the shelves, not a diagnostics re-run.
+            recommendationSnapshots = snapshots
+            catalogAttribution = (featured + tvShows + queryCatalog).mapNotNull { it.usableMetadata() }
+                .map { it.catalogAttribution }.filter(String::isNotBlank).distinct().joinToString("\n")
+        }
     }
 
     private fun loadHome() {
@@ -412,6 +437,15 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
                 }
                 rebuildRecommendations()
             }
+            // A recommendation build is asynchronous. Wait for the latest coalesced build,
+            // including any replacement caused by a concurrent Room/catalog update.
+            while (true) {
+                val latest = recommendationJob ?: break
+                latest.join()
+                ensureActive()
+                if (latest === recommendationJob) break
+            }
+            if (generation != browseGeneration) return@launch
             if (focused == null) focused = featured.firstOrNull()
             featured.firstOrNull()?.let { first ->
                 try {

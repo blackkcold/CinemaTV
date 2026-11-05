@@ -23,6 +23,7 @@ import dev.cinematv.ui.tv.design.GlassQuality
 import dev.cinematv.ui.tv.design.TvEffects
 import dev.cinematv.ui.tv.design.LocalTvEffects
 import androidx.compose.runtime.*
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -526,11 +527,18 @@ private fun MobileField(
 
 @Composable
 private fun MobileSettings(model: CinemaViewModel) {
+    var recommendationOpen by remember { mutableStateOf(false) }
+    if (recommendationOpen) dev.cinematv.ui.recommendation.RecommendationDashboardDialog(
+        model.recommendationSnapshots, tv = false, onDismiss = { recommendationOpen = false },
+        onOpenItem = { recommendationOpen = false; model.open(it) })
     val uriHandler = LocalUriHandler.current
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())
         .padding(horizontal = 20.dp, vertical = 18.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("CinemaTV 设置", fontSize = 27.sp, fontWeight = FontWeight.Bold)
+        MobileGlassOutlinedButton(onClick = { recommendationOpen = true }, modifier = Modifier.testTag("recommendation-dashboard-open")) {
+            Text("本地推荐看板")
+        }
         Text("LibreTV 服务器", fontSize = 19.sp, fontWeight = FontWeight.SemiBold)
         MobileField("服务器 URL", model.serverAddress, { model.serverAddress = it })
         MobileGlassButton(onClick = { model.connect() }, modifier = Modifier.fillMaxWidth()) {

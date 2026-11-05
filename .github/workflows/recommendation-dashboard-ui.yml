@@ -1,0 +1,88 @@
+name: Recommendation dashboard UI
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'app/src/main/java/dev/cinematv/data/recommendation/**'
+      - 'app/src/main/java/dev/cinematv/ui/recommendation/**'
+      - 'app/src/main/java/dev/cinematv/CinemaViewModel.kt'
+      - 'app/src/main/java/dev/cinematv/ui/MobileScreens.kt'
+      - 'app/src/main/java/dev/cinematv/ui/TvRootApp.kt'
+      - 'app/src/androidTest/java/dev/cinematv/RecommendationDashboardUiTest.kt'
+      - '.github/workflows/recommendation-dashboard-ui.yml'
+permissions:
+  contents: read
+concurrency:
+  group: recommendation-dashboard-ui-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  dashboard:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: phone
+            size: 1080x2400
+            density: 420
+            class: dev.cinematv.MobileRecommendationDashboardTest
+          - name: tv1080
+            size: 1920x1080
+            density: 160
+            class: dev.cinematv.TvRecommendationDashboardTest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+      - uses: actions/cache@v4
+        with:
+          path: .cache/cinematv-noto-fonts
+          key: noto-fonts-v2-${{ hashFiles('scripts/fonts/noto-fonts.lock.json') }}
+      - name: Install compile SDK and build instrumentation
+        run: |
+          SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -1)
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" 'platforms;android-36' 'build-tools;36.0.0'
+          bash scripts/generate-test-media.sh
+          gradle --no-daemon --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process :app:assembleDebug :app:assembleDebugAndroidTest
+          python3 scripts/fonts/verify-noto-fonts.py
+      - name: Enable KVM
+        run: sudo chmod 666 /dev/kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 33
+          target: default
+          arch: x86_64
+          profile: pixel_2
+          emulator-build: '15004761'
+          disable-animations: false
+          emulator-options: '-no-window -no-audio -gpu lavapipe -feature -Vulkan -no-snapshot -no-boot-anim -memory 2048'
+          script: bash scripts/run-device-qa.sh '${{ matrix.size }}' '${{ matrix.density }}' '${{ matrix.class }}'
+      - name: Require executed focused test
+        env:
+          EXPECTED_CLASS: ${{ matrix.class }}
+        run: |
+          python3 - <<'PYTEST'
+          import os
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          cases = [case for path in Path('app/build/outputs/androidTest-results').rglob('TEST-*.xml') for case in ET.parse(path).getroot().iter('testcase')]
+          actual = [case for case in cases if case.get('classname') == os.environ['EXPECTED_CLASS']]
+          assert actual and all(case.find('failure') is None and case.find('error') is None and case.find('skipped') is None for case in actual), 'Expected executed passing recommendation test'
+          assert list(Path('qa/ui-evidence').glob('recommendation-*.png')), 'Dialog screenshot absent'
+          PYTEST
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: recommendation-dashboard-${{ matrix.name }}
+          path: |
+            qa/
+            app/build/reports/androidTests/
+            app/build/outputs/androidTest-results/
+          if-no-files-found: error
