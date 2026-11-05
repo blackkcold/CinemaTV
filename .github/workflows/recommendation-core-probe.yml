@@ -40,7 +40,8 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p probe-evidence
-          gradle --no-daemon --max-workers=2 -p experiments/ranksys-android :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest :app:reportDependencies :app:archiveCoreSources | tee probe-evidence/build-and-dependencies.txt
+          gradle --no-daemon --max-workers=2 -p experiments/ranksys-android :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest :app:reportDependencies :app:archiveCoreSources :app:archiveCoreBinaries | tee probe-evidence/build-and-dependencies.txt
+          sha256sum probe-evidence/runtime-jars/* > probe-evidence/runtime-jar-sha256.txt
           sha256sum probe-evidence/upstream-sources/* > probe-evidence/upstream-source-sha256.txt
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump permissions experiments/ranksys-android/app/build/outputs/apk/debug/app-debug.apk | tee probe-evidence/permissions.txt
           if grep -q 'android.permission.INTERNET' probe-evidence/permissions.txt; then exit 1; fi
