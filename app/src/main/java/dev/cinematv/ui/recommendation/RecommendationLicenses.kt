@@ -40,7 +40,6 @@ fun RecommendationLicensesDialog(tv: Boolean, onDismiss: () -> Unit) {
     val scope = rememberCoroutineScope()
     val close = remember { FocusRequester() }
     val licenseScroll = rememberScrollState()
-    var text by remember { mutableStateOf("正在读取随 APK 附带的开源声明…") }
     var notice by remember { mutableStateOf("") }
     val export = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
         if (uri != null) scope.launch {
@@ -54,17 +53,10 @@ fun RecommendationLicensesDialog(tv: Boolean, onDismiss: () -> Unit) {
             catch (_: Exception) { notice = "源码导出失败，请重新选择可写入的位置。源码仍完整保存在 APK 内。" }
         }
     }
-    LaunchedEffect(Unit) {
-        try {
-            text = withContext(Dispatchers.IO) {
-                recommendationLicenseFiles.joinToString("\n\n") { name ->
-                    context.assets.open("recommendation-third-party/$name").bufferedReader().use { it.readText() }
-                }
-            }
-        } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
-        catch (_: Exception) { text = "无法读取此安装包的开源声明，请重新安装经过验证的 CinemaTV APK。" }
-    }
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        // Keep asynchronous text state/effects in the visible dialog composition.
+        // Its window can recompose independently from the obscured settings window.
+        val text = rememberLicenseText()
         CinemaGlassSurface(Modifier.fillMaxWidth(if (tv) .85f else .96f).fillMaxHeight(.9f), radius = 24.dp) {
             Column(Modifier.padding(20.dp).testTag("recommendation-licenses"), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -100,4 +92,25 @@ fun RecommendationLicensesDialog(tv: Boolean, onDismiss: () -> Unit) {
 private fun LicenseAction(label: String, tv: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
     if (tv) GlassAction(label, modifier, onClick = onClick)
     else TextButton(onClick = onClick, modifier = modifier) { Text(label, color = Color.White) }
+}
+
+@Composable
+private fun rememberLicenseText(): String {
+    val assets = LocalContext.current.assets
+    val text by produceState("正在读取随 APK 附带的开源声明…", assets) {
+        try {
+            if (dev.cinematv.BuildConfig.DEBUG) android.util.Log.i("RecommendationLicenses", "load-start")
+            val loaded = withContext(Dispatchers.IO) {
+                recommendationLicenseFiles.joinToString("\n\n") { name ->
+                    assets.open("recommendation-third-party/$name").bufferedReader().use { it.readText() }
+                }.also {
+                    if (dev.cinematv.BuildConfig.DEBUG) android.util.Log.i("RecommendationLicenses", "asset-read-complete chars=${it.length}")
+                }
+            }
+            value = loaded
+            if (dev.cinematv.BuildConfig.DEBUG) android.util.Log.i("RecommendationLicenses", "dialog-state-published")
+        } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+        catch (_: Exception) { value = "无法读取此安装包的开源声明，请重新安装经过验证的 CinemaTV APK。" }
+    }
+    return text
 }
