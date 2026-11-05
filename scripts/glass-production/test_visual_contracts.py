@@ -29,7 +29,7 @@ def junit_output(expected):
 class VisualInventory(unittest.TestCase):
     def test_current_canonical_and_focused_methods_are_all_required(self):
         expected = visual.expected_tests()
-        self.assertEqual(3, len({cls for cls, _ in expected}))
+        self.assertEqual(4, len({cls for cls, _ in expected}))
         self.assertEqual(1, sum(cls.endswith(".TvUiRegressionTest") for cls, _ in expected))
         self.assertEqual(len(expected), len(set(expected)))
         for cls in visual.CLASSES:

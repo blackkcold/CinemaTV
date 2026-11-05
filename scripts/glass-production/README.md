@@ -22,12 +22,14 @@ supplies immersive window chrome and passive observers. It is not in release.
   Phone catalog navigation is captured for state/input, not claimed glass coverage.
 - `MobileGlassButtonTest` preserves native target/role/disabled behavior.
   The TV pass on each SDK additionally runs the small `GlassMaterialSmokeTest`,
-  nine `FocusMediaCardMotionTest` cases, and eleven `InterruptedFocusRestorationTest`
-  cases, plus three `GlassActionLayoutTest` cases for intrinsic/fixed sizing,
+  ten `FocusMediaCardMotionTest` cases, and eleven `InterruptedFocusRestorationTest`
+  cases, plus five `GlassActionLayoutTest` cases for intrinsic/fixed sizing,
   complete accessibility labels and stable native focus/press/click geometry.
   Seven `ContentRailTraversalTest` cases cover synchronous visible focus, smooth
   viewport crossings, rapid reversal and interrupted/reordered lazy moves.
-  Exact execution is required: 34 tests per TV SDK and three on phone.
+  Four `ContentRailVisibilityTest` cases cover focused caption safety across
+  Reduced Motion changes, native cancellation, route return and oversized rows.
+  Exact execution is required: 41 tests per TV SDK and three on phone.
   Interrupted restoration tests pause entry/lazy frame work and inject native
   D-pad events; newer navigation/content wins, cancellation never falls back,
   and ordinary saved-target/fallback behavior remains covered. Native default
@@ -89,3 +91,14 @@ Skipped, unexecuted, failed, crashed, duplicated, or missing tests fail validati
 The runner leaves native/partial capture metadata, input trace, logs and runtime
 state under `qa/production-glass/`. `result.json` is the viewport's terminal result.
 No APK is published or released, no PR is opened, and no broad media suite runs.
+
+## Canonical visual review, before baseline updates
+
+`glass-visual-review.yml` is an isolated diagnostic workflow, never release
+acceptance. One build produces byte-pinned APKs. API33 1080p/4K run the unchanged
+canonical capture plus actual control, card and row-visibility regressions.
+API31 TV and API35 TV/phone reuse those same APKs for focused native coverage.
+Every exported PNG must pass format verification and full pixel decoding; old
+golden differences are separately labeled review input. No failed/partial run
+becomes a release receipt. New source still needs reviewed raw images and the
+strict full release matrix with unchanged comparison limits/masks.

@@ -127,3 +127,45 @@ jobs:
           path: qa/glass-visual-review/${{ matrix.viewport }}/
           if-no-files-found: error
           retention-days: 14
+  native-glass:
+    name: Native glass / API${{ matrix.api }} (focused QA)
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - api: 31
+          - api: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: glass-visual-review-apks
+          path: dist
+      - name: Verify the same APK bytes and prepare native evidence validator
+        run: |
+          python3 -m pip install --disable-pip-version-check 'Pillow==11.3.0'
+          python3 scripts/glass-production/evidence.py verify-build --directory dist --sha "$GITHUB_SHA"
+          sudo chmod 666 /dev/kvm
+      - name: Focused native glass, API31 TV or API35 TV then phone
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          target: default
+          arch: x86_64
+          profile: pixel_2
+          emulator-build: '15004761'
+          disable-animations: false
+          emulator-options: '-no-window -no-audio -gpu lavapipe -feature -Vulkan -no-snapshot -no-boot-anim -memory 3072'
+          # Existing strict runner: one 10-minute pass per viewport; API35 phone
+          # keeps its three tests. No rebuild, recording or broad media suite.
+          script: bash scripts/glass-production/run-matrix.sh '${{ matrix.api }}' "$GITHUB_SHA"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: glass-visual-review-native-api${{ matrix.api }}
+          path: qa/production-glass/
+          if-no-files-found: error
+          retention-days: 14

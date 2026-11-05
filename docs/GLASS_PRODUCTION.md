@@ -39,6 +39,9 @@ when stopped. There is no continuous hardware polling or model-name blacklist.
   fallback, crossfade and scrims. Page UI and consumers are later siblings.
 - Navigation records a glass-only container, combines it with the scene for the
   moving lens, then paints labels. No label is recursively refracted into itself.
+- TV `GlassAction` selection has a persistent opaque dark-rim/bright-core foreground
+  marker and native Selected semantics. It is independent of focus, press and
+  Reduced Motion, does not resize the hit target, and does not alter glass optics.
 - TV `GlassAction` and mobile `MobileGlassButton` keep their native interaction
   nodes. The material Box and text/icon foreground are separate siblings with
   matching transforms. Emergency fallback repaint cannot cover the foreground.
@@ -104,3 +107,30 @@ source and modifications; license assets are packaged with the APK. CinemaTV's
 own integration is MIT. The earlier `GlassRenderPolicy`/StillLens tests document
 the retired V4 renderer and do not govern this production renderer. Aerial's
 design/settings research was reference only, not copied implementation code.
+
+## Bounded cloud timing evidence
+
+These are non-debuggable production-App measurements with real native remote
+input and no recording. They are not the separate procedural motion lab. All
+trials, including invalid ones, remain in their original artifacts.
+
+- [87043cb / run 41968566619](https://github.com/blackkcold/CinemaTV/actions/runs/41968566619):
+  nine correct 22-key control paths, 198 activity windows, 501 frame samples,
+  five empty windows. Full 0/3, Blur 2/3 and Basic 2/3 groups met all timing gates.
+- [9de8eff / run 41975639434](https://github.com/blackkcold/CinemaTV/actions/runs/41975639434):
+  nine correct poster warmup paths and 90 input receipts, but no measured windows.
+  Seven trials still loaded Detail at the readiness observation. Two exposed a
+  benchmark fixture namespace mismatch; independent identity reconstruction
+  confirmed the intended title. The harness fix does not relabel this failed run.
+- [3136acc / run 41978537668](https://github.com/blackkcold/CinemaTV/actions/runs/41978537668):
+  HOME-only, nine correct closed input paths, 180 windows and 357 samples. Fifteen
+  windows had no VSYNC sample and 56 measured snapshots were not scene-ready.
+  Full 0/3, Blur 0/3 and Basic 2/3 met all gates. This profile excludes Detail/Back.
+
+No run establishes a complete three-material FPS ordering or savings percentage.
+The renderer was ANGLE/SwiftShader software GPU. Frame-metrics callbacks were not
+missed, but zero callback loss is not zero dropped display frames. An activity
+window can fall between long frame timestamps; discarding such windows or taking
+the reciprocal of TOTAL_DURATION would create a misleading result. The three
+source commits/APKs must not be pooled, nor applied as timing results to a later
+release containing further UI corrections. Physical GPU testing remains open.

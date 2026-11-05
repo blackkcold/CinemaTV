@@ -15,6 +15,8 @@ These are CinemaTV tuning choices, not measured Apple constants. Focus scale is 
 
 Artwork has uniform overscan sized to cover the movement without stretching its aspect ratio. The static crop does not change when Reduce Motion is toggled. External captions, watch-progress information and accessibility descriptions are retained. The existing focused shadow is static rather than animated per frame; the live sheen is separate from poster images and text.
 
+The actual `ContentRail` asks its parent to reveal the existing row bounds, including the unchanged 15dp vertical padding, when it gains focus or Reduced Motion changes. The request is outside the horizontal scroller, preserves the horizontal anchor, and cancels on newer navigation or route disposal. It reserves space for a still-focused card growing back to 1.06 without shrinking the effect or changing card/hero dimensions. Oversized rows receive one bounded request, not a retry loop.
+
 ## Accessibility and capability policy
 
 The shared production policy supplies reduced motion, including the system animation-scale and environment safeguards. Reduced motion immediately disables scale, lift, tilt and parallax while preserving an obvious focus border, a static focused material and all focus/click/Back behavior. It does not select a different glass material.
@@ -23,7 +25,7 @@ The helper supports `FOCUS_ONLY` and `LAYERED` separately from glass quality. Pr
 
 ## Verification and performance boundaries
 
-The pure policy suite has 28 tests. The nine added component instrumentation tests cover actual `FocusMediaCard` instances, interrupted focus/press, D-pad reversal and expiry, Back/route reset, reduced motion, stable media identity, loading/error behavior and retained labels/progress. A test-only monotonic-clock injection makes component timing deterministic; the production-root performance host must keep the real system clock.
+The pure policy suite has 28 tests. The ten component instrumentation tests cover actual `FocusMediaCard` instances, interrupted focus/press, D-pad reversal and expiry, Back/route reset, reduced motion, stable media identity, loading/error behavior and retained labels/progress, including narrow production-Noto rating captions. Four additional real-rail tests exercise visibility during Reduced Motion changes, native cancellation, route return and oversized font scaling. A test-only monotonic-clock injection makes component timing deterministic; the production-root performance host must keep the real system clock.
 
 Compilation and API 26/31/35 functional results must be recorded for the exact integration SHA before release. Do not treat this description or a local policy-test pass as an Android build or device-test pass.
 
