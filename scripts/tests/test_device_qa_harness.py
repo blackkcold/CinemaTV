@@ -60,7 +60,7 @@ class DeviceMatrixTest(unittest.TestCase):
             {"name": "tv4k", "target": "default", "api": 33, "size": "3840x2160", "density": 640,
              "classes": "dev.cinematv.TvUiRegressionTest,dev.cinematv.TvWorkNavigationTest,dev.cinematv.TvManualWorkAssociationTest,dev.cinematv.TvLibraryCatalogControlsTest,dev.cinematv.TvRecommendationDashboardTest,dev.cinematv.GlassMaterialSmokeTest,dev.cinematv.ui.typography.NotoFontsDeviceTest"},
             {"name": "compat26", "target": "google_apis", "api": 26, "size": "1920x1080", "density": 320,
-             "classes": "dev.cinematv.ui.typography.NotoFontsDeviceTest,dev.cinematv.GlassMaterialSmokeTest#materialSurvivesFocusPressReducedMotionMissingArtAndFailure,dev.cinematv.CinemaBrandStartupTest"},
+             "classes": "dev.cinematv.ui.typography.NotoFontsDeviceTest,dev.cinematv.GlassMaterialSmokeTest#materialSurvivesFocusPressReducedMotionMissingArtAndFailure,dev.cinematv.CinemaBrandStartupTest,dev.cinematv.TvRecommendationDashboardTest"},
         ]})
 
     def test_catalog_library_navigation_and_protocol_suites_are_registered(self):
