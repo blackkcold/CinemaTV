@@ -12,6 +12,7 @@ import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
+import kotlinx.coroutines.runBlocking
 import dev.cinematv.data.*
 import org.junit.Assert.*
 import org.junit.Rule
@@ -44,6 +45,10 @@ private fun recommendationDashboard(rule: ComposeContentTestRule, activity: Comp
         rule.waitUntil(15_000) { model.recommendationSnapshots.any { it.second.rows.isNotEmpty() } }
         // Initial home loading must wait for the asynchronous ranker before choosing artwork.
         rule.waitUntil(15_000) { model.focused != null }
+        val seed = rule.runOnIdle { model.featured.first() }
+        val wasFavorite = model.repo.isFavorite(seed)
+        runBlocking { if (!wasFavorite) model.repo.toggleFavorite(seed) }
+        rule.waitUntil(15_000) { model.recommendationSnapshots.first().second.ranking.positiveWorkCount > 0 }
         if (tv) rule.onNodeWithText("关于 CinemaTV").performClick()
         val opener = rule.onNodeWithTag("recommendation-dashboard-open")
         if (tv) {
@@ -51,13 +56,22 @@ private fun recommendationDashboard(rule: ComposeContentTestRule, activity: Comp
             opener.performKeyInput { pressKey(Key.DirectionCenter) }
         } else opener.performClick()
         rule.onNodeWithTag("recommendation-dashboard").assertIsDisplayed()
-        rule.onNodeWithText("Kotlin 基线实现", substring = true).assertExists()
+        rule.onNodeWithText("RankSys 0.4.3 + CinemaTV 数值保护", substring = true).assertExists()
         if (tv) rule.onNodeWithTag("recommendation-dashboard-close").assertIsFocused()
         rule.runOnIdle {
             val snapshot = model.recommendationSnapshots.first().second
             assertEquals(model.featured.map { it.id }, snapshot.rows.map { it.item.id })
             assertEquals(snapshot.rows.size, snapshot.ranking.items.size)
+            assertTrue(snapshot.ranking.backendVersion.startsWith("RankSys-0.4.3"))
+            assertNull(snapshot.ranking.backendFallbackReason)
+            assertTrue(snapshot.ranking.items.any { it.trace.coreDecision != null })
         }
+        rule.onNodeWithTag("recommendation-licenses-open").performClick()
+        rule.onNodeWithTag("recommendation-licenses").assertIsDisplayed()
+        if (tv) rule.onNodeWithTag("recommendation-licenses-close").assertIsFocused()
+        rule.onNodeWithTag("recommendation-licenses-close").performClick()
+        rule.onNodeWithTag("recommendation-licenses").assertDoesNotExist()
+        if (tv) rule.onNodeWithTag("recommendation-licenses-open").assertIsFocused()
         captureDashboard(rule, activity, tv, "overview")
         if (tv) {
             rule.onNodeWithTag("recommendation-dashboard").performScrollToNode(hasTestTag("recommendation-row-1"))
@@ -80,6 +94,7 @@ private fun recommendationDashboard(rule: ComposeContentTestRule, activity: Comp
         rule.onNodeWithTag("recommendation-dashboard-close").performClick()
         rule.onNodeWithTag("recommendation-dashboard").assertDoesNotExist()
         if (tv) opener.assertIsFocused()
+        runBlocking { if (!wasFavorite && model.repo.isFavorite(seed)) model.repo.toggleFavorite(seed) }
     }
 }
 

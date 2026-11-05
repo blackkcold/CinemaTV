@@ -1,3 +1,5 @@
+import java.security.MessageDigest
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -55,6 +57,10 @@ kapt {
 }
 
 dependencies {
+    // Published, unmodified RankSys core. Explicit closure avoids unrelated algorithms.
+    listOf("org.ranksys:RankSys-diversity:0.4.3", "org.ranksys:RankSys-novdiv:0.4.3",
+        "org.ranksys:RankSys-core:0.4.3", "it.unimi.dsi:fastutil:7.0.6", "org.jooq:jool:0.9.10")
+        .forEach { implementation(it) { isTransitive = false } }
     val composeBom = platform("androidx.compose:compose-bom:2026.03.01")
     implementation(composeBom)
     androidTestImplementation(composeBom)
@@ -89,3 +95,28 @@ dependencies {
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 }
+
+// MPL source delivery is part of the APK, not a link to an expiring CI artifact.
+val recommendationSources by configurations.creating { isTransitive = false }
+dependencies {
+    listOf("core", "novdiv", "diversity").forEach {
+        recommendationSources("org.ranksys:RankSys-$it:0.4.3:sources")
+    }
+}
+val stageRecommendationSources by tasks.registering(Copy::class) {
+    from(recommendationSources)
+    into(layout.buildDirectory.dir("generated/recommendationAssets/recommendation-third-party/sources"))
+    doFirst {
+        val expected = mapOf(
+            "RankSys-core-0.4.3-sources.jar" to "3a09660867d88ebbe1741dcb030e970403afe520d7da90fd4018d5ba0e65535d",
+            "RankSys-diversity-0.4.3-sources.jar" to "6754607fb5d501c10d04e31268a40228970bf49a43777ed2d63beebac0da86bf",
+            "RankSys-novdiv-0.4.3-sources.jar" to "36795aedfb0885f9f118f48fd9598be607989e5d8e5ea680490872112b68774d")
+        check(recommendationSources.files.map { it.name }.toSet() == expected.keys)
+        recommendationSources.files.forEach { file ->
+            val hash = MessageDigest.getInstance("SHA-256").digest(file.readBytes()).joinToString("") { "%02x".format(it) }
+            check(hash == expected.getValue(file.name)) { "Unexpected RankSys source: ${file.name}" }
+        }
+    }
+}
+android.sourceSets.getByName("main").assets.srcDir(layout.buildDirectory.dir("generated/recommendationAssets"))
+tasks.named("preBuild") { dependsOn(stageRecommendationSources) }
