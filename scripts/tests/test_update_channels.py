@@ -142,6 +142,18 @@ class UpdateChannelsTest(unittest.TestCase):
         self.assertEqual(identity['applicationId'], 'dev.cinematv')
         self.assertRegex(identity['certificateSha256'], r'^[0-9a-f]{64}$')
 
+    def test_replacement_identity_and_pending_backup_are_documented(self):
+        import json
+        identity = json.loads((ROOT / 'release/signing-identity.json').read_text())
+        docs = (ROOT / 'docs/UPDATE_CHANNELS.md').read_text()
+        active = identity['certificateSha256']
+        self.assertEqual(active, '0798f1686a28ae4a386a376efcabba3a4c4bb547de760210d944a58455092e8c')
+        self.assertIn(':'.join(active[i:i + 2] for i in range(0, 64, 2)), docs)
+        self.assertIn('Backup of the new identity is pending', docs)
+        self.assertIn('is retired', docs)
+        self.assertNotIn('The current key and encrypted backup were created', docs)
+        self.assertNotIn('its encrypted backup verified on', docs)
+
     def test_candidate_and_fixture_environment_guards_do_not_pipe_secrets(self):
         import os
         import subprocess
