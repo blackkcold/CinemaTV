@@ -1,4 +1,6 @@
 import java.security.MessageDigest
+import org.gradle.api.artifacts.component.ModuleComponentIdentifier
+import org.gradle.api.artifacts.type.ArtifactTypeDefinition
 
 plugins {
     id("com.android.application")
@@ -19,8 +21,8 @@ android {
         applicationId = "dev.cinematv"
         minSdk = 26
         targetSdk = 35
-        versionCode = 8
-        versionName = "0.7.0-preview"
+        versionCode = 9
+        versionName = "0.8.0-preview"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     signingConfigs {
@@ -38,6 +40,15 @@ android {
             isMinifyEnabled = false
             signingConfig = signingConfigs.findByName("production")
         }
+        // Isolated performance host. It inherits production optimizations but is
+        // debug-signed for cloud installation, never shipped as a release artifact.
+        create("glassBenchmark") {
+            initWith(getByName("release"))
+            signingConfig = signingConfigs.getByName("debug")
+            isDebuggable = false
+            applicationIdSuffix = ".glassbenchmark"
+            matchingFallbacks += listOf("release")
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -49,6 +60,7 @@ android {
     androidResources { noCompress += listOf("ttc", "ttf") }
     sourceSets["main"].assets.srcDir(layout.buildDirectory.dir("generated/notoAssets"))
     sourceSets["androidTest"].assets.srcDir("$projectDir/schemas")
+    sourceSets["glassBenchmark"].res.srcDir("src/debug/res")
     packaging { resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" } }
 }
 
@@ -57,6 +69,7 @@ kapt {
 }
 
 dependencies {
+    implementation(project(":backdrop"))
     // Published, unmodified RankSys core. Explicit closure avoids unrelated algorithms.
     listOf("org.ranksys:RankSys-diversity:0.4.3", "org.ranksys:RankSys-novdiv:0.4.3",
         "org.ranksys:RankSys-core:0.4.3", "it.unimi.dsi:fastutil:7.0.6", "org.jooq:jool:0.9.10")
@@ -129,11 +142,17 @@ val verifyRecommendationCore by tasks.registering {
             "RankSys-novdiv-0.4.3.jar" to "27f9682b4939739814c982ac567073cee6c676c36069e3c8aa11f03637133154",
             "fastutil-7.0.6.jar" to "f723d392658f62b3fbed7357cc7d39b10484836e2cbc92dc485b2121e86c4ad9",
             "jool-0.9.10.jar" to "c71cd5a5a0ddb88973bab02673bcf7ee21a8e2ebf4c9efdc12b47156ef1b4a9e")
-        val artifacts = configurations.getByName("debugRuntimeClasspath").resolvedConfiguration.resolvedArtifacts.filter {
-            it.moduleVersion.id.group == "org.ranksys" ||
-                (it.moduleVersion.id.group == "it.unimi.dsi" && it.name == "fastutil") ||
-                (it.moduleVersion.id.group == "org.jooq" && it.name == "jool")
-        }
+        // Select original external JARs before artifact resolution. Resolving every
+        // artifact first is ambiguous for Android project libraries with multiple
+        // runtime variants (classes, resources, manifest, assets, and more).
+        val artifacts = configurations.getByName("debugRuntimeClasspath").incoming.artifactView {
+            componentFilter { id ->
+                id is ModuleComponentIdentifier && (id.group == "org.ranksys" ||
+                    (id.group == "it.unimi.dsi" && id.module == "fastutil") ||
+                    (id.group == "org.jooq" && id.module == "jool"))
+            }
+            attributes.attribute(ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE, ArtifactTypeDefinition.JAR_TYPE)
+        }.artifacts.artifacts
         check(artifacts.map { it.file.name }.toSet() == expected.keys) { "Unexpected recommendation core dependency graph" }
         artifacts.forEach { artifact ->
             val hash = MessageDigest.getInstance("SHA-256").digest(artifact.file.readBytes()).joinToString("") { "%02x".format(it) }

@@ -3,8 +3,11 @@ package dev.cinematv.ui.tv.focus
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import dev.cinematv.CinemaViewModel
+import dev.cinematv.FocusCoordinator
 import kotlinx.coroutines.withTimeoutOrNull
 
 /** Only live composition owns requesters. The ViewModel retains logical keys. */
@@ -21,20 +24,15 @@ class TvFocusRegistry {
         lazyRegions[route to region] = prepare
     }
     fun detachLazyRegion(route: String, region: String) { lazyRegions.remove(route to region) }
-    suspend fun restore(model: CinemaViewModel): Boolean {
-        val route = model.focusRoute
-        val last = model.focusCoordinator.last(route) ?: return false
-        var itemKey = last.itemKey
+    internal suspend fun restore(route: String, bookmark: FocusCoordinator.Bookmark?, isCurrent: () -> Boolean,
+        beforeRequest: () -> Unit = {}): FocusRestoreResult {
         // Saved scroll offsets belong to the old ordering. Resolve the logical
         // target before requesting focus, including items not yet composed.
-        lazyRegions[route to last.region]?.let { prepare ->
-            itemKey = withTimeoutOrNull(2_000) {
-                val preparedKey = prepare(itemKey) ?: return@withTimeoutOrNull null
-                withFrameNanos { }; withFrameNanos { }
-                preparedKey
-            } ?: return false
-        }
-        return request(route, last.region, itemKey)
+        return withTimeoutOrNull(2_000) {
+            restoreFocusTarget(bookmark, bookmark?.let { lazyRegions[route to it.region] },
+                awaitFrame = { withFrameNanos { } }, isCurrent = isCurrent,
+                request = { region, key -> beforeRequest(); request(route, region, key) })
+        } ?: if (isCurrent()) FocusRestoreResult.Missing else FocusRestoreResult.Aborted
     }
 }
 
@@ -42,6 +40,17 @@ val LocalTvFocusRegistry = staticCompositionLocalOf { TvFocusRegistry() }
 val LocalNavigationFocus = staticCompositionLocalOf { FocusRequester() }
 val LocalContentFocus = staticCompositionLocalOf { FocusRequester() }
 val LocalNavigationHasFocus = compositionLocalOf { false }
+val LocalNavigationFocusOwner = staticCompositionLocalOf<TvNavigationFocusOwner?> { null }
+val LocalTvContentFocusOwner = staticCompositionLocalOf<TvNavigationFocusOwner?> { null }
+val LocalTvFocusOwnerObserver = staticCompositionLocalOf<((TvNavigationFocusOwner) -> Unit)?> { null }
+
+/** Passive, synchronous focus ownership. It neither consumes keys nor saves bookmarks. */
+@Composable
+fun Modifier.trackTvContentFocus(): Modifier {
+    val owner = LocalTvContentFocusOwner.current ?: return this
+    val acquisition = remember(owner) { ContentFocusAcquisition(owner::acquireContentFocus) }
+    return onFocusChanged { acquisition.update(it.isFocused) }
+}
 
 @Composable
 fun rememberFocusTarget(model: CinemaViewModel, region: String, key: String): FocusRequester {
@@ -82,13 +91,30 @@ fun RegisterLazyFocusRegion(model: CinemaViewModel, region: String, state: LazyL
 fun RestorePageFocus(model: CinemaViewModel, ready: Boolean = true) {
     val fallback = LocalContentFocus.current
     val registry = LocalTvFocusRegistry.current
-    val navigationHasFocus = LocalNavigationHasFocus.current
-    val navigationAtEntry = remember(model.focusRoute) { navigationHasFocus }
-    LaunchedEffect(model.page, ready) {
-        if (ready && !navigationAtEntry) {
+    val navigationOwner = LocalNavigationFocusOwner.current
+    val navigationHasFocus by rememberUpdatedState(LocalNavigationHasFocus.current)
+    val route = model.focusRoute
+    val guard = remember(model, route, navigationOwner) {
+        FocusRestorationGuard(route, model.focusCoordinator.last(route), navigationOwner,
+            navigationOwner?.hasFocus ?: navigationHasFocus)
+    }
+    LaunchedEffect(model, route, ready, registry, fallback, guard) {
+        if (ready) {
+            val isCurrent = {
+                guard.isCurrent(model.focusRoute, model.focusCoordinator.last(route),
+                    navigationOwner?.hasFocus ?: navigationHasFocus)
+            }
             // Wait for lazy items and their focus targets to attach after route entry.
-            withFrameNanos { }; withFrameNanos { }
-            if (!registry.restore(model)) runCatching { fallback.requestFocus() }
+            val generation = navigationOwner?.beginRestore(route)
+            val beforeRequest = { if (generation != null) navigationOwner?.requestRestore(generation); Unit }
+            var outcome = "Cancelled"
+            try {
+                outcome = restorePageFocusWhenCurrent(awaitFrame = { withFrameNanos { } }, isCurrent = isCurrent,
+                    restore = { registry.restore(guard.route, guard.bookmark, isCurrent, beforeRequest) },
+                    fallback = { beforeRequest(); runCatching { fallback.requestFocus() }.getOrDefault(false) }).name
+            } finally {
+                if (generation != null) navigationOwner?.finishRestore(generation, outcome)
+            }
         }
     }
 }

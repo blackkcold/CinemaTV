@@ -15,6 +15,13 @@ fun MediaItem.metadataLine(): String = listOf(
     if (sourceCount > 1) "$sourceCount 个片源" else ""
 ).filter(String::isNotBlank).joinToString(" · ")
 
+/** Narrow cards keep a valid score and its actual source ahead of optional detail. */
+fun MediaItem.cardMetadataLine(): String = listOf(
+    RatingPolicy.score(this)?.let { "★ ${rating.trim()} ${ratingSource.ifBlank { "来源评分" }}" }.orEmpty(),
+    year, category,
+    if (sourceCount > 1) "$sourceCount 个片源" else ""
+).filter(String::isNotBlank).joinToString(" · ")
+
 data class CatalogFilter(val category: String? = null, val year: String? = null, val ratedFirst: Boolean = false) {
     fun apply(items: List<MediaItem>): List<MediaItem> {
         val filtered = items.filter { (category == null || it.category == category) && (year == null || it.year == year) }

@@ -41,6 +41,7 @@ import dev.cinematv.playback.PlaybackFactory
 import dev.cinematv.playback.ObservePlaybackLifecycle
 import dev.cinematv.ui.tv.components.CinemaGlassSurface
 import dev.cinematv.ui.tv.design.LocalTvLayout
+import dev.cinematv.ui.tv.focus.trackTvContentFocus
 import dev.cinematv.Page
 import dev.cinematv.CinemaViewModel
 import kotlinx.coroutines.delay
@@ -210,7 +211,7 @@ fun TvPlayerPage(model: CinemaViewModel) {
                     Key.DirectionDown, Key.DirectionUp -> { controlsVisible = true; true }
                     else -> false
                 }
-            }.focusable()
+            }.trackTvContentFocus().focusable()
     ) {
         AndroidView(
             modifier = Modifier.fillMaxSize(),
@@ -262,7 +263,7 @@ fun TvPlayerPage(model: CinemaViewModel) {
                                 Key.DirectionRight -> { seek(10000); true }
                                 else -> false
                             }
-                        }.focusable(), contentAlignment = Alignment.CenterStart) {
+                        }.trackTvContentFocus().focusable(), contentAlignment = Alignment.CenterStart) {
                         Box(Modifier.fillMaxWidth().height(4.dp).background(Color.White.copy(alpha = .23f)))
                         if (duration > 0) Box(Modifier.fillMaxWidth((position.toDouble() / duration).toFloat().coerceIn(0f, 1f))
                             .height(4.dp).background(Ivory))

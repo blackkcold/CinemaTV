@@ -3,7 +3,7 @@
 A native Android TV / Google TV and Android phone client for a self-hosted LibreTV instance.
 Kotlin, Jetpack Compose for TV and Media3; separate TV and touch layouts.
 
-**v0.7.0 preview candidate: local recommendations with a real, inspectable core.** Releases are debug-signed
+**v0.8.0 preview candidate: live glass, responsive focus and TV motion.** Releases are debug-signed
 previews. Physical TV certification and production signing remain tracked in
 [Release Gate #1](https://github.com/blackkcold/CinemaTV/issues/1).
 
@@ -19,7 +19,7 @@ previews. Physical TV certification and production signing remain tracked in
 | Movies / series | Distinct poster-wall and landscape-card layouts; filters use available category/year/rating data |
 | Focus | Route/rail/title identity, scroll restoration, controlled horizontal traversal, dialog and player return targets |
 | Artwork | Conservative title/year matching, bounded cache/prefetch, validated landscape dimensions, original fallback |
-| Glass / motion | V4 depth buttons, optional focused scene-still lens on TV; static phone fallback, low-memory/API gates and reduced motion |
+| Glass / motion | Live Full optics or ordinary Blur on verified Compose scenes; conservative Basic fallback, independent reduced motion and responsive poster focus |
 | Search / library | Room-backed works/seasons/episodes/sources; local, catalog and NDJSON stages; title/alias/actor search and provenance-aware filters |
 | Recommendations | On-device RankSys cosine/MMR with explicit numerical guards, existing favorites/status/progress, real preference/weight/decision dashboard and offline license/source access |
 | Playback | Media3, episode resume and measured duration, floating TV controls, track/speed panels, background pause |
@@ -74,11 +74,12 @@ metrics accompany the preview. Missing evidence or failed comparisons block publ
 
 ## Current limits
 
-The preview is not a physical-device or production-signing certification. True
-framebuffer optical refraction, four-hour playback/codec/HDR hardware coverage,
+The preview is not a physical-device or production-signing certification. Four-hour playback/codec/HDR hardware coverage,
 cross-device sync, QR pairing and additional playback engines remain outside this
 preview. Legacy preferences import into Room is implemented; future Room schema
-versions still require explicit migrations. Still-image glass never samples a video Surface.
+versions still require explicit migrations. Live glass never samples a video Surface.
+Full is explicit API33+ opt-in, Blur requires API31+, and AUTO remains conservative.
+See [production glass](docs/GLASS_PRODUCTION.md) and [motion](docs/MOTION_PRODUCTION.md).
 Douban acquisition is fixture-tested and disabled by default; applicable written
 permission and permitted live endpoint validation have not been established.
 

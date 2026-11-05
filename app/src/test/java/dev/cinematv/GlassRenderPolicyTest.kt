@@ -30,9 +30,10 @@ class GlassRenderPolicyTest {
         }
         assertTrue(allowed(width = 600f, height = 80f, area = 240000f))
     }
-    @Test fun lowMemoryAndReducedMotionCannotBeOverriddenByEnhancedRequest() {
+    @Test fun legacyStillPolicyRetainsItsOwnGatesButIsNotTheProductionResolver() {
         assertFalse(allowed(quality = resolveGlassQuality(GlassQuality.ENHANCED, true, 36, false)))
-        assertFalse(allowed(quality = resolveGlassQuality(GlassQuality.ENHANCED, false, 36, true)))
+        assertEquals(GlassQuality.ENHANCED, resolveGlassQuality(GlassQuality.ENHANCED, false, 36, true))
+        assertFalse(allowed(reduced = true))
     }
     @Test fun compileAndDrawFailuresLatchUntilANewSessionWhileFallbackCanRender() {
         val latch = GlassFailureLatch()
