@@ -61,24 +61,27 @@ object ContentRecommendationCore {
         evidence: List<ContentEvidence>,
         excludedKeys: Set<String> = emptySet(),
         limit: Int = 20,
-        policy: RecommendationPolicy = RecommendationPolicy()
+        policy: RecommendationPolicy = RecommendationPolicy(),
+        checkCancelled: () -> Unit = {}
     ): ContentRanking {
-        val unique = candidates.distinctBy { it.key }
+        checkCancelled()
+        val unique = candidates.onEach { checkCancelled() }.distinctBy { it.key }
         val eligible = unique.filterNot { it.key in excludedKeys }
         val bounded = eligible.take(policy.maxCandidates)
-        val validEvidence = evidence.filter { it.key !in excludedKeys && it.weight.isFinite() && it.weight > 0 }
+        val validEvidence = evidence.filter { checkCancelled(); it.key !in excludedKeys && it.weight.isFinite() && it.weight > 0 }
             .groupBy { it.key }.values.map { group -> group.maxBy { it.weight } }
         val positive = validEvidence.take(policy.maxPositiveWorks)
         val sum = sortedMapOf<String, Double>()
         var usefulWorks = 0
         positive.forEach { signal ->
+            checkCancelled()
             val vector = normalize(signal.features, policy.maxFeaturesPerWork)
             if (vector.isNotEmpty()) usefulWorks++
             vector.forEach { (tag, value) -> sum[tag] = (sum[tag] ?: 0.0) + value * signal.weight.coerceAtMost(100.0) }
         }
         val profile = normalize(sum, Int.MAX_VALUE)
         val cold = profile.isEmpty()
-        val vectors = bounded.associate { it.key to normalize(it.features, policy.maxFeaturesPerWork) }
+        val vectors = bounded.associate { checkCancelled(); it.key to normalize(it.features, policy.maxFeaturesPerWork) }
         val contributions = bounded.associate { candidate -> candidate.key to vectors.getValue(candidate.key)
             .mapNotNull { (tag, value) -> profile[tag]?.let { FeatureContribution(tag, it, value) } }
             .sortedWith(compareByDescending<FeatureContribution> { it.contribution }.thenBy { it.tag }) }
@@ -90,6 +93,7 @@ object ContentRecommendationCore {
         val redundancy = bounded.associate { it.key to 0.0 }.toMutableMap()
         val output = mutableListOf<ContentRankedItem>()
         while (output.size < limit.coerceIn(0, policy.maxResults) && remaining.isNotEmpty()) {
+            checkCancelled()
             // Empty/sparse metadata is not evidence of dislike. Cold start preserves input order.
             val tier = remaining.minOf { it.seenTier }
             val next = if (cold) remaining.first() else remaining.filter { it.seenTier == tier }.maxBy { candidate ->
@@ -106,7 +110,8 @@ object ContentRecommendationCore {
                 output.size + 1, if (cold) "catalog-order" else "seen-tier-then-mmr"
             ))
             remaining.remove(next)
-            if (!cold) remaining.forEach { candidate ->
+            if (!cold) remaining.forEachIndexed { index, candidate ->
+                if (index % 32 == 0) checkCancelled()
                 val overlap = cosine(vectors.getValue(next.key), vectors.getValue(candidate.key))
                 redundancy[candidate.key] = maxOf(redundancy.getValue(candidate.key), overlap)
             }

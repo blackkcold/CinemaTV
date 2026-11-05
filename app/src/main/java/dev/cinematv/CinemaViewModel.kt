@@ -381,7 +381,7 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
         recommendationJob?.cancel()
         val records = repo.library.snapshot.records.toList()
         val signals = records.filter { it.status != null || it.favorite || it.historyAt != null }.map {
-            RecommendationSignal(it.item, it.status ?: if (it.historyAt != null && it.item.positionMs > 0) LibraryStatus.WATCHING else null,
+            RecommendationSignal(it.item, it.status,
                 favorite = it.favorite, notInterested = it.status == LibraryStatus.DROPPED)
         }
         val offline = repo.localItems()
@@ -392,9 +392,10 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
             delay(50)
             val now = System.currentTimeMillis()
             val snapshots = withContext(Dispatchers.Default) {
-                val movies = LocalRecommendationPipeline.rank(movieInput, signals, 50, now)
+                val checkCancelled: () -> Unit = { ensureActive() }
+                val movies = LocalRecommendationPipeline.rank(movieInput, signals, 50, now, checkCancelled = checkCancelled)
                 ensureActive()
-                val series = LocalRecommendationPipeline.rank(seriesInput, signals, 50, now)
+                val series = LocalRecommendationPipeline.rank(seriesInput, signals, 50, now, checkCancelled = checkCancelled)
                 listOf("电影" to movies, "剧集" to series)
             }
             ensureActive()
@@ -436,6 +437,15 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
                 }
                 rebuildRecommendations()
             }
+            // A recommendation build is asynchronous. Wait for the latest coalesced build,
+            // including any replacement caused by a concurrent Room/catalog update.
+            while (true) {
+                val latest = recommendationJob ?: break
+                latest.join()
+                ensureActive()
+                if (latest === recommendationJob) break
+            }
+            if (generation != browseGeneration) return@launch
             if (focused == null) focused = featured.firstOrNull()
             featured.firstOrNull()?.let { first ->
                 try {

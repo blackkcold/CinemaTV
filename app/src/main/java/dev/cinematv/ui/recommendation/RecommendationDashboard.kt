@@ -20,6 +20,7 @@ import dev.cinematv.data.MediaItem
 import dev.cinematv.data.recommendation.LocalRecommendationSnapshot
 import dev.cinematv.data.recommendation.LocalRecommendationWeights
 import dev.cinematv.ui.GlassAction
+import dev.cinematv.ui.shared.presentationKey
 import dev.cinematv.ui.tv.components.CinemaGlassSurface
 import java.text.DateFormat
 import java.util.Date
@@ -88,7 +89,7 @@ fun RecommendationDashboardDialog(
                         }
                     }
                     item { Text("本次排序解释 · 前 ${minOf(20, snapshot.rows.size)} / ${snapshot.rows.size}", color = Color.White, fontSize = 18.sp) }
-                    itemsIndexed(snapshot.rows.take(20), key = { index, _ -> "${snapshot.asOfMs}:$tab:$index" }) { _, row ->
+                    itemsIndexed(snapshot.rows.take(20), key = { _, row -> "$tab:${row.item.presentationKey}" }) { _, row ->
                         val trace = row.trace
                         Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                             DashboardAction("${trace.finalRank}. ${row.item.title}", tv,

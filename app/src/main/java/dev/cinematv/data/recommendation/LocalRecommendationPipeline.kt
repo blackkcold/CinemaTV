@@ -1,6 +1,7 @@
 package dev.cinematv.data.recommendation
 
 import dev.cinematv.data.*
+import java.util.Locale
 
 /** Weights are product policy, not fitted parameters or a probability of liking a work. */
 object LocalRecommendationWeights {
@@ -44,7 +45,31 @@ object LocalRecommendationPipeline {
     }
 
     /** Buckets narrow comparisons; sameWork still decides identity, including conflicting IDs. */
-    private class SignalIndex(signals: List<RecommendationSignal>) {
+    private class IdentityContext(items: List<MediaItem>) {
+        private fun ids(item: MediaItem) = item.metadataIds.entries
+            .filter { it.key.isNotBlank() && it.value.isNotBlank() }
+            .associate { it.key.trim().lowercase(Locale.ROOT) to it.value.trim() }
+        private val conflicts = items.mapNotNull { item -> SearchAggregator.workKey(item)?.let { it to item } }
+            .groupBy({ it.first }, { it.second }).mapValues { (_, group) ->
+                group.flatMap { ids(it).entries }.groupBy { it.key }
+                    .filterValues { values -> values.map { it.value }.distinct().size > 1 }.keys
+            }
+        fun matches(a: MediaItem, b: MediaItem): Boolean {
+            if (a == b) return true
+            if (!SearchAggregator.sameWork(a, b)) return false
+            // Stable source identity can survive metadata enrichment, but a missing ID cannot
+            // bridge several conflicting works merely through matching title/year.
+            val sameSource = (a.source == null && b.source == null) ||
+                (a.source?.url?.takeIf(String::isNotBlank) != null && a.source.url == b.source?.url)
+            if (sameSource && a.id.isNotBlank() && a.id == b.id) return true
+            val namespaces = conflicts[SearchAggregator.workKey(a)].orEmpty() + conflicts[SearchAggregator.workKey(b)].orEmpty()
+            val aIds = ids(a)
+            val bIds = ids(b)
+            return namespaces.all { namespace -> aIds[namespace] != null && aIds[namespace] == bIds[namespace] }
+        }
+    }
+
+    private class SignalIndex(signals: List<RecommendationSignal>, private val identity: IdentityContext) {
         private data class SourceKey(val id: String, val sourceUrl: String?, val hasSource: Boolean)
         private fun source(item: MediaItem) = SourceKey(item.id, item.source?.url?.trim(), item.source != null)
         private val bySource = signals.groupBy { source(it.item) }
@@ -52,7 +77,7 @@ object LocalRecommendationPipeline {
             .groupBy({ it.first }, { it.second })
         fun match(item: MediaItem): List<RecommendationSignal> =
             (bySource[source(item)].orEmpty() + SearchAggregator.workKey(item)?.let { byWork[it] }.orEmpty())
-                .distinct().filter { it.item == item || SearchAggregator.sameWork(item, it.item) }
+                .distinct().filter { identity.matches(item, it.item) }
     }
 
     fun rank(
@@ -60,26 +85,30 @@ object LocalRecommendationPipeline {
         signals: List<RecommendationSignal>,
         limit: Int = 50,
         nowMs: Long = System.currentTimeMillis(),
-        policy: RecommendationPolicy = RecommendationPolicy()
+        policy: RecommendationPolicy = RecommendationPolicy(),
+        checkCancelled: () -> Unit = {}
     ): LocalRecommendationSnapshot {
-        val available = catalog.filter { CatalogLicensePolicy.isAvailable(it, nowMs) }
+        checkCancelled()
+        val available = catalog.filter { checkCancelled(); CatalogLicensePolicy.isAvailable(it, nowMs) }
         val groups = SearchAggregator.groupWithAlternatives(available)
+        val identity = IdentityContext(available + signals.map { it.item })
         val negative = signals.filter { it.notInterested || it.status == LibraryStatus.DROPPED }
-        val negatives = SignalIndex(negative)
+        val negatives = SignalIndex(negative, identity)
         val rejected = groups.indices.filter { index -> groups[index].alternatives.any { item ->
             negatives.match(item).isNotEmpty()
         } }.map { "candidate:$it" }.toSet()
-        val positive = signals.filter { LocalRecommendationWeights.signal(it) > 0 &&
+        val positive = signals.filter { checkCancelled(); LocalRecommendationWeights.signal(it) > 0 &&
             CatalogLicensePolicy.isAvailable(it.item, nowMs) &&
             negatives.match(it.item).isEmpty() }
         val positiveByItem = positive.groupBy { it.item }
         // Reuse the catalog's conservative identity grouping, including explicit-ID conflict splits.
         val seeds = SearchAggregator.groupWithAlternatives(positive.map { it.item }).mapIndexed { index, group ->
+            checkCancelled()
             val matching = group.alternatives.flatMap { positiveByItem[it].orEmpty() }.distinct()
             val strongest = matching.maxBy { LocalRecommendationWeights.signal(it) }
             ContentEvidence("signal:$index", features(strongest.item), LocalRecommendationWeights.signal(strongest))
         }
-        val allSignals = SignalIndex(signals)
+        val allSignals = SignalIndex(signals, identity)
         val own = groups.map { group -> group.alternatives.flatMap(allSignals::match).distinct() }
         val candidates = groups.mapIndexed { index, group -> ContentCandidate("candidate:$index", features(group.item),
             when {
@@ -88,7 +117,7 @@ object LocalRecommendationPipeline {
                 own[index].any { it.status == LibraryStatus.WATCHING || it.item.positionMs > 0 } -> 1
                 else -> 0
             }) }
-        val ranking = ContentRecommendationCore.rank(candidates, seeds, rejected, limit, policy)
+        val ranking = ContentRecommendationCore.rank(candidates, seeds, rejected, limit, policy, checkCancelled)
         val rows = ranking.items.map { row ->
             val index = row.key.substringAfter(':').toInt()
             val item = groups[index].item

@@ -90,6 +90,18 @@ class ContentRecommendationCoreTest {
         assertTrue(ContentRecommendationCore.rank(emptyList(), emptyList()).items.isEmpty())
         for (limit in listOf(0, -1)) assertTrue(ContentRecommendationCore.rank(listOf(item("a")), listOf(seed()), limit = limit).items.isEmpty())
     }
+    @Test fun cooperativeCancellationStopsWorkInsteadOfPublishingAStaleResult() {
+        var checks = 0
+        val candidates = (0 until 2000).map { item("candidate:$it") }
+        try {
+            ContentRecommendationCore.rank(candidates, listOf(seed()), limit = 50, checkCancelled = {
+                if (++checks == 50) throw java.util.concurrent.CancellationException("newer snapshot")
+            })
+            fail("Cancelled work must not return a snapshot")
+        } catch (_: java.util.concurrent.CancellationException) {
+            assertEquals(50, checks)
+        }
+    }
     @Test fun onlyProvidedMetadataCanContribute() {
         val result = ContentRecommendationCore.rank(listOf(item("missing", b)), listOf(seed()))
         assertEquals(0.0, result.items.single().trace.similarity, 0.0)
