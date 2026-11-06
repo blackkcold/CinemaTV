@@ -1,43 +1,54 @@
 # CinemaTV engineering handoff (AGENTS.md)
 
-This repository is for a native Android TV application with an **explicitly decoupled** LibreTV adapter and an optional BFF. The product direction is Apple TV-like fullscreen movie hero, frosted/dark glass navigation, center-focused poster coverflow, reliable D-pad remote interactions, media search, playback, live EPG and history.
+CinemaTV has an explicitly decoupled LibreTV adapter and optional BFF. The approved
+2026-11-06 direction is **hybrid Android TV presentation**: locally packaged
+HTML/CSS/React for browsing, Kotlin for application/data services, and the existing
+Media3/Compose native player. The former blanket prohibition on WebView is superseded
+by this explicit user decision. This is not a remote LibreTV website wrapper.
 
 ## Non-negotiable constraints
-1. Preserve native Kotlin + Jetpack Compose for TV. No WebView shell.
-2. LibreTV is an upstream service, not bundled or duplicated. Do not embed credentials or unlicensed streams.
-3. Keep provider JSON decoding confined to `app/src/main/java/dev/cinematv/data/`.
-4. Keep Media3 lifecycle isolated in `playback/` and `ui/TvPlayerPage.kt`. Playback must free its player.
-5. Never install untested GPUs / video-surface blur shaders as a blanket effect; low-end TV fallback first.
-6. Review D-pad focus and Back handling for every new interactive component.
-7. Code is MIT-licensed here; **do not copy GPL DpadTV/FongMi implementation source**.
-8. Push incremental commits to GitHub after each coherent change; never overwrite working history.
-9. Every commit must compile via GitHub Actions before claiming success. A source commit is not a tested APK.
-10. Tag/release gate must not publish production/stable APK without testing and private signing.
+1. Preserve Android 8.0/API26 installation support, native Media3 playback and the independent phone UI. TV uses a local, origin-restricted Web UI on capable WebView providers, with a native recovery route.
+2. LibreTV is an upstream service, not bundled or duplicated. Never embed credentials, unlicensed streams or commercial artwork. Browser fixtures must be original/synthetic and excluded from the production bundle.
+3. Keep provider JSON decoding in `data/`. Expose bounded presentation DTOs, not provider responses, cookies, credentials, arbitrary URLs or the whole ViewModel.
+4. Keep Media3 lifecycle in `playback/` and `ui/TvPlayerPage.kt`; retain cache, episode/source identity, progress persistence and player release.
+5. Apple TV-like fullscreen cinematic hero, restrained liquid glass, floating navigation and focus-driven poster motion are the visual target. Optical sampling is restricted to the app's still scene; never imply sampling a separate video Surface. Provide reduced-motion and bounded rendering modes.
+6. Every interactive component must work with D-pad, OK and Back. One route owner, stable focus keys, list virtualization and playback-return restoration are mandatory. Browser success alone is not TV acceptance.
+7. MIT licensing applies. Do not copy GPL DpadTV/FongMi implementation code or redistribute third-party proprietary fonts/assets.
+8. Push coherent incremental commits; never overwrite working history. Work on `feature/hybrid-tv-liquid-glass`, based on `dev`; do not merge unaccepted personal-account code into `main`.
+9. Compile and test the exact candidate with GitHub Actions before claiming success. A source commit is not a tested APK; emulator results are not physical TV certification.
+10. Keep the existing public package and fixed signing identity for installable Dev releases. All private signing material stays outside GitHub, Actions, artifacts and logs. Do not bypass signing gates, publish a differently signed same-package APK as an upgrade, or fabricate performance results.
 
 ## Build/test
+
+Existing native baseline:
 ```sh
 gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug
 npm --prefix backend/tv-bff test
 ```
-The repository GitHub Actions workflow also validates APK archive integrity and debug signature.
+
+Hybrid sources and instructions are under `frontend/tv-web/` and `docs/HYBRID_TV.md`.
+Test browser rendering and Android WebView independently. Retain existing native
+regression tests alongside new hybrid bridge, navigation and playback tests.
 
 ## Folder layout
-- `app/src/main/java/dev/cinematv/ui/`: Compose screens + TV components
-- `app/src/main/java/dev/cinematv/data/`: source schemas + authenticated LibreTV API adapter
-- `app/src/main/java/dev/cinematv/playback/`: Media3 player/cache factory
-- `app/src/main/java/dev/cinematv/CinemaViewModel.kt`: application state and navigation
-- `backend/tv-bff/`: separate Node API and unit/integration tests
-- `docs/INSTALL.md`: deployment and device QA instructions
+- `frontend/tv-web/`: TV React UI, tokens, focus, browser mocks and browser tests.
+- `app/src/main/java/dev/cinematv/hybrid/`: local WebView host, presentation adapter and restricted message bridge.
+- `app/src/main/java/dev/cinematv/ui/`: native player, mobile UI, native system/credential surfaces and recovery presentation.
+- `app/src/main/java/dev/cinematv/data/`: source schemas, authenticated adapters and persistence.
+- `app/src/main/java/dev/cinematv/playback/`: Media3 factory, cache and lifecycle.
+- `backend/tv-bff/`: independent metadata service.
+- `docs/UPDATE_CHANNELS.md`: external signing, global versionCode ledger and channel safety.
 
 ## Completion gate
-Production-ready is **not** satisfied by compiling an APK alone. Require tested TV input/focus matrix, controlled metadata quality, player format and decode coverage, app lifecycle, security review, and release signing. See GitHub release-readiness issue for exact remaining tasks.
 
-## Current limitations
-Glass uses a conservative Basic/Blur/Full admission policy. AUTO selects real Compose-scene blur only on eligible API31+ windows; Full optical refraction is explicit API33+ opt-in. The first committed frame, low-memory/power/thermal guards, same-window source ownership and session failure latch protect fallback. API26–30, video Surfaces and separate dialogs do not receive an optical source. See docs/GLASS_PRODUCTION.md; no emulator result establishes physical-device frame rate. Browse metadata may not have cinematic 16:9 backgrounds. Login, search, metadata, player and live require the user's own legally accessible LibreTV server. Direct source discovery is not included.
+Require build/lint/unit/backend checks, front-end type/contract/browser checks,
+Android WebView five-way input/focus/Back/playback-return acceptance, renderer-loss
+recovery and bounded resources. Record exact source SHA, artifact hashes and test
+scope. Physical low-end TV, HDR/codec breadth and long-play performance require
+actual hardware evidence. Never convert an unmeasured budget into a measured claim.
 
-## Recovery procedure after interrupted work
-1. Inspect last `main` SHA and the latest GitHub Actions workflow result.
-2. Review `docs/INSTALL.md`, `docs/ARCHITECTURE.md`, then open release-readiness issue.
-3. Fix any CI regression and commit.
-4. Add focused tests for the changed functionality.
-5. Only describe a release as complete when its exact commit has an uploaded artifact and documented TV acceptance test.
+## Recovery after interrupted work
+1. Inspect the feature branch and Dev head and their latest Actions results.
+2. Read `docs/HYBRID_TV.md` and the checked-in implementation/acceptance status.
+3. Fix regressions and add focused tests before expanding scope.
+4. Release only the exact accepted artifact with its original approved signing identity.
