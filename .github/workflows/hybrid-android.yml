@@ -32,8 +32,9 @@ on:
 permissions:
   contents: read
 concurrency:
+  queue: max
   group: cinematv-hybrid-android-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 jobs:
   build:
     name: Exact source / debug and unsigned release
@@ -112,11 +113,16 @@ jobs:
             app/build/reports/lint-results-release.*
           if-no-files-found: warn
   device:
+    concurrency:
+      group: cinematv-emulator-exclusive
+      cancel-in-progress: false
+      queue: max
     name: Android TV / ${{ matrix.name }}
     needs: build
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
+      max-parallel: 1
       fail-fast: false
       matrix:
         include:
@@ -177,6 +183,10 @@ jobs:
         run: |
           echo 'Actual Android TV emulator and production MainActivity; synthetic local media only. The signed release APK, real TV GPU/decoder performance, four-hour playback and final updater installation are separate gates.' >> "$GITHUB_STEP_SUMMARY"
   phone:
+    concurrency:
+      group: cinematv-emulator-exclusive
+      cancel-in-progress: false
+      queue: max
     name: Phone / exact APK navigation, playback and adapter contracts
     needs: build
     runs-on: ubuntu-24.04

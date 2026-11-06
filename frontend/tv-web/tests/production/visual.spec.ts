@@ -11,37 +11,49 @@ declare global {
 const captureOnly = process.env.CINEMA_VISUAL_CAPTURE === '1';
 const source = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
 const sha256 = (value: Buffer | string) => createHash('sha256').update(value).digest('hex');
+const errors = new WeakMap<Page, string[]>();
+const fontPaths = new Set(['/assets/fonts/NotoSans-Regular.ttf', '/assets/fonts/NotoSans-Bold.ttf']);
 let injection = '';
 let fontIdentity = '';
+let systemFontIdentity = '';
 
 test.beforeAll(async () => {
   const result = await build({ entryPoints: ['tests/production/bridge.ts'], bundle: true, write: false,
     format: 'iife', platform: 'browser', target: 'chrome111' });
   injection = result.outputFiles[0].text;
   fontIdentity = sha256(await readFile('../../scripts/fonts/noto-fonts.lock.json'));
+  const systemFont = execFileSync('fc-match', ['-f', '%{file}', 'sans:lang=zh-cn'], { encoding: 'utf8' }).trim();
+  systemFontIdentity = sha256(await readFile(systemFont));
 });
+test.beforeEach(({ page }) => {
+  const messages: string[] = [];
+  errors.set(page, messages);
+  page.on('pageerror', error => messages.push(error.message));
+});
+test.afterEach(({ page }) => expect(errors.get(page)).toEqual([]));
 
 async function ready(page: Page, fixture = '') {
-  await page.clock.install({ time: new Date('2026-11-06T10:00:00Z') });
-  await page.addInitScript({ content: injection });
-  await page.route('**/assets/fonts/*.ttf', async route => {
-    const name = new URL(route.request().url()).pathname.split('/').at(-1)!;
-    if (!['NotoSans-Regular.ttf', 'NotoSans-Bold.ttf'].includes(name)) throw new Error('Unexpected font request');
+  // Exact URL predicates avoid interpreting path separators as a regexp literal.
+  // Register before the test clock/init scripts; no application assets are changed.
+  await page.route(url => fontPaths.has(url.pathname), async route => {
+    const pathname = new URL(route.request().url()).pathname;
+    if (!fontPaths.has(pathname)) throw new Error('Unexpected font request');
+    const name = pathname.split('/').at(-1)!;
     const body = await readFile(resolve('../../.cache/cinematv-noto-fonts', name));
     await route.fulfill({ status: 200, contentType: 'font/ttf', body });
   });
-  const errors: string[] = [];
-  page.on('pageerror', error => errors.push(error.message));
+  // Freeze wall-clock metadata, not requestAnimationFrame or input scheduling.
+  await page.clock.setFixedTime(new Date('2026-11-06T10:00:00Z'));
+  await page.addInitScript({ content: injection });
   await page.goto(fixture ? `/?fixture=${fixture}` : '/');
   await expect(page.locator('.tv-app')).toBeVisible();
   await expect(page.locator('html')).toHaveAttribute('data-native', 'true');
   await expect(page.locator('.tv-app')).toHaveAttribute('data-reduced-motion', 'true');
   await page.evaluate(() => document.fonts.ready);
-  expect(errors).toEqual([]);
 }
 
 async function capture(page: Page, browser: Browser, info: TestInfo, name: string) {
-  await page.waitForFunction(() => [...document.images].filter(image => {
+  await page.waitForFunction(() => !document.querySelector('.scene-probe') && [...document.images].filter(image => {
     const r = image.getBoundingClientRect();
     return r.width > 1 && r.height > 1 && r.right > 0 && r.bottom > 0 && r.left < innerWidth && r.top < innerHeight;
   }).every(image => image.complete));
@@ -51,7 +63,7 @@ async function capture(page: Page, browser: Browser, info: TestInfo, name: strin
   const environment = {
     family: 'hybrid-browser-production', browser: browser.version(), platform: process.platform,
     viewport: page.viewportSize(), dpr: await page.evaluate(() => devicePixelRatio),
-    locale: 'zh-CN', timezone: 'UTC', fontLockSha256: fontIdentity,
+    locale: 'zh-CN', timezone: 'UTC', fontLockSha256: fontIdentity, systemCjkFontSha256: systemFontIdentity,
     quality: await page.locator('.tv-app').getAttribute('data-quality'), reducedMotion: true,
   };
   const folder = resolve('production-captures', info.project.name);
@@ -132,8 +144,12 @@ test('production assets contain no fixture module or development runtime', async
   const response = await page.request.get('/');
   const html = await response.text();
   expect(html).not.toContain('/@vite/client');
-  for (const match of html.matchAll(/(?:src|href)="(\.\/assets\/[^"]+)"/g)) {
-    const text = await (await page.request.get(match[1])).text();
-    expect(text).not.toMatch(/FIXTURE_ONLY|CinemaVisualFixture|fixture_0|合成开发资料/);
+  const assets = [...html.matchAll(/(?:src|href)="((?:\.\/|\/)assets\/[^"]+)"/g)].map(match => match[1]);
+  expect(assets.length).toBeGreaterThan(0);
+  expect(assets.some(path => path.endsWith('.js'))).toBe(true);
+  for (const asset of assets) {
+    const response = await page.request.get(asset);
+    expect(response.ok()).toBe(true);
+    expect(await response.text()).not.toMatch(/FIXTURE_ONLY|CinemaVisualFixture|fixture_0|合成开发资料/);
   }
 });

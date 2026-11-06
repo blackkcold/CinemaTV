@@ -38,7 +38,8 @@ jobs:
           npm test
       - name: Production-dist visual contracts
         working-directory: frontend/tv-web
-        run: npx playwright test --config production.config.ts
+        # Stop an invalid capture batch promptly; the final strict run requires all 56 cases.
+        run: npx playwright test --config production.config.ts --max-failures=1
       - name: Record scope of visual result
         if: always()
         run: |
