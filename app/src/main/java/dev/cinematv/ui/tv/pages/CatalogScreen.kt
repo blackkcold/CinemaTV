@@ -59,9 +59,12 @@ fun CatalogScreen(model: CinemaViewModel, series: Boolean) {
             contentPadding = PaddingValues(start = layout.gutter, end = layout.gutter, top = 14.dp, bottom = 45.dp),
             horizontalArrangement = Arrangement.spacedBy(20.dp), verticalArrangement = Arrangement.spacedBy(28.dp)) {
             if (filtered.isEmpty()) item(key = "catalog-empty", span = { GridItemSpan(maxLineSpan) }) {
-                Text(if (all.isEmpty()) ConnectionCopy.summary(model.connectionState) + " · 搜索以发现内容"
-                    else "没有符合筛选条件的作品。",
-                    color = TvColors.Secondary, modifier = Modifier.padding(vertical = 16.dp))
+                TvEmptyState(
+                    title = if (all.isEmpty()) "还没有可浏览的作品" else "没有符合筛选条件的作品",
+                    detail = if (all.isEmpty()) ConnectionCopy.summary(model.connectionState) + " · 搜索以发现内容"
+                        else "调整筛选，或换个关键词再试",
+                    modifier = Modifier.padding(vertical = 24.dp)
+                )
             }
             items(filtered, key = { it.presentationKey }) { item ->
                 val target = rememberFocusTarget(model, region, item.presentationKey)
