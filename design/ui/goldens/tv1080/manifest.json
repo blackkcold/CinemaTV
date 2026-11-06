@@ -117,23 +117,23 @@
         ],
         [
           455,
-          199,
+          262,
           515,
-          235
+          298
         ]
       ],
-      "sourceCommit": "80a91e3ae7605a96717c7a238b37cefd81264104",
-      "workflowRun": 41993059313,
-      "artifactId": 13398969985,
+      "sourceCommit": "ce0ee6c11a936c0e1b0297f132957838502b6f5f",
+      "workflowRun": 42183795256,
+      "artifactId": 13487249284,
       "rawCaptureSize": [
         1920,
         1080
       ],
-      "rawCaptureSha256": "2574fa628d8fb3f3baceba7aaed604d5c439fa72dc4f6948cb564bf894dfa8cd",
-      "baselineSha256": "e63a35a868615d95b9c0f0cd924e37882ad4047a3aa0146c00a952e5e49ad2cd",
-      "reviewedDate": "2026-11-05",
-      "reviewReason": "Reviewed foreground two-tone sidebar focus ring and independent selected underline on Connection and Account. Labels, panel bounds and input spacing remain intact; the partially visible bottom field is the existing scroll-panel boundary, not a new crop."
+      "rawCaptureSha256": "587954dc787a0705049f906ad588c8f80b338cc347946ac0452f5bf70abd4f8d",
+      "baselineSha256": "4236126c5b52dbd53d23511da0079ff666a74adc1628751c3d8539a965440151",
+      "reviewedDate": "2026-11-06",
+      "reviewReason": "Reviewed the new Developer, Local Recommendations and Library destinations and the Dev shortcut above the connection pane. Sidebar focus, selected underline, label separation and panel bounds remain intact. The shortcut shifts the server field down 63 normalized pixels; its existing port mask follows without growing. The bottom field continues in the existing scroll panel."
     }
   ],
-  "provenanceNotes": "Per-screen sourceCommit/workflowRun override the original manifest defaults. See ../REVIEW.md; masks and thresholds are unchanged."
+  "provenanceNotes": "Per-screen sourceCommit/workflowRun override the original manifest defaults. See ../REVIEW.md; comparison thresholds are unchanged, and the existing settings port mask follows its input without expanding."
 }
