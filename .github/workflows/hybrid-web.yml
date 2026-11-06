@@ -1,0 +1,45 @@
+name: Hybrid TV Web
+on:
+  push:
+    branches: [feature/hybrid-tv-liquid-glass, dev]
+    paths: ['frontend/tv-web/**', '.github/workflows/hybrid-web.yml']
+  pull_request:
+    paths: ['frontend/tv-web/**', '.github/workflows/hybrid-web.yml', 'app/src/main/java/dev/cinematv/hybrid/**']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: hybrid-web-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install exact direct versions and build
+        working-directory: frontend/tv-web
+        run: |
+          if test -f package-lock.json; then npm ci --ignore-scripts; else npm install --ignore-scripts; fi
+          npm run build
+          test -f dist/index.html
+          ! grep -R -E 'FIXTURE_ONLY|fixture_0|合成开发资料' dist
+          du -ah dist
+      - name: Browser interaction and visual evidence
+        working-directory: frontend/tv-web
+        run: |
+          npx playwright install --with-deps chromium
+          npm test
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hybrid-browser-evidence
+          path: |
+            frontend/tv-web/test-results/
+            frontend/tv-web/playwright-report/
+            frontend/tv-web/package-lock.json
+            frontend/tv-web/dist/
+          if-no-files-found: error
