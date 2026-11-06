@@ -1,10 +1,11 @@
 name: Hybrid TV Web
 on:
   push:
-    branches: [feature/hybrid-tv-liquid-glass, dev]
-    paths: ['frontend/tv-web/**', '.github/workflows/hybrid-web.yml']
+    branches: [dev]
+    paths: ['frontend/tv-web/**', 'scripts/hybrid/**', '.github/workflows/hybrid-web.yml']
   pull_request:
-    paths: ['frontend/tv-web/**', '.github/workflows/hybrid-web.yml', 'app/src/main/java/dev/cinematv/hybrid/**']
+    branches: [dev]
+    paths: ['frontend/tv-web/**', 'scripts/hybrid/**', '.github/workflows/hybrid-web.yml', 'app/src/main/java/dev/cinematv/hybrid/**']
   workflow_dispatch:
 permissions:
   contents: read
@@ -13,21 +14,32 @@ concurrency:
   cancel-in-progress: true
 jobs:
   browser:
-    runs-on: ubuntu-latest
+    # Playwright 1.56.1's packaged browser dependencies target this supported OS.
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Build the reviewed PR head, not a moving branch or an implicit merge.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
-      - name: Install exact direct versions and build
+          node-version: '22.23.4'
+          cache: npm
+          cache-dependency-path: frontend/tv-web/package-lock.json
+      - name: Install locked dependencies and verify production bundle
         working-directory: frontend/tv-web
         run: |
-          if test -f package-lock.json; then npm ci --ignore-scripts; else npm install --ignore-scripts; fi
+          npm ci --ignore-scripts
           npm run build
-          test -f dist/index.html
-          ! grep -R -E 'FIXTURE_ONLY|fixture_0|合成开发资料' dist
-          du -ah dist
+          npm run verify
+      - name: Record the exact source and production asset bytes
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          python3 scripts/hybrid/artifacts.py check-source
+          # Playwright clears test-results on startup; retain provenance separately.
+          python3 scripts/hybrid/artifacts.py web-receipt --output app/build/hybrid-web/build-receipt.json
       - name: Browser interaction and visual evidence
         working-directory: frontend/tv-web
         run: |
@@ -40,6 +52,6 @@ jobs:
           path: |
             frontend/tv-web/test-results/
             frontend/tv-web/playwright-report/
-            frontend/tv-web/package-lock.json
             frontend/tv-web/dist/
+            app/build/hybrid-web/build-receipt.json
           if-no-files-found: error

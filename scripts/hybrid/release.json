@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "channel": "dev",
+  "versionName": "0.9.0-dev.1",
+  "versionCode": 13,
+  "previousPublicVersionCode": 12,
+  "applicationId": "dev.cinematv",
+  "minSdk": 26,
+  "status": "reserved-not-published"
+}
