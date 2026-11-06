@@ -3,13 +3,12 @@ package dev.cinematv
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
-import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.lifecycle.ViewModelProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import dev.cinematv.data.ChannelIdentity
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
@@ -44,13 +43,13 @@ class MobileChannelIdentityTest {
         val sd = model.channels[1]
         assertEquals(hd.id, sd.id)
         assertNotEquals(hd.url, sd.url)
-        val hdKey = "mobile-live-channel:${ChannelIdentity.key(model.activeLiveSource, hd)}"
-        val sdKey = "mobile-live-channel:${ChannelIdentity.key(model.activeLiveSource, sd)}"
-        rule.onNodeWithTag(hdKey).performScrollTo().performClick().assertIsSelected()
-        rule.onNodeWithTag(sdKey).performScrollTo().assertIsNotSelected().performClick().assertIsSelected()
-        rule.onNodeWithTag(hdKey).performScrollTo().assertIsNotSelected()
+        val hdDescription = "选择频道 ${hd.name}"
+        val sdDescription = "选择频道 ${sd.name}"
+        rule.onNodeWithContentDescription(hdDescription).performScrollTo().performClick().assertIsSelected()
+        rule.onNodeWithContentDescription(sdDescription).performScrollTo().assertIsNotSelected().performClick().assertIsSelected()
+        rule.onNodeWithContentDescription(hdDescription).performScrollTo().assertIsNotSelected()
         rule.runOnIdle { assertEquals(sd.url, model.activeChannel?.url) }
-        rule.onNodeWithTag(hdKey).performClick().assertIsSelected()
+        rule.onNodeWithContentDescription(hdDescription).performClick().assertIsSelected()
         rule.runOnIdle { assertEquals(hd.url, model.activeChannel?.url) }
     }
 }

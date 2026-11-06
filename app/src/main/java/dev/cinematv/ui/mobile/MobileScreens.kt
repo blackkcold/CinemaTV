@@ -29,6 +29,7 @@ import dev.cinematv.ui.tv.components.ProductionGlassProvider
 import dev.cinematv.ui.tv.components.recordProductionGlass
 import dev.cinematv.ui.tv.components.rememberProductionGlassScene
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -47,6 +48,9 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.ImeAction
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import coil3.compose.AsyncImage
 import dev.cinematv.ui.icons.CinemaIcon
 import dev.cinematv.ui.icons.CinemaSymbol
@@ -68,6 +72,8 @@ import dev.cinematv.ui.Ink
 import dev.cinematv.ui.Ivory
 import dev.cinematv.ui.Muted
 import dev.cinematv.ui.Accent
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 
 private val surface = Color(0xFF191B21)
 private val stroke = Color(0xFF424650)
@@ -502,6 +508,15 @@ private fun MobileLibrary(model: CinemaViewModel) {
 @Composable
 private fun MobileLive(model: CinemaViewModel) {
     val activeKey = model.activeChannel?.let { ChannelIdentity.key(model.activeLiveSource, it) }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val now by produceState(System.currentTimeMillis(), lifecycle) {
+        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (isActive) {
+                value = System.currentTimeMillis()
+                delay(30_000L)
+            }
+        }
+    }
     Column(Modifier.fillMaxSize()) {
         MobileHeading("直播电视", "M3U 频道 · XMLTV 节目单")
         LazyRow(contentPadding = PaddingValues(horizontal = 16.dp),
@@ -513,7 +528,6 @@ private fun MobileLive(model: CinemaViewModel) {
             }
         }
         if (model.activeChannel != null) {
-            val now = System.currentTimeMillis()
             val current = model.epgPrograms.firstOrNull { now >= it.start && now < it.stop }
             Text("当前节目：" + (current?.title ?: "暂无节目单"),
                 modifier = Modifier.padding(18.dp), color = Accent)
@@ -525,7 +539,7 @@ private fun MobileLive(model: CinemaViewModel) {
                 val channelKey = ChannelIdentity.key(model.activeLiveSource, channel)
                 val selected = channelKey == activeKey
                 Surface(color = if (selected) Accent.copy(alpha = .16f) else surface, shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth().testTag("mobile-live-channel:$channelKey")
+                    modifier = Modifier.fillMaxWidth().testTag("mobile-live-channel")
                         .selectable(selected = selected, role = Role.RadioButton, onClick = { model.focusChannel(channel) })
                         .semantics { contentDescription = "选择频道 ${channel.name}" }) {
                     Row(Modifier.padding(9.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -559,6 +573,9 @@ private fun MobileField(
 @Composable
 private fun MobileSettings(model: CinemaViewModel) {
     var recommendationOpen by remember { mutableStateOf(false) }
+    var subscriptionsOpen by rememberSaveable { mutableStateOf(false) }
+    if (subscriptionsOpen) dev.cinematv.ui.shared.SourceSubscriptionsDialog(
+        model, tv = false, onDismiss = { subscriptionsOpen = false })
     if (recommendationOpen) dev.cinematv.ui.recommendation.RecommendationDashboardDialog(
         model.recommendationSnapshots, tv = false, onDismiss = { recommendationOpen = false },
         onOpenItem = { recommendationOpen = false; model.open(it) })
@@ -584,6 +601,8 @@ private fun MobileSettings(model: CinemaViewModel) {
         }
         Text(if (model.authorized) "连接正常" else "未认证或未连接", color = Accent)
         HorizontalDivider(color = stroke)
+        MobileGlassOutlinedButton(onClick = { subscriptionsOpen = true },
+            modifier = Modifier.testTag("source-subscriptions-open")) { Text("片源列表订阅") }
         Text("添加点播源", fontWeight = FontWeight.SemiBold, fontSize = 18.sp)
         MobileField("名称", model.sourceName, { model.sourceName = it })
         MobileField("Apple CMS API URL", model.sourceAddress, { model.sourceAddress = it })
