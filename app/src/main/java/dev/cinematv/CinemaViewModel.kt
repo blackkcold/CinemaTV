@@ -98,6 +98,20 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
         private set
     var liveSources by mutableStateOf<List<LiveSource>>(emptyList())
         private set
+    var defaultSourceSubscriptions by mutableStateOf<List<SourceSubscription>>(emptyList())
+        private set
+    var sourceSubscriptions by mutableStateOf(repo.sourceSubscriptions())
+        private set
+    var sourceSubscriptionAddress by mutableStateOf("")
+    var sourceSubscriptionName by mutableStateOf("")
+    var sourceSubscriptionPreview by mutableStateOf<SourceSubscriptionPreview?>(null)
+        private set
+    var sourceSubscriptionBusy by mutableStateOf(false)
+        private set
+    var sourceSubscriptionNotice by mutableStateOf(repo.subscriptionStorageError)
+        private set
+    private var sourceSubscriptionJob: Job? = null
+    private var sourceSubscriptionGeneration = 0L
     var channels by mutableStateOf<List<TvChannel>>(emptyList())
         private set
     var activeLiveSource by mutableStateOf<LiveSource?>(null)
@@ -310,6 +324,8 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
         authorized = status.verified
         sources = status.sources
         liveSources = status.liveSources
+        defaultSourceSubscriptions = status.defaultSubscriptions
+        sourceSubscriptions = repo.sourceSubscriptions()
         message = if (authorized) "" else if (status.passwordRequired) "此服务器要求密码，请在设置中登录。"
             else "服务器未配置访问密码（PASSWORD），请联系管理员完成配置。"
         if (authorized) loadHome()
@@ -319,9 +335,9 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
     private fun cancelConnectionWork() {
         connectionAttempt++
         connectionJob?.cancel()
-        searchGeneration++; detailGeneration++; browseGeneration++; chartGeneration++
+        searchGeneration++; detailGeneration++; browseGeneration++; chartGeneration++; sourceSubscriptionGeneration++
         listOf(searchJob, searchMoreJob, detailJob, alternativesJob, channelsJob, epgJob, backdropJob,
-            homeJob, chartJob, recommendationJob).forEach { it?.cancel() }
+            homeJob, chartJob, recommendationJob, sourceSubscriptionJob).forEach { it?.cancel() }
         browseJobs.values.forEach { it.cancel() }
         browseJobs.clear()
         busy = false
@@ -337,6 +353,10 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
         channels = emptyList()
         epgPrograms = emptyList()
         sourceProbes = emptyMap()
+        defaultSourceSubscriptions = emptyList()
+        sourceSubscriptionPreview = null
+        sourceSubscriptionBusy = false
+        sourceSubscriptionNotice = repo.subscriptionStorageError
         resolutionStatus = ""
         remoteSearch = emptyList()
         sources = repo.sources()
@@ -379,7 +399,10 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
 
     fun login() {
         connectionJob?.cancel()
-        listOf(searchJob, detailJob, alternativesJob, channelsJob, epgJob).forEach { it?.cancel() }
+        listOf(searchJob, detailJob, alternativesJob, channelsJob, epgJob, sourceSubscriptionJob).forEach { it?.cancel() }
+        sourceSubscriptionGeneration++
+        sourceSubscriptionPreview = null
+        sourceSubscriptionBusy = false
         val attempt = ++connectionAttempt
         val connection = repo.beginAuthentication()
         val submittedPassword = password
@@ -439,6 +462,95 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
         repo.removeSource(url, live)
         sources = repo.sources()
         liveSources = repo.liveSources()
+    }
+
+    fun previewSourceSubscription(subscription: SourceSubscription? = null) {
+        if (!authorized) { sourceSubscriptionNotice = "请先连接 LibreTV 并登录，再读取片源列表订阅。"; return }
+        val choice = subscription ?: SourceSubscription(sourceSubscriptionAddress, sourceSubscriptionName)
+        sourceSubscriptionJob?.cancel()
+        val generation = ++sourceSubscriptionGeneration
+        val connection = repo.connectionContext()
+        sourceSubscriptionPreview = null
+        sourceSubscriptionNotice = ""
+        sourceSubscriptionBusy = true
+        sourceSubscriptionJob = viewModelScope.launch {
+            try {
+                val preview = repo.previewSourceSubscription(choice, connection)
+                ensureActive()
+                if (generation == sourceSubscriptionGeneration && repo.isCurrentConnection(connection)) {
+                    sourceSubscriptionPreview = preview
+                    sourceSubscriptionNotice = "请查看片源变化与跳过原因，确认后保存。"
+                }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) {
+                if (generation == sourceSubscriptionGeneration && repo.isCurrentConnectionError(error, connection)) {
+                    sourceSubscriptionNotice = ConnectionErrors.message(error) + "；已保留现有订阅与片源。"
+                    if (ConnectionErrors.classify(error) == ConnectionFailure.AUTHENTICATION) connectionError(error, connection)
+                }
+            } finally {
+                if (generation == sourceSubscriptionGeneration && repo.isCurrentConnection(connection)) sourceSubscriptionBusy = false
+            }
+        }
+    }
+
+    fun dismissSourceSubscriptionPreview() {
+        sourceSubscriptionGeneration++
+        sourceSubscriptionJob?.cancel()
+        sourceSubscriptionPreview = null
+        sourceSubscriptionBusy = false
+        sourceSubscriptionNotice = ""
+    }
+
+    fun importSourceSubscriptionPreview() {
+        val preview = sourceSubscriptionPreview ?: return
+        if (sourceSubscriptionBusy) return
+        val generation = ++sourceSubscriptionGeneration
+        sourceSubscriptionBusy = true
+        sourceSubscriptionJob = viewModelScope.launch {
+            try {
+                repo.importSourceSubscription(preview)
+                ensureActive()
+                if (generation == sourceSubscriptionGeneration && repo.isCurrentConnection(preview.connection)) {
+                    sourceSubscriptions = repo.sourceSubscriptions()
+                    sources = repo.sources()
+                    liveSources = repo.liveSources()
+                    sourceSubscriptionPreview = null
+                    sourceSubscriptionAddress = ""
+                    sourceSubscriptionName = ""
+                    sourceSubscriptionNotice = "已保存：点播 ${preview.snapshot.sources.size} 个、直播 ${preview.snapshot.liveSources.size} 个；已有停用选择保持不变。"
+                }
+            } catch (cancelled: CancellationException) {
+                if (generation == sourceSubscriptionGeneration) {
+                    sourceSubscriptionPreview = null
+                    sourceSubscriptionNotice = "连接已变化，请重新预览订阅。"
+                }
+                throw cancelled
+            } catch (error: Exception) {
+                if (generation == sourceSubscriptionGeneration) sourceSubscriptionNotice = error.message ?: "订阅保存失败，请重试。"
+            } finally { if (generation == sourceSubscriptionGeneration) sourceSubscriptionBusy = false }
+        }
+    }
+
+    fun stopSourceSubscription(url: String) {
+        if (sourceSubscriptionBusy) return
+        val generation = ++sourceSubscriptionGeneration
+        sourceSubscriptionBusy = true
+        sourceSubscriptionJob = viewModelScope.launch {
+            try {
+                repo.stopSourceSubscription(url)
+                ensureActive()
+                if (generation == sourceSubscriptionGeneration) {
+                    sourceSubscriptions = repo.sourceSubscriptions()
+                    sources = repo.sources()
+                    liveSources = repo.liveSources()
+                    sourceSubscriptionPreview = null
+                    sourceSubscriptionNotice = "已停止订阅；当前片源已保留为手动源，收藏和进度保持不变。"
+                }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) {
+                if (generation == sourceSubscriptionGeneration) sourceSubscriptionNotice = error.message ?: "停止订阅失败，请重试。"
+            } finally { if (generation == sourceSubscriptionGeneration) sourceSubscriptionBusy = false }
+        }
     }
 
     private fun rebuildRecommendations() {

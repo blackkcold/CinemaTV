@@ -44,6 +44,13 @@ class LibreTvRepository(context: Context, val library: LocalMediaLibrary = Local
         private set
     private val prefs = context.getSharedPreferences("cinema_settings", Context.MODE_PRIVATE)
     private val connections = LibreTvConnectionSession(prefs.getString("server", "").orEmpty())
+    private val subscriptionLock = Any()
+    private val loadedSubscriptions = runCatching {
+        SourceSubscriptionContract.decodeRecords(prefs.getString("source_subscriptions_v1", null))
+    }
+    @Volatile private var importedSubscriptions = loadedSubscriptions.getOrDefault(emptyList())
+    val subscriptionStorageError: String get() = if (loadedSubscriptions.isFailure)
+        "订阅资料无法读取，原始数据已保留；修复存储前不能覆盖导入。" else ""
     private val jsonClient = OkHttpClient.Builder()
         .connectTimeout(8, TimeUnit.SECONDS).readTimeout(25, TimeUnit.SECONDS)
         .callTimeout(75, TimeUnit.SECONDS)
@@ -233,6 +240,8 @@ class LibreTvRepository(context: Context, val library: LocalMediaLibrary = Local
         private set
     @Volatile var defaultLiveSources: List<LiveSource> = emptyList()
         private set
+    @Volatile var defaultSubscriptions: List<SourceSubscription> = emptyList()
+        private set
 
     fun configureServer(address: String) {
         val cleaned = address.trim().trimEnd('/')
@@ -241,6 +250,7 @@ class LibreTvRepository(context: Context, val library: LocalMediaLibrary = Local
             prefs.edit().putString("server", cleaned).apply()
             defaultSources = emptyList()
             defaultLiveSources = emptyList()
+            defaultSubscriptions = emptyList()
         }
     }
 
@@ -315,7 +325,7 @@ class LibreTvRepository(context: Context, val library: LocalMediaLibrary = Local
     private fun disabledSourceUrls(): Set<String> =
         prefs.getStringSet("disabled_sources", emptySet()) ?: emptySet()
 
-    fun sources(): List<TvSource> = (storedSources() + defaultSources)
+    fun sources(): List<TvSource> = (storedSources() + importedSubscriptions.flatMap { it.snapshot.sources } + defaultSources)
         .distinctBy { it.url }
         .map { it.copy(enabled = it.url !in disabledSourceUrls()) }
 
@@ -344,7 +354,66 @@ class LibreTvRepository(context: Context, val library: LocalMediaLibrary = Local
                 else "HTTP $status / 非 JSON 接口")
         } finally { conn.disconnect() }
     }
-    fun liveSources(): List<LiveSource> = (storedLiveSources() + defaultLiveSources).distinctBy { it.url }
+    fun liveSources(): List<LiveSource> = (storedLiveSources() + importedSubscriptions.flatMap { it.snapshot.liveSources } + defaultLiveSources).distinctBy { it.url }
+
+    fun sourceSubscriptions(): List<SourceSubscriptionRecord> = importedSubscriptions
+
+    suspend fun previewSourceSubscription(subscription: SourceSubscription,
+        connection: LibreTvConnection = connectionContext()): SourceSubscriptionPreview = withContext(Dispatchers.IO) {
+        check(subscriptionStorageError.isBlank()) { subscriptionStorageError }
+        val normalized = SourceSubscriptionContract.normalize(subscription)
+        val previous = importedSubscriptions.firstOrNull { it.subscription.url == normalized.url }
+        require(previous != null || importedSubscriptions.size < SourceSubscriptionContract.MAX_SUBSCRIPTIONS) { "最多保存 20 个片源列表订阅" }
+        val response = request("/api/source-list?url=${encode(normalized.url)}", connection = connection)
+        val snapshot = SourceSubscriptionContract.decode(response.body)
+        connections.check(response.session)
+        SourceSubscriptionPreview(normalized.copy(name = normalized.name.ifBlank { snapshot.name }), snapshot,
+            connection, response.session.revision, previous?.revision, System.currentTimeMillis(),
+            SourceSubscriptionDiff.between(previous?.snapshot, snapshot))
+    }
+
+    /** Commit only the exact reviewed diff. Disabled URL preferences, manual sources and the library are independent. */
+    suspend fun importSourceSubscription(preview: SourceSubscriptionPreview): SourceSubscriptionRecord = withContext(Dispatchers.IO) {
+        currentCoroutineContext().ensureActive()
+        connections.withCurrent(preview.connection) {
+            check(connections.isCurrent(preview.connection, preview.sessionRevision)) { "会话已变化，请重新预览订阅" }
+            synchronized(subscriptionLock) {
+                check(subscriptionStorageError.isBlank()) { subscriptionStorageError }
+                val previous = importedSubscriptions.firstOrNull { it.subscription.url == preview.subscription.url }
+                check(previous?.revision == preview.previousRevision) { "订阅已更新，请重新预览后确认" }
+                require(previous != null || importedSubscriptions.size < SourceSubscriptionContract.MAX_SUBSCRIPTIONS) { "最多保存 20 个片源列表订阅" }
+                val record = SourceSubscriptionRecord(preview.subscription, preview.snapshot, preview.fetchedAt,
+                    java.util.UUID.randomUUID().toString())
+                val next = importedSubscriptions.filterNot { it.subscription.url == record.subscription.url } + record
+                check(prefs.edit().putString("source_subscriptions_v1", SourceSubscriptionContract.encodeRecords(next)).commit()) {
+                    "订阅保存失败，原有片源未改变"
+                }
+                importedSubscriptions = next
+                record
+            }
+        }
+    }
+
+    /** Stop future subscription refreshes while retaining every imported source as a manual source. */
+    suspend fun stopSourceSubscription(url: String) = withContext(Dispatchers.IO) {
+        synchronized(subscriptionLock) {
+            check(subscriptionStorageError.isBlank()) { subscriptionStorageError }
+            val record = importedSubscriptions.firstOrNull { it.subscription.url == url } ?: return@synchronized
+            val next = importedSubscriptions.filterNot { it.subscription.url == url }
+            val vod = (storedSources() + record.snapshot.sources.map {
+                it.copy(key = SourceSubscriptionContract.id("custom", it.url))
+            }).distinctBy { it.url }
+            val live = (storedLiveSources() + record.snapshot.liveSources.map {
+                it.copy(key = SourceSubscriptionContract.id("custom_live", it.url))
+            }).distinctBy { it.url }
+            check(prefs.edit().putString("source_subscriptions_v1", SourceSubscriptionContract.encodeRecords(next))
+                .putString("sources", JSONArray(vod.map(::sourceJson)).toString())
+                .putString("live_sources", JSONArray(live.map {
+                    JSONObject().put("key", it.key).put("name", it.name).put("url", it.url).put("epg", it.epg)
+                }).toString()).commit()) { "停止订阅未能保存，原有资料未改变" }
+            importedSubscriptions = next
+        }
+    }
 
     fun addSource(name: String, url: String) {
         val item = TvSource("custom_${System.currentTimeMillis()}", name.trim(), url.trim())
@@ -381,11 +450,13 @@ class LibreTvRepository(context: Context, val library: LocalMediaLibrary = Local
         val root = response.body
         val vod = parseArray(root.optJSONArray("defaultSources"), ::sourceFrom)
         val live = parseArray(root.optJSONArray("defaultLiveSources"), ::liveSourceFrom)
+        val subscriptions = SourceSubscriptionContract.advertised(root.optJSONArray("defaultSubscriptions"))
         connections.withCurrent(response.session) {
             defaultSources = vod
             defaultLiveSources = live
+            defaultSubscriptions = subscriptions
             ServerStatus(root.optBoolean("passwordRequired"), root.optBoolean("verified"),
-                sources(), liveSources(), root.optString("version"), connection, response.session.revision)
+                sources(), liveSources(), root.optString("version"), connection, response.session.revision, subscriptions)
         }
     }
 
