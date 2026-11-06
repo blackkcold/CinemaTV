@@ -102,6 +102,7 @@ export function App() {
         }
         if (name === 'host.visibility' && payload && typeof payload === 'object' && 'visible' in payload) {
           document.documentElement.dataset.paused = payload.visible ? 'false' : 'true';
+          window.dispatchEvent(new Event('cinema:visibility'));
         }
       });
       cleanup = () => { unsubscribe(); client.close(); platform.current = null; };

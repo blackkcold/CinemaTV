@@ -50,6 +50,8 @@ export function createMockPlatform(): Platform {
   let query = '', libraryFilter = 'ALL', reduced = false, quality = 'AUTO', busy = false, message = '';
   let episodePage = 0, alternatives: Card[] = [], activeChannel = 'channel_1';
   let searchPartial = false;
+  const remotePaging = scenario === 'remote-pages' || scenario === 'remote-retry';
+  let remoteDelivered = false, remoteFailed = false, remoteAttempts = 0;
   const pages = new Map<string, number>();
   const marks = new Map<string, Bookmark>();
   const history: string[] = [];
@@ -82,6 +84,8 @@ export function createMockPlatform(): Platform {
       items = items.filter(item => (!cf.category || item.category === cf.category) && (!cf.year || item.year === cf.year));
       if (cf.rated) items = [...items].sort((a, b) => Number(b.rating || 0) - Number(a.rating || 0));
     }
+    const remoteRoute = remotePaging && ['MOVIES', 'SERIES', 'EXPLORE', 'SEARCH'].includes(route) && (route !== 'SEARCH' || Boolean(query));
+    if (remoteRoute && !remoteDelivered) items = [];
     const pageSize = 48;
     const total = route === 'LIVE' ? channels.length : items.length;
     const page = Math.min(pages.get(routeKey()) ?? 0, Math.max(0, Math.ceil(total / pageSize) - 1));
@@ -98,12 +102,12 @@ export function createMockPlatform(): Platform {
         { id: 'series', title: '值得追的故事', items: catalog.filter(item => item.isTv).slice(0, 24) },
       ],
       items: items.slice(page * pageSize, (page + 1) * pageSize), total, pageIndex: page, pageSize,
-      canLoadMore: false, notice: scenario === 'offline' ? '暂时无法连接影视服务，已保存的资料仍可查看。' : '', attribution: '', selected,
+      canLoadMore: remoteRoute && !busy && !remoteDelivered, pagingStatus: !remoteRoute ? 'unavailable' : busy ? 'loading' : remoteFailed ? 'retry' : remoteDelivered ? 'exhausted' : 'ready', notice: scenario === 'offline' ? '暂时无法连接影视服务，已保存的资料仍可查看。' : '', attribution: '', selected,
       episodes: episodes.slice(episodePage * 40, (episodePage + 1) * 40), resumeEpisode: episodes[selected?.lastEpisode ?? 0] ?? episodes[0] ?? null,
       episodePage, episodeTotal: episodes.length, alternatives, query, history: [...history], filters: { ...filters },
       years: ['2025', '2024', '2023', '2022'], catalogFilters: cf, categories, catalogYears,
       channels: empty ? [] : channels, activeChannel, liveSources: empty ? [] : [{ id: 'live_1', name: '合成订阅' }], activeLiveSource: 'live_1',
-      programs: empty ? [] : Array.from({ length: 6 }, (_, index) => ({ title: `${activeChannel === 'channel_2' ? '城市之声' : '山海来信'} · ${['清晨', '回望', '出发', '相遇', '远方', '归途'][index]}`, start: scheduleStart + index * 3600000, stop: scheduleStart + (index + 1) * 3600000 })),
+      programs: empty ? [] : Array.from({ length: 6 }, (_, index) => ({ id: `${activeChannel}:${scheduleStart}:${index}`, title: `${activeChannel === 'channel_2' ? '城市之声' : '山海来信'} · ${['清晨', '回望', '出发', '相遇', '远方', '归途'][index]}`, start: scheduleStart + index * 3600000, stop: scheduleStart + (index + 1) * 3600000 })),
       libraryFilter, hasHistory: catalog.some(item => item.positionMs > 0), quarantinedProgressCount: 0,
       bookmark: marks.get(routeKey()) ?? null,
       qualityOptions: [{ id: 'AUTO', title: '自动' }, { id: 'BASIC', title: '清晰' }, { id: 'BACKDROP', title: '柔和玻璃' }, { id: 'ENHANCED', title: '增强玻璃' }],
@@ -149,6 +153,19 @@ export function createMockPlatform(): Platform {
       else if (method === 'catalog.filter') {
         routeFilters.set(route, { category: String(params.category ?? ''), year: String(params.year ?? ''), rated: Boolean(params.rated) });
         pages.set(routeKey(), 0);
+      }
+      else if (method === 'catalog.more' && remotePaging && !busy) {
+        busy = true;
+        remoteFailed = false;
+        remoteAttempts++;
+        const timer = setTimeout(() => {
+          busy = false;
+          remoteFailed = scenario === 'remote-retry' && remoteAttempts === 1;
+          remoteDelivered = !remoteFailed;
+          timers.delete(timer);
+          emit(snapshot());
+        }, 450);
+        timers.add(timer);
       }
       else if (method === 'catalog.refresh' || method === 'catalog.more') message = '目录已刷新';
       else if (method === 'search.submit') {

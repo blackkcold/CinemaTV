@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useVisibleClock } from './useVisibleClock';
 import { focusKey } from './focus';
 import { Button, Empty, Grid, Icon, Metadata, Pager, Poster, Shelf, type Action } from './components';
 import { VirtualRail } from './VirtualRail';
@@ -55,6 +56,7 @@ export function Catalog({ state, act }: { state: Snapshot; act: Action }) {
       <Button id="empty:search" primary onClick={() => act('navigation.go', { route: 'SEARCH' })}>去搜索<Icon name="search" /></Button>
       {!library && <Button id="empty:reset" onClick={() => act('catalog.filter', { category: '', year: '', rated: false })}>重置筛选</Button>}
     </Empty>}
+    <Pager state={state} act={act} />
     {library && state.hasHistory && <div className="library-footer"><p>观看进度会在下次打开作品时继续。</p><Button id="library:clear-history" group="library-tools" onClick={() => act('library.clearHistory')}>清除观看记录</Button></div>}
     {library && state.quarantinedProgressCount > 0 && <p className="footnote">有 {state.quarantinedProgressCount} 条旧观看记录需要核对作品信息，可在「管理资料」中查看。</p>}
   </>;
@@ -70,11 +72,12 @@ export function Explore({ state, act }: { state: Snapshot; act: Action }) {
       <VirtualRail id="discover" items={state.items} centered keyFor={item => `card:discover:${item.key}`} initialFocus={state.bookmark?.focus}
         renderItem={(item, index) => <Poster item={item} row="discover" act={act} index={state.pageIndex * state.pageSize + index} total={state.total}
           side={index < active ? 'before' : index > active ? 'after' : 'active'} onFocused={() => setActiveKey(item.key)} />} />
-    </section><div className="discovery-caption"><h2>{current.title}</h2><Metadata item={current} /></div><Pager state={state} act={act} /></> :
+    </section><div className="discovery-caption"><h2>{current.title}</h2><Metadata item={current} /></div></> :
       <Empty title={state.busy ? '正在准备好故事' : '好故事，正等着开始'} detail={state.notice || '连接影视服务与元数据目录，浏览电影和剧集。'}>
         <Button id="discover:connect" primary onClick={() => act('native.open', { target: 'SETTINGS', section: 'connection' })}>连接影视服务<Icon name="arrow" /></Button>
         <Button id="discover:refresh" disabled={state.busy} onClick={() => act('catalog.refresh')}><Icon name="refresh" />刷新目录</Button>
       </Empty>}
+    <Pager state={state} act={act} />
   </>;
 }
 
@@ -98,6 +101,7 @@ export function Search({ state, act, native }: { state: Snapshot; act: Action; n
     <p className="status-line" role="status">{state.busy ? '正在检索，已收到的结果可直接查看' : state.query ? `“${state.query}” · ${state.total} 项结果` : '先搜索，再挑选你想看的故事'}</p>
     {state.items.length ? <Grid state={state} act={act} /> : <Empty title={state.busy ? '正在寻找' : state.query ? '暂未找到匹配作品' : '想看什么？'}
       detail={state.query ? '尝试其他关键词或筛选条件；也可以检查影视服务与片源的连接。' : '片名、演员、别名，都可以作为开始。'} />}
+    <Pager state={state} act={act} />
     {state.notice && <p className="footnote">{state.notice}</p>}
   </>;
 }
@@ -132,15 +136,25 @@ export function Detail({ state, act }: { state: Snapshot; act: Action }) {
 }
 
 export function Live({ state, act }: { state: Snapshot; act: Action }) {
-  const now = Date.now();
+  const now = useVisibleClock();
+  const programs = state.programs.filter(program => Number.isFinite(program.start) && Number.isFinite(program.stop) && program.start < program.stop && program.stop > now)
+    .sort((a, b) => a.start - b.start || a.stop - b.stop).slice(0, 48);
+  const focusedProgram = useRef('');
+  useLayoutEffect(() => {
+    const active = document.activeElement as HTMLElement | null;
+    if (active?.dataset.focus && active.isConnected) return;
+    if (!focusedProgram.current || programs.some(program => program.id === focusedProgram.current)) return;
+    if (programs[0]) focusKey(`program:${programs[0].id}`);
+    else focusKey(`channel:${state.activeChannel}`);
+  }, [now, state.programs, state.activeChannel]);
   return <><div className="page-heading"><span className="eyebrow">正在发生的世界</span><h1>直播</h1></div>
     <div className="chips" data-scroll="live-sources" data-focus-layout="row" aria-label="直播订阅">{state.liveSources.map(source => <Button key={source.id} id={`live-source:${source.id}`} group="live-sources" selected={source.id === state.activeLiveSource} onClick={() => act('live.source', { id: source.id })}>{source.name}</Button>)}</div>
     {!state.liveSources.length ? <Empty title="连接你的直播订阅" detail="添加有权访问的直播订阅，频道和节目单会在这里显示。"><Button id="live:setup" primary onClick={() => act('native.open', { target: 'SETTINGS', section: 'sources' })}>设置直播来源<Icon name="arrow" /></Button></Empty> :
-      <div className="live-layout"><section className="channels" aria-label="频道" data-focus-layout="column">{state.channels.length ? state.channels.map(channel => <Button key={channel.id} id={`channel:${channel.id}`} group="channels" className="channel" navRight={state.programs[0] ? `program:${state.programs[0].start}:0` : undefined} selected={state.activeChannel === channel.id} onFocus={() => act('live.focus', { id: channel.id })} onClick={() => act('live.play', { id: channel.id })}>
+      <div className="live-layout"><section className="channels" aria-label="频道" data-focus-layout="column">{state.channels.length ? state.channels.map(channel => <Button key={channel.id} id={`channel:${channel.id}`} group="channels" className="channel" navRight={programs[0] ? `program:${programs[0].id}` : undefined} selected={state.activeChannel === channel.id} onFocus={() => act('live.focus', { id: channel.id })} onClick={() => act('live.play', { id: channel.id })}>
         <span className="channel-logo">{channel.logo ? <img key={channel.logo} src={channel.logo} alt="" loading="lazy" onError={event => { event.currentTarget.style.opacity = '0'; }} /> : <Icon name="play" />}</span><span><strong>{channel.name}</strong><small>{channel.group}</small></span><Icon name="play" />
       </Button>) : <Empty title={state.busy ? '正在加载频道' : '暂无频道'} detail="选择其他订阅，或在设置中检查直播来源。" />}<Pager state={state} act={act} /></section>
         <aside className="glass epg" aria-label="节目指南" data-focus-layout="column"><span className="eyebrow">节目指南</span><h2>{state.channels.find(channel => channel.id === state.activeChannel)?.name || '选择频道'}</h2>
-          {state.programs.length ? state.programs.map((program, index) => <article tabIndex={-1} data-focus={`program:${program.start}:${index}`} data-group="epg" data-nav-left={`channel:${state.activeChannel}`} className={`program ${program.start <= now && program.stop > now ? 'on-air' : ''}`} key={`${program.start}:${index}`}>
+          {programs.length ? programs.map(program => <article tabIndex={-1} data-focus={`program:${program.id}`} onFocus={() => { focusedProgram.current = program.id; }} data-group="epg" data-nav-left={`channel:${state.activeChannel}`} className={`program ${program.start <= now && program.stop > now ? 'on-air' : ''}`} key={program.id}>
             <time dateTime={new Date(program.start).toISOString()}>{new Date(program.start).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}</time><span>{program.title}{program.start <= now && program.stop > now && <small>正在播出</small>}</span>
           </article>) : <p>暂无节目单信息</p>}
         </aside>

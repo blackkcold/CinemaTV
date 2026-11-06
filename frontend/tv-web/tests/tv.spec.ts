@@ -359,3 +359,76 @@ test('a delayed first frame never steals newer remote focus', async ({ page }) =
   await page.waitForTimeout(450);
   await expect(cards.nth(1)).toBeFocused();
 });
+
+for (const route of ['MOVIES', 'SERIES', 'EXPLORE', 'SEARCH']) {
+  test(`${route}: an empty filtered page retains remote loading and stable D-pad focus`, async ({ page }) => {
+    await open(page, 'remote-pages');
+    await button(page, `nav:${route}`).click();
+    if (route === 'SEARCH') {
+      await page.getByRole('textbox').fill('群山');
+      await button(page, 'search:submit').click();
+    }
+    await expect(page.locator('.poster-grid .poster, .coverflow .poster')).toHaveCount(0);
+    const load = button(page, 'pager:load');
+    await expect(load).toHaveText('载入更多');
+    await load.focus();
+    await page.keyboard.press('Enter');
+    await expect(load).toHaveText('正在载入…');
+    await expect(load).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect.poll(async () => page.locator('.poster-grid .poster, .coverflow .poster').count()).toBeGreaterThan(0);
+    await expect(load).toBeFocused();
+    await expect(load).toHaveText(route === 'SEARCH' ? '重新检索目录' : '刷新目录');
+    const requests = await page.evaluate(() => window.CinemaPreview?.calls().filter(call => call.method === 'catalog.more').length);
+    expect(requests).toBe(1);
+    if (route === 'SEARCH') await expect(page.getByRole('textbox')).toHaveValue('群山');
+  });
+}
+
+test('failed remote loading can retry from an empty page without changing the filter', async ({ page }) => {
+  await open(page, 'remote-retry');
+  await button(page, 'nav:MOVIES').click();
+  const category = page.locator('[data-focus^="catalog:category:"]').first();
+  await category.click();
+  const load = button(page, 'pager:load');
+  await load.focus();
+  await page.keyboard.press('Enter');
+  await expect(load).toHaveText('重试载入');
+  await expect(load).toBeFocused();
+  await expect(category).toHaveAttribute('aria-pressed', 'true');
+  await page.keyboard.press('Enter');
+  await expect.poll(async () => page.locator('.poster-grid .poster').count()).toBeGreaterThan(0);
+  await expect(category).toHaveAttribute('aria-pressed', 'true');
+  await expect(load).toBeFocused();
+});
+
+test('the live guide advances without provider events and keeps a surviving program focused', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-11-06T10:00:00Z') });
+  await open(page);
+  await button(page, 'nav:LIVE').click();
+  const guide = page.locator('.program');
+  const current = await guide.first().getAttribute('data-focus');
+  const future = await guide.nth(2).getAttribute('data-focus');
+  await button(page, future!).focus();
+  await page.clock.fastForward(61 * 60 * 1000);
+  await expect(button(page, current!)).toHaveCount(0);
+  await expect(page.locator('.program.on-air')).toHaveCount(1);
+  await expect(page.locator('.program.on-air')).toContainText('回望');
+  await expect(button(page, future!)).toBeFocused();
+});
+
+test('the live guide pauses in the background and recalibrates focus immediately on return', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-11-06T10:00:00Z') });
+  await open(page);
+  await button(page, 'nav:LIVE').click();
+  const previous = await page.locator('.program').first().getAttribute('data-focus');
+  const next = await page.locator('.program').nth(1).getAttribute('data-focus');
+  await button(page, previous!).focus();
+  await page.evaluate(() => window.CinemaPreview?.event('host.visibility', { visible: false }));
+  await page.clock.fastForward(61 * 60 * 1000);
+  await expect(button(page, previous!)).toBeFocused();
+  await page.evaluate(() => window.CinemaPreview?.event('host.visibility', { visible: true }));
+  await expect(button(page, previous!)).toHaveCount(0);
+  await expect(button(page, next!)).toBeFocused();
+  await expect(button(page, next!)).toHaveClass(/on-air/);
+});

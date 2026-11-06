@@ -109,6 +109,16 @@ class CinemaPresentationGateway(
         val state = routeState()
         items.clear(); channels.clear(); liveSources.clear(); episodes.clear()
         val all = baseCatalog()
+        val remotePages = when (model.page) {
+            Page.MOVIES -> listOf(model.movieBrowse)
+            Page.SERIES -> listOf(model.seriesBrowse)
+            Page.EXPLORE -> listOf(model.movieBrowse, model.seriesBrowse)
+            Page.SEARCH -> listOfNotNull(model.movieSearchBrowse.takeIf { model.searchFilters.isTv != true },
+                model.seriesSearchBrowse.takeIf { model.searchFilters.isTv != false })
+            else -> emptyList()
+        }
+        val pagingStatus = HybridCatalogPaging.status(model.repo.hasMetadataCatalog &&
+            (model.page != Page.SEARCH || (!model.searchFilters.doubanTopOnly && model.searchCatalogRequested)), remotePages)
         val visible = filteredCatalog()
         val total = if (model.page == Page.LIVE) model.channels.size else visible.size
         val page = state.page.coerceIn(0, ((total - 1).coerceAtLeast(0) / HybridProtocol.PAGE_SIZE))
@@ -119,7 +129,8 @@ class CinemaPresentationGateway(
             ?: (sliced.firstOrNull() ?: model.featured.firstOrNull()?.usableMetadata())
         val result = JSONObject().put("protocol", 1).put("route", model.page.name).put("routeKey", routeKey())
             .put("section", model.section.name).put("busy", model.busy || (model.page == Page.SEARCH && (model.chartLoading || model.searchCatalogLoading)) ||
-                (model.page == Page.MOVIES && model.movieBrowse.loading) || (model.page == Page.SERIES && model.seriesBrowse.loading))
+                (model.page == Page.MOVIES && model.movieBrowse.loading) || (model.page == Page.SERIES && model.seriesBrowse.loading) ||
+                (model.page == Page.EXPLORE && (model.movieBrowse.loading || model.seriesBrowse.loading)))
             .put("message", message(model.message)).put("quality", model.glassQuality.name)
             .put("reducedMotion", model.reducedMotion).put("lowMemory", effects.lowRam)
             .put("effectiveQuality", effects.effective(model.glassQuality)).put("effectsLimited", effects.constrained)
@@ -128,13 +139,8 @@ class CinemaPresentationGateway(
             .put("scene", scene?.let { card(it, true) } ?: JSONObject.NULL)
             .put("selected", selected?.let { card(it, true) } ?: JSONObject.NULL)
             .put("items", JSONArray(sliced.map { card(it) })).put("total", total).put("pageIndex", page)
-            .put("pageSize", HybridProtocol.PAGE_SIZE).put("canLoadMore", when (model.page) {
-                Page.MOVIES -> model.movieBrowse.canLoadMore
-                Page.SERIES -> model.seriesBrowse.canLoadMore
-                Page.EXPLORE -> model.movieBrowse.canLoadMore || model.seriesBrowse.canLoadMore
-                Page.SEARCH -> model.canLoadSearchCatalog
-                else -> false
-            })
+            .put("pageSize", HybridProtocol.PAGE_SIZE).put("canLoadMore", pagingStatus in setOf("ready", "retry"))
+            .put("pagingStatus", pagingStatus)
             .put("notice", text(when (model.page) {
                 Page.DETAIL -> model.resolutionStatus
                 Page.MOVIES -> model.movieBrowse.description()
@@ -186,11 +192,14 @@ class CinemaPresentationGateway(
                 val key = sourceKey(source); liveSources[key] = source
                 JSONObject().put("id", key).put("name", text(source.name, 80))
             })).put("activeLiveSource", model.activeLiveSource?.let(::sourceKey).orEmpty())
-            .put("programs", JSONArray(if (model.page == Page.LIVE) model.epgPrograms.take(48).map {
-                JSONObject().put("title", text(it.title, 140)).put("start", it.start).put("stop", it.stop)
+            .put("programs", JSONArray(if (model.page == Page.LIVE) HybridProgramGuide.window(model.epgPrograms, System.currentTimeMillis()).map {
+                JSONObject().put("id", session.ids.key("program", "${model.activeChannel?.let(::channelKey)}\u0000${it.start}\u0000${it.stop}\u0000${it.title}"))
+                    .put("title", text(it.title, 140)).put("start", it.start).put("stop", it.stop)
             } else emptyList<JSONObject>()))
         return result
     }
+
+    fun refreshProgramWindow() { if (model.page == Page.LIVE) session.changed() }
 
     fun snapshot(): JSONObject = stamp(payload())
 
@@ -266,7 +275,7 @@ class CinemaPresentationGateway(
                 Page.SEARCH -> model.loadMoreSearchCatalog()
                 else -> throw HybridRequestFailure("CONFLICT")
             }
-            "catalog.refresh" -> model.refreshCatalog()
+            "catalog.refresh" -> if (model.page == Page.SEARCH) submitSearch(model.query) else model.refreshCatalog()
             "search.input" -> { if (model.page != Page.SEARCH) throw HybridRequestFailure("CONFLICT"); session.searchInput = true }
             "search.submit" -> submitSearch(HybridProtocol.string(p, "query", 120))
             "search.filter" -> {
