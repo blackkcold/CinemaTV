@@ -128,6 +128,10 @@ Two workflows provide distinct evidence without recompiling beside an emulator:
 | `Hybrid TV Android` build | Exact PR-head checkout; release tests/lint; unsigned Dev candidate; debug + instrumentation APKs; byte-for-byte equality between packaged Web assets and the built frontend |
 | Android TV API36 | Actual `android-tv` x86_64 image and `tv_1080p` profile; `MainActivity` hybrid admission, real WebView, D-pad/Back and native-player handoff/rebuild |
 | Android TV API26 | Actual `android-tv` x86 image and `tv_1080p` profile; expected native compatibility fallback |
+| Android TV API29 | Actual `android-tv` x86 image; the installed provider's capability selects hybrid or native fallback and is recorded in the receipt |
+| Android TV API36 / 4K | Actual `android-tv` x86_64 image at 3840×2160 / density640; the same checksummed APK and D-pad/Back/playback flows |
+| Phone API35 | Independent mobile navigation, portrait/landscape playback, channel variants, replay intent, native subscription UI, real repository HTTP fixtures and MediaSession |
+| Existing native UI matrix | The `[ui-qa]` PR marker requests the unchanged phone/TV1080/TV4K/API26 regression workflow alongside exact-head hybrid acceptance |
 
 The TV packages are published through Google's
 [official SDK image repository](https://dl.google.com/android/repository/sys-img/android-tv/sys-img2-1.xml).
@@ -142,6 +146,15 @@ presentation-mode and API metadata; their hashes are retained in the device rece
 Test output, provider information and a final memory snapshot are also exported. The final
 memory snapshot is diagnostic only; it is not an A/B resource benchmark and does not
 measure the entire browser renderer lifetime.
+
+After the primary TV evidence passes, the same APK runs real MediaSession controls
+and native subscription D-pad regressions on every API. Capable providers also run
+the empty-page and retained-progress/native-destination return tests in the production
+WebView. Both phases require every selected `class#method` to complete without a
+skip; restored-host audit screenshots must match the installed APK hash. Phone
+evidence requires both named player orientations. Runners reject nonempty host
+output directories and clear only their dedicated device evidence directories so
+an earlier capture cannot satisfy a new run.
 
 The existing Android/backend/Compose regression workflows remain applicable. Passing
 the new browser suite does not replace Android WebView execution, and a synthetic
@@ -180,7 +193,7 @@ invalid packaged identity or assets differing from the built frontend. It produc
 
 The relevant CI artifact is `UNSIGNED-hybrid-dev-candidate-NOT-FOR-INSTALLATION`.
 Before external signing, require successful exact-head browser, Android, applicable
-existing regression and both new TV device gates; retain their receipts together.
+existing regression and all TV/phone device gates; retain their receipts together.
 
 Final steps follow [the existing update-channel procedure](UPDATE_CHANNELS.md):
 verify the unsigned receipt, sign outside GitHub with the existing private key,
