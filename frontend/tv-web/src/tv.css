@@ -63,6 +63,9 @@ img { display: block; }
 
 .content { position: absolute; inset: 0; overflow-y: auto; overflow-x: hidden; scroll-padding-top: 17vh; padding: 15.5vh var(--gutter) 0; overscroll-behavior: none; }
 .route-home, .route-detail { padding-top: 0; }
+/* Keep the Settings scroll surface below the fixed header. These offsets retain
+   its initial layout and the same 17vh absolute safe-focus line. */
+.route-settings { top: 15.5vh; padding-top: 0; scroll-padding-top: 1.5vh; }
 .hero { min-height: 62vh; display: flex; align-items: flex-end; padding: 20vh 0 4.6vh; position: relative; }
 .hero-copy { max-width: 49vw; }
 .eyebrow { display: block; font-size: .65rem; letter-spacing: .16em; font-weight: 600; color: #e3e7efbd; text-transform: uppercase; margin-bottom: .8rem; }

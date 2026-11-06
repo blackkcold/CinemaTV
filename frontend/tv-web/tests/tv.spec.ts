@@ -259,6 +259,24 @@ test('glass quality, motion and distinct native setting destinations are effecti
     expect((await lastCall(page, 'native.open'))?.params).toEqual({ target: 'SETTINGS', section });
     if (section !== 'developer') await page.keyboard.press('ArrowDown');
   }
+  const lastLink = await button(page, 'settings:developer').boundingBox();
+  const header = await page.locator('.topbar').boundingBox();
+  expect(lastLink!.y).toBeGreaterThan(header!.y + header!.height);
+  // Chromium rounds scrollTop to pixels while rem-based controls can end on fractions.
+  expect(lastLink!.y + lastLink!.height).toBeLessThanOrEqual(page.viewportSize()!.height + 1);
+  const titleOverlapsWordmark = await page.evaluate(() => {
+    const title = document.querySelector('.route-settings .page-heading h1')!;
+    const mark = document.querySelector('.topbar .wordmark')!;
+    const a = title.getBoundingClientRect(), b = mark.getBoundingClientRect();
+    const left = Math.max(a.left, b.left), right = Math.min(a.right, b.right);
+    const top = Math.max(a.top, b.top), bottom = Math.min(a.bottom, b.bottom);
+    if (right <= left || bottom <= top) return false;
+    // Bounding rectangles can overlap after scrolling even when an ancestor clips
+    // the title. Check the painted viewport rather than a full-page screenshot.
+    return document.elementsFromPoint((left + right) / 2, (top + bottom) / 2)
+      .some(node => node === title || title.contains(node));
+  });
+  expect(titleOverlapsWordmark).toBe(false);
   await page.screenshot({ path: info.outputPath('settings.png') });
   await button(page, 'nav:HOME').click();
   const card = button(page, 'card:continue:fixture_0');
