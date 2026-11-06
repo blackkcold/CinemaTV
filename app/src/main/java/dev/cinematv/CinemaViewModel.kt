@@ -125,6 +125,7 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
     var epgPrograms by mutableStateOf<List<TvProgram>>(emptyList())
         private set
     private var epgJob: Job? = null
+    private var epgRequestedAt = 0L
     private var connectionJob: Job? = null
     private var connectionAttempt = 0L
     private var alternativesJob: Job? = null
@@ -352,6 +353,7 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
         activeLiveSource = null
         channels = emptyList()
         epgPrograms = emptyList()
+        epgRequestedAt = 0L
         sourceProbes = emptyMap()
         defaultSourceSubscriptions = emptyList()
         sourceSubscriptionPreview = null
@@ -786,15 +788,33 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
     }
 
     fun focusChannel(channel: TvChannel) {
-        if (activeChannel?.let { ChannelIdentity.key(activeLiveSource, it) } == ChannelIdentity.key(activeLiveSource, channel)) return
+        if (activeChannel?.let { ChannelIdentity.key(activeLiveSource, it) } == ChannelIdentity.key(activeLiveSource, channel)) {
+            refreshEpgIfStale()
+            return
+        }
         activeChannel = channel
         epgPrograms = emptyList()
+        epgRequestedAt = 0L
+        requestEpg(channel, debounce = true)
+    }
+
+    /** The visible guide invokes this on its lifecycle clock; no background polling or parallel requests. */
+    fun refreshEpgIfStale(nowMs: Long = System.currentTimeMillis()) {
+        val channel = activeChannel ?: return
+        if (epgJob?.isActive == true || activeLiveSource?.epg.isNullOrBlank()) return
+        if (epgRequestedAt > 0 && nowMs >= epgRequestedAt && nowMs - epgRequestedAt < 15 * 60_000L) return
+        requestEpg(channel, debounce = false, nowMs = nowMs)
+    }
+
+    private fun requestEpg(channel: TvChannel, debounce: Boolean, nowMs: Long = System.currentTimeMillis()) {
         epgJob?.cancel()
         val source = activeLiveSource ?: return
+        if (source.epg.isBlank()) return
+        epgRequestedAt = nowMs
         val connection = repo.connectionContext()
         val key = ChannelIdentity.key(source, channel)
         epgJob = viewModelScope.launch {
-            delay(350)
+            if (debounce) delay(350)
             try {
                 val programs = repo.epg(source, channel, connection)
                 ensureActive()
@@ -1156,6 +1176,7 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
         activeChannel = null
         channels = emptyList()
         epgPrograms = emptyList()
+        epgRequestedAt = 0L
         val connection = repo.connectionContext()
         channelsJob = viewModelScope.launch {
             busy = true

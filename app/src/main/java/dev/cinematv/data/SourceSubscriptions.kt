@@ -77,6 +77,7 @@ internal object SourceSubscriptionContract {
     fun normalize(value: SourceSubscription): SourceSubscription {
         val url = value.url.trim().trimEnd('?', '#').toHttpUrlOrNull()
             ?: throw IllegalArgumentException("订阅地址必须为有效的 HTTP(S) URL")
+        require(value.url.length <= 2_048) { "订阅地址过长" }
         require(url.username.isBlank() && url.password.isBlank()) { "订阅地址不能包含账户密码" }
         val cleaned = url.newBuilder().fragment(null).build().toString().let { if (url.query == null) it.trimEnd('/') else it }
         return SourceSubscription(cleaned, value.name.trim().take(120), value.refreshDays.coerceIn(1, 365))
@@ -112,7 +113,7 @@ internal object SourceSubscriptionContract {
             for (index in 0 until minOf(array.length(), MAX_SCAN)) {
                 val item = array.optJSONObject(index)
                 val url = item?.text("url").orEmpty()
-                if (item == null || !SourceResolutionPolicy.usableUrl(url)) { invalid++; continue }
+                if (item == null || url.length > 2_048 || !SourceResolutionPolicy.usableUrl(url)) { invalid++; continue }
                 if (!seen.add(url)) { duplicate++; continue }
                 if (accepted >= limit) { trimmed++; continue }
                 accepted++
@@ -122,7 +123,7 @@ internal object SourceSubscriptionContract {
         }
         fun optionalUrl(item: JSONObject, field: String): String {
             val value = item.text(field)
-            if (value.isBlank() || SourceResolutionPolicy.usableUrl(value)) return value
+            if (value.isBlank() || (value.length <= 2_048 && SourceResolutionPolicy.usableUrl(value))) return value
             optional++
             return ""
         }

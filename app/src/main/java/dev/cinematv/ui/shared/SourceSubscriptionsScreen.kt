@@ -17,6 +17,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -38,15 +39,18 @@ fun SourceSubscriptionsScreen(model: CinemaViewModel, tv: Boolean = true, modifi
     val mainAction = remember { FocusRequester() }
     val confirmAction = remember { FocusRequester() }
     var displayedPreview by remember { mutableStateOf(false) }
+    val prefixItems = 1 + if (model.sourceSubscriptionNotice.isNotBlank()) 1 else 0
+    val beforePreview = prefixItems + if (!model.authorized) 1 else 0
     LaunchedEffect(preview?.fetchedAt) {
         if (preview != null) {
             displayedPreview = true
-            state.scrollToItem(0)
+            // The confirmation row can be outside the lazy viewport after a long diff/notice.
+            state.scrollToItem(if (tv) beforePreview + 1 else beforePreview)
             withFrameNanos { }
             if (tv) runCatching { confirmAction.requestFocus() }
         } else if (displayedPreview) {
             displayedPreview = false
-            state.scrollToItem(0)
+            state.scrollToItem(if (tv) beforePreview + 3 else 0)
             withFrameNanos { }
             if (tv) runCatching { mainAction.requestFocus() }
         }
@@ -95,9 +99,9 @@ fun SourceSubscriptionsScreen(model: CinemaViewModel, tv: Boolean = true, modifi
         }
         item("custom-title") { Text("添加订阅", color = TvColors.Text, fontSize = 19.sp, fontWeight = FontWeight.SemiBold) }
         item("custom-name") { SubscriptionField("名称（可选）", model.sourceSubscriptionName,
-            { model.sourceSubscriptionName = it }, "subscription-name", tv) }
+            { model.sourceSubscriptionName = it.take(120) }, "subscription-name", tv) }
         item("custom-url") { SubscriptionField("SourceList / TVBOX 列表 URL", model.sourceSubscriptionAddress,
-            { model.sourceSubscriptionAddress = it }, "subscription-url", tv) }
+            { model.sourceSubscriptionAddress = it.take(2_048) }, "subscription-url", tv) }
         item("custom-preview") {
             SubscriptionAction(if (busy) "正在读取…" else "读取并预览", "subscription-preview-custom", tv,
                 enabled = !busy && model.authorized && model.sourceSubscriptionAddress.isNotBlank(),
@@ -137,12 +141,23 @@ fun SourceSubscriptionsScreen(model: CinemaViewModel, tv: Boolean = true, modifi
         if (preview != null) {
             item("preview-sources-title") { Text("预览片源明细", color = TvColors.Text, fontSize = 19.sp) }
             items(preview.snapshot.sources, key = { "preview-vod:${it.key}" }) { source ->
-                Column { Text("点播 · ${source.name}", color = TvColors.Text); Text(source.url, color = TvColors.Secondary, fontSize = 12.sp) }
+                PreviewSourceRow("点播 · ${source.name}", source.url, "subscription-preview-vod-${source.key}", tv)
             }
             items(preview.snapshot.liveSources, key = { "preview-live:${it.key}" }) { source ->
-                Column { Text("直播 · ${source.name}", color = TvColors.Text); Text(source.url, color = TvColors.Secondary, fontSize = 12.sp) }
+                PreviewSourceRow("直播 · ${source.name}", source.url, "subscription-preview-live-${source.key}", tv)
             }
         }
+    }
+}
+
+@Composable
+private fun PreviewSourceRow(name: String, url: String, tag: String, tv: Boolean) {
+    var expanded by remember(url) { mutableStateOf(false) }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        // Every TV row is a native focus target, so D-pad can scroll through the entire lazy preview.
+        SubscriptionAction(name, tag, tv, onClick = { expanded = !expanded })
+        Text(url, color = TvColors.Secondary, fontSize = 12.sp, maxLines = if (expanded) 8 else 2,
+            overflow = TextOverflow.Ellipsis)
     }
 }
 
