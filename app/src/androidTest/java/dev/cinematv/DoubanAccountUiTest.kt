@@ -1,6 +1,11 @@
 package dev.cinematv
 
 import android.content.Context
+import android.content.res.Configuration
+import android.graphics.Bitmap
+import android.os.Build
+import android.os.ParcelFileDescriptor
+import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
@@ -18,6 +23,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.pressKey
+import androidx.compose.ui.test.printToString
 import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
@@ -41,29 +47,80 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TestRule
 import org.junit.runner.RunWith
+import java.io.File
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 /** Activity and dialog transitions can outlast Compose's current idle frame. */
 private fun <R : TestRule, A : ComponentActivity> AndroidComposeTestRule<R, A>.waitForTag(tag: String) {
-    waitUntil(10_000) {
-        onAllNodesWithTag(tag).fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty()
+    try {
+        waitUntil(10_000) {
+            onAllNodesWithTag(tag).fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty()
+        }
+        // Mobile settings are a scrollable Column; existence alone does not put an entry on screen.
+        // Keep TV focus assertions independent of scrolling/requesting focus from test code.
+        if (activity !is TvTestActivity && tag in setOf("developer-options-entry", "douban-account-entry")) {
+            onNodeWithTag(tag).performScrollTo()
+        }
+        // A dialog can enter the semantics tree before its separate Android window is
+        // laid out. Wait for the same visibility assertion; persistent clipping still
+        // fails, and the test does not scroll or choose focus on behalf of the TV UI.
+        waitUntil(10_000) {
+            try {
+                onNodeWithTag(tag).assertIsDisplayed()
+                true
+            } catch (_: AssertionError) {
+                false
+            }
+        }
+        onNodeWithTag(tag).assertIsDisplayed()
+    } catch (failure: Throwable) {
+        // Preserve the original failed assertion and its window before cleanup sends Back.
+        runCatching {
+            val folder = File(InstrumentationRegistry.getArguments().getString("additionalTestOutputDir")
+                ?: activity.getExternalFilesDir(null)!!.absolutePath, "ui-evidence").apply { mkdirs() }
+            val label = "douban-${activity.javaClass.simpleName}-$tag-${SystemClock.uptimeMillis()}"
+            val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+            automation.takeScreenshot()?.let { bitmap ->
+                try { File(folder, "$label.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) } }
+                finally { bitmap.recycle() }
+            }
+            ParcelFileDescriptor.AutoCloseInputStream(automation.executeShellCommand("dumpsys -t 5 window"))
+                .bufferedReader().use { File(folder, "$label-windows.txt").writeText(it.readText()) }
+            File(folder, "$label-semantics.txt").writeText(onNodeWithTag(tag, useUnmergedTree = true).printToString(maxDepth = 20))
+        }
+        throw failure
     }
-    // Mobile settings are a scrollable Column; existence alone does not put an entry on screen.
-    // Keep TV focus assertions independent of scrolling/requesting focus from test code.
-    if (activity !is TvTestActivity && tag in setOf("developer-options-entry", "douban-account-entry")) {
-        onNodeWithTag(tag).performScrollTo()
+}
+
+/** A portrait launcher can still be rotating when the landscape fixture has semantics. */
+private fun <R : TestRule, A : ComponentActivity> AndroidComposeTestRule<R, A>.waitForTvWindow() {
+    if (activity !is TvTestActivity) return
+    fun ready() = runOnUiThread {
+        val decor = activity.window.decorView
+        activity.lifecycle.currentState == Lifecycle.State.RESUMED && decor.isAttachedToWindow &&
+            decor.hasWindowFocus() && decor.isShown && decor.width > decor.height && decor.height > 0 &&
+            activity.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     }
-    // A dialog can enter the semantics tree before its separate Android window is
-    // laid out. Wait for the same visibility assertion; persistent clipping still
-    // fails, and the test does not scroll or choose focus on behalf of the TV UI.
-    waitUntil(10_000) {
-        try {
-            onNodeWithTag(tag).assertIsDisplayed()
-            true
-        } catch (_: AssertionError) {
-            false
+    waitUntil(10_000) { ready() }
+    val committed = CountDownLatch(1)
+    val callback = Runnable { committed.countDown() }
+    var cleanup: (() -> Unit)? = null
+    runOnUiThread {
+        val decor = activity.window.decorView
+        if (Build.VERSION.SDK_INT >= 29 && decor.isHardwareAccelerated) {
+            val observer = decor.viewTreeObserver
+            observer.registerFrameCommitCallback(callback)
+            cleanup = { if (observer.isAlive) observer.unregisterFrameCommitCallback(callback); Unit }
+            decor.postInvalidateOnAnimation()
+        } else {
+            decor.postOnAnimation { decor.postOnAnimation(callback) }
+            cleanup = { decor.removeCallbacks(callback); Unit }
         }
     }
-    onNodeWithTag(tag).assertIsDisplayed()
+    try { assertTrue("Landscape fixture did not submit a frame before opening its dialog", committed.await(8, TimeUnit.SECONDS)) }
+    finally { runOnUiThread { cleanup?.invoke() } }
+    waitUntil(10_000) { ready() }
 }
 
 private fun <R : TestRule, A : ComponentActivity> AndroidComposeTestRule<R, A>.waitForOptionsToClose() {
@@ -79,6 +136,7 @@ private fun <R : TestRule, A : ComponentActivity> AndroidComposeTestRule<R, A>.s
     runOnIdle { androidx.lifecycle.ViewModelProvider(activity)[CinemaViewModel::class.java].navigate(Page.SETTINGS) }
     waitUntil(10_000) { !DoubanDeveloperOptions.get(activity).busy.value }
     waitForTag("developer-options-entry")
+    waitForTvWindow()
 }
 
 /** Always use both UI confirmations. No login or session authorization is granted. */

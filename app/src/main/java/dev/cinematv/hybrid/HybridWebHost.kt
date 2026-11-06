@@ -99,6 +99,10 @@ fun HybridWebHost(gateway: CinemaPresentationGateway, modifier: Modifier = Modif
                 .addPathHandler("/images/", images).build()
             CinemaWebView(context, dispatcher::requestBack).also { allocated = it }.apply {
                 contentDescription = "CinemaTV 混合界面"
+                // WebView also uses LayoutParams to resolve viewport units. An
+                // AndroidView child with WRAP_CONTENT can resolve 100vh to zero
+                // even when Compose later measures the native view full-screen.
+                layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
                 setBackgroundColor(android.graphics.Color.rgb(5, 8, 13))
                 isFocusable = true
                 isFocusableInTouchMode = true
