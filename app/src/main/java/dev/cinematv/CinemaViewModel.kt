@@ -133,6 +133,7 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
     private var epgRequestedAt = 0L
     private var connectionJob: Job? = null
     private var connectionAttempt = 0L
+    private var defaultLoginAttempted = false
     private var alternativesJob: Job? = null
     private var searchJob: Job? = null
     private var backdropJob: Job? = null
@@ -384,7 +385,18 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
         sourceSubscriptions = repo.sourceSubscriptions()
         message = if (authorized) "" else if (status.passwordRequired) "此服务器要求密码，请在设置中登录。"
             else "服务器未配置访问密码（PASSWORD），请联系管理员完成配置。"
-        if (authorized) loadHome()
+        if (authorized) { loadHome(); return }
+        // A personal local build may carry the endpoint password. Try it once per connection
+        // attempt; never loop, and never override an explicit user login or a rejected password.
+        val defaultPassword = BuildConfig.LIBRETV_DEFAULT_PASSWORD
+        if (status.passwordRequired && !defaultLoginAttempted && defaultPassword.isNotBlank()) {
+            defaultLoginAttempted = true
+            val verified = repo.login(defaultPassword, connection)
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+            if (attempt != connectionAttempt || !repo.isCurrentConnection(connection)) return
+            if (verified) readConnection(connection, attempt)
+            else { authorized = false; passwordRequired = true; message = "默认密码未通过，请在设置中登录。" }
+        }
     }
 
     /** Replacing a server cannot retain any in-flight response's UI ownership. Local library stays intact. */
@@ -422,6 +434,7 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
     }
 
     fun connect() {
+        defaultLoginAttempted = false
         runCatching {
             repo.configureServer(serverAddress)
             cancelConnectionWork()

@@ -138,6 +138,11 @@ def candidate_receipt(root, apk, manifest_path, output):
     require(app.get(a + "label") == "CinemaTV Dev", "Wrong candidate launcher label")
     require([node.get(a + "value") for node in app.findall("meta-data")
              if node.get(a + "name") == "dev.cinematv.UPDATE_CHANNEL"] == ["dev"], "Wrong packaged channel")
+    # A personal local build compiles an endpoint into BuildConfig. It must never be shipped as
+    # a public candidate, and the decoded manifest is the only artifact-level evidence of that.
+    require([node.get(a + "value") for node in app.findall("meta-data")
+             if node.get(a + "name") == "dev.cinematv.PRIVATE_BUILD"] == ["false"],
+            "Public candidate must not be a personal build")
     receipt = source_receipt(root)
     verify_apk_assets(apk, receipt["webAssets"])
     identity = json.loads((root / "release/signing-identity.json").read_text())

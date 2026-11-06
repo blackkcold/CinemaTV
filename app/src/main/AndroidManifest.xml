@@ -18,6 +18,7 @@
     android:usesCleartextTraffic="true"
     android:supportsRtl="true">
     <meta-data android:name="dev.cinematv.UPDATE_CHANNEL" android:value="${updateChannel}"/>
+    <meta-data android:name="dev.cinematv.PRIVATE_BUILD" android:value="${privateBuild}"/>
     <provider android:name=".data.update.UpdateFileProvider"
       android:authorities="${applicationId}.updates" android:exported="false"
       android:grantUriPermissions="true">
