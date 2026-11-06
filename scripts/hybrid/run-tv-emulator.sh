@@ -137,7 +137,10 @@ tv_main() {
     > "$TV_STARTUP_EVIDENCE/download.txt" 2>&1
   timeout --kill-after=5s 60s unzip -q "$TV_WORKDIR/emulator.zip" -d "$TV_WORKDIR"
   local emulator="$TV_WORKDIR/emulator/emulator"
-  timeout --kill-after=1s 5s "$emulator" -version > "$TV_STARTUP_EVIDENCE/version.txt" 2>&1
+  # The version query also selects a QEMU binary. Match the actual headless
+  # launch so this preflight does not require the unused GUI/audio libraries.
+  timeout --kill-after=1s 5s "$emulator" -no-window -no-audio -version \
+    > "$TV_STARTUP_EVIDENCE/version.txt" 2>&1
   grep -Eq 'build_id 15004761([^0-9]|$)' "$TV_STARTUP_EVIDENCE/version.txt"
   timeout --kill-after=5s 120s "$avdmanager" create avd --name cinematv-ci \
     --package "system-images;android-$api;android-tv;$arch" --device tv_1080p \

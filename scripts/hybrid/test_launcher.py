@@ -7,6 +7,7 @@ import subprocess
 import tempfile
 import time
 import unittest
+import zipfile
 
 
 LAUNCHER = Path(__file__).with_name("run-tv-emulator.sh").resolve()
@@ -167,6 +168,82 @@ exit 42
         self.assertEqual(result.returncode, 42)
         with self.assertRaises(ProcessLookupError):
             os.kill(int(pidfile.read_text()), 0)
+
+    def run_provisioning(self, build="15004761"):
+        """Run the complete launcher with local SDK/archive fixtures and real cleanup."""
+        sdk = self.root / "sdk"
+        sdkbin = sdk / "cmdline-tools/latest/bin"
+        sdkbin.mkdir(parents=True)
+        (sdk / "platform-tools").mkdir()
+        (sdk / "platform-tools/adb").symlink_to(self.adb)
+        (self.root / "scenario.json").write_text("{}")
+        calls = self.root / "provisioning.jsonl"
+        common = '''#!/usr/bin/env python3
+import json, os, pathlib, shutil, sys, time
+root = pathlib.Path(os.environ["TV_STUB_ROOT"])
+with (root / "provisioning.jsonl").open("a") as log:
+    log.write(json.dumps({"tool": pathlib.Path(sys.argv[0]).name, "args": sys.argv[1:]}) + "\\n")
+'''
+        (sdkbin / "sdkmanager").write_text(common)
+        (sdkbin / "avdmanager").write_text(common + '''
+avd = pathlib.Path(os.environ["ANDROID_AVD_HOME"]) / "cinematv-ci.avd"
+avd.mkdir()
+(avd / "config.ini").write_text("hw.device.name=tv_1080p\\n")
+''')
+        for executable in sdkbin.iterdir():
+            executable.chmod(0o755)
+        emulator = common + '''
+if "-version" in sys.argv:
+    if "-no-window" not in sys.argv or "-no-audio" not in sys.argv:
+        print("qemu-system-x86_64: libpulse.so.0: cannot open shared object file", file=sys.stderr)
+        sys.exit(127)
+    print("Android emulator version 36.4.10.0 (build_id " + os.environ["TV_STUB_BUILD"] + ")")
+else:
+    time.sleep(60)
+'''
+        with zipfile.ZipFile(self.root / "emulator.zip", "w") as archive:
+            member = zipfile.ZipInfo("emulator/emulator")
+            member.create_system = 3
+            member.external_attr = 0o100755 << 16
+            archive.writestr(member, emulator)
+        fakebin = self.root / "bin"
+        fakebin.mkdir()
+        curl = fakebin / "curl"
+        curl.write_text(common + '''
+assert sys.argv[-1] == "https://dl.google.com/android/repository/emulator-linux_x64-15004761.zip"
+shutil.copyfile(root / "emulator.zip", sys.argv[sys.argv.index("--output") + 1])
+''')
+        curl.chmod(0o755)
+        harness = self.root / "scripts/hybrid/run-device.sh"
+        harness.parent.mkdir(parents=True)
+        harness.write_text("#!/usr/bin/env bash\nprintf 'harness-started\\n'\nexit 42\n")
+        environment = {**os.environ, "TV_STUB_ROOT": str(self.root), "TV_STUB_BUILD": build,
+                       "ANDROID_HOME": str(sdk), "RUNNER_TEMP": str(self.root),
+                       "PATH": str(fakebin) + os.pathsep + os.environ["PATH"]}
+        result = subprocess.run(["bash", str(LAUNCHER), "36", "x86_64", "bundle",
+                                 str(self.root / "device-evidence"), "hybrid", "3840x2160", "640"],
+                                cwd=self.root, env=environment, text=True, capture_output=True, timeout=15)
+        return result, [json.loads(line) for line in calls.read_text().splitlines()]
+
+    def test_headless_version_preflight_precedes_avd_and_harness(self):
+        result, calls = self.run_provisioning()
+        self.assertEqual(result.returncode, 42, result.stderr)
+        self.assertIn("harness-started", result.stdout)
+        version = next(i for i, call in enumerate(calls)
+                       if call["tool"] == "emulator" and "-version" in call["args"])
+        avd = next(i for i, call in enumerate(calls) if call["tool"] == "avdmanager")
+        boot = next(i for i, call in enumerate(calls)
+                    if call["tool"] == "emulator" and "-avd" in call["args"])
+        self.assertLess(version, avd)
+        self.assertLess(avd, boot)
+        self.assertFalse((self.root / "device-evidence").exists())
+        self.assertEqual(list(self.root.glob("cinema-tv-emulator.*")), [])
+
+    def test_wrong_emulator_build_stops_before_avd_creation(self):
+        result, calls = self.run_provisioning(build="150047610")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn("harness-started", result.stdout)
+        self.assertFalse(any(call["tool"] == "avdmanager" for call in calls))
 
 
 if __name__ == "__main__":
