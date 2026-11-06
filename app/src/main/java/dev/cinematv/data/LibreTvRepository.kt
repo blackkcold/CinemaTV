@@ -736,6 +736,7 @@ class LibreTvRepository(context: Context, val library: LocalMediaLibrary = Local
             metadataIds = entry.metadataIds,
             rating = item.rating.ifBlank { entry.rating }, ratingSource = item.ratingSource.ifBlank { entry.ratingSource },
             ratingLicenseExpiresAt = if (item.rating.isNotBlank()) item.ratingLicenseExpiresAt else entry.ratingLicenseExpiresAt,
+            ratingPublic = if (item.rating.isNotBlank()) item.ratingPublic else entry.ratingPublic,
             doubanTopRank = item.doubanTopRank ?: entry.doubanTopRank,
             catalogProvider = item.catalogProvider, catalogAttribution = item.catalogAttribution,
             catalogLicenseExpiresAt = item.catalogLicenseExpiresAt,

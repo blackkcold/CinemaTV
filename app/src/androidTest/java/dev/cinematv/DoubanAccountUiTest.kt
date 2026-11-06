@@ -60,7 +60,7 @@ private fun <R : TestRule, A : ComponentActivity> AndroidComposeTestRule<R, A>.w
         }
         // Mobile settings are a scrollable Column; existence alone does not put an entry on screen.
         // Keep TV focus assertions independent of scrolling/requesting focus from test code.
-        if (activity !is TvTestActivity && tag in setOf("developer-options-entry", "douban-account-entry")) {
+        if (activity !is TvTestActivity && tag in setOf("developer-options-entry", "douban-account-entry", "diagnostics-entry")) {
             onNodeWithTag(tag).performScrollTo()
         }
         // A dialog can enter the semantics tree before its separate Android window is
@@ -131,7 +131,7 @@ private fun <R : TestRule, A : ComponentActivity> AndroidComposeTestRule<R, A>.w
 
 private fun <R : TestRule, A : ComponentActivity> AndroidComposeTestRule<R, A>.waitForOptionsToClose() {
     waitUntil(10_000) {
-        listOf("douban-experiment-confirm", "douban-experiment-toggle").all {
+        listOf("douban-experiment-confirm", "douban-experiment-toggle", "diagnostics-status").all {
             onAllNodesWithTag(it).fetchSemanticsNodes(atLeastOneRootRequired = false).isEmpty()
         }
     }
@@ -167,9 +167,11 @@ private fun <R : TestRule, A : ComponentActivity> AndroidComposeTestRule<R, A>.s
 private fun <R : TestRule, A : ComponentActivity> AndroidComposeTestRule<R, A>.resetExperiment() {
     // Recover failed-test dialogs with an actual Back key directed to the focused window.
     // Default Espresso.pressBack can select the unfocused activity behind a Compose dialog.
-    repeat(3) {
-        val topTag = listOf("douban-experiment-confirm", "douban-experiment-toggle", "douban-account-status")
-            .firstOrNull { onAllNodesWithTag(it).fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty() }
+    repeat(5) {
+        val topTag = listOf(
+            "diagnostics-confirm", "diagnostics-status",
+            "douban-experiment-confirm", "douban-experiment-toggle", "douban-account-status"
+        ).firstOrNull { onAllNodesWithTag(it).fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty() }
         if (topTag != null) {
             waitUntil(10_000) { !DoubanDeveloperOptions.get(activity).busy.value }
             InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)

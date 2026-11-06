@@ -106,6 +106,7 @@ export function createMockPlatform(): Platform {
       canLoadMore: remoteRoute && !busy && !remoteDelivered, pagingStatus: !remoteRoute ? 'unavailable' : busy ? 'loading' : remoteFailed ? 'retry' : remoteDelivered ? 'exhausted' : 'ready', notice: scenario === 'offline' ? '暂时无法连接影视服务，已保存的资料仍可查看。' : '', attribution: '', recommendationReason: route === 'DETAIL' ? '因为你最近观看了原创测试作品' : '', selected,
       episodes: episodes.slice(episodePage * 40, (episodePage + 1) * 40), resumeEpisode: episodes[selected?.lastEpisode ?? 0] ?? episodes[0] ?? null,
       episodePage, episodeTotal: episodes.length, alternatives, query, history: [...history], filters: { ...filters },
+      tags: ['热门', '悬疑', '科幻', '动画', '国产剧', '美剧'],
       years: ['2025', '2024', '2023', '2022'], catalogFilters: cf, categories, catalogYears,
       liveGroups: empty ? [] : [...new Set(channels.map(channel => channel.group))].map(name => ({ id: name, name })), liveGroup,
       channels: empty ? [] : shownChannels, activeChannel, liveSources: empty ? [] : [{ id: 'live_1', name: '合成订阅' }], activeLiveSource: 'live_1',

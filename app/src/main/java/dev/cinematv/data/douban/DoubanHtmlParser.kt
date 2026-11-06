@@ -13,15 +13,21 @@ object DoubanHtmlParser {
             doc.title().contains("安全验证") || doc.title().contains("访问受限") || doc.text().contains("检测到有异常请求"))
             throw DoubanAccessException(DoubanPhase.CHALLENGE, "豆瓣需要安全验证，请在官方登录页完成后再继续")
     }
-    fun identity(html: String): DoubanIdentity {
+    /**
+     * The redirect target of /mine/ is the authoritative account id; the navigation
+     * block only supplies a display name. A renamed DOM therefore cannot strand a
+     * freshly authenticated session.
+     */
+    fun identity(html: String, expectedOwner: String? = null): DoubanIdentity {
         checkAccess(html)
         val doc = Jsoup.parse(html)
-        val nav = doc.selectFirst(".nav-user-account") ?: throw DoubanAccessException(DoubanPhase.NEEDS_LOGIN, "尚未验证登录账户")
-        val profile = nav.select("a[href]").firstOrNull { personId(it.attr("href")) != null }
-            ?: throw DoubanAccessException(DoubanPhase.ERROR, "豆瓣账户页面结构变化，已停止")
-        val name = nav.selectFirst(".bn-more span")?.text()?.removeSuffix("的帐号")?.removeSuffix("的账号")?.trim()
+        val nav = doc.selectFirst(".nav-user-account")
+        val profile = nav?.select("a[href]")?.firstOrNull { personId(it.attr("href")) != null }
+        val id = personId(profile?.attr("href").orEmpty()) ?: expectedOwner
+            ?: throw DoubanAccessException(DoubanPhase.NEEDS_LOGIN, "尚未验证登录账户")
+        val name = nav?.selectFirst(".bn-more span")?.text()?.removeSuffix("的帐号")?.removeSuffix("的账号")?.trim()
             ?.takeIf { it.isNotBlank() } ?: doc.selectFirst("h1")?.text()?.substringBefore("的")?.trim().orEmpty()
-        return DoubanIdentity(personId(profile.attr("href"))!!, name.ifBlank { "豆瓣用户" })
+        return DoubanIdentity(id, name.ifBlank { "豆瓣用户" })
     }
     fun personId(url: String): String? = runCatching {
         val u = URI(url); if (u.host != "www.douban.com" && u.host != "movie.douban.com") return null
@@ -30,7 +36,7 @@ object DoubanHtmlParser {
     fun collection(html: String, ownerId: String, shelf: DoubanShelf, start: Int): DoubanPage {
         checkAccess(html)
         val doc = Jsoup.parse(html)
-        if(identity(html).id != ownerId) throw DoubanAccessException(DoubanPhase.ERROR, "账户不一致，未导入片单")
+        if(identity(html, ownerId).id != ownerId) throw DoubanAccessException(DoubanPhase.ERROR, "账户不一致，未导入片单")
         val heading = doc.selectFirst("h1")?.text().orEmpty()
         if(!heading.contains(shelf.label)) throw DoubanAccessException(DoubanPhase.ERROR, "片单类型无法确认，保留上次数据")
         val totalText = doc.selectFirst(".subject-num")?.text().orEmpty()

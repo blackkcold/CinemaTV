@@ -44,6 +44,8 @@ data class MediaItem(
     val ratingLicenseExpiresAt: Long = 0L,
     /** False when a source result did not identify movie versus series. */
     val mediaTypeKnown: Boolean = true,
+    /** True only for a score read from a public page without a licence declaration. */
+    val ratingPublic: Boolean = false,
     val catalogProvider: String = "",
     val catalogAttribution: String = "",
     /** Epoch milliseconds; expiry covers the entire licensed catalog metadata record. */

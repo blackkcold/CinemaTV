@@ -75,7 +75,17 @@ fun SearchScreen(model: CinemaViewModel) {
             } }
             item { GlassAction("重置筛选", Modifier.width(110.dp).height(35.dp)) { model.updateSearchFilters(SearchFilters()) } }
         }
-        Text(if (model.searchFilters.ratingSource == "Douban") "豆瓣筛选仅显示有效授权目录；未配置时不会替代为其他评分。" else model.searchStage,
+        if (model.searchFilters.ratingSource == "Douban") LazyRow(
+            contentPadding = PaddingValues(horizontal = layout.gutter), horizontalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.focusRestorer()) {
+            items(dev.cinematv.data.douban.public.DoubanPublicCatalog.uiTags, key = { it }) { tag ->
+                val selected = model.searchFilters.doubanTag == tag
+                GlassAction(tag, Modifier.widthIn(min = 86.dp, max = 130.dp).height(35.dp), selected = selected) {
+                    model.selectDoubanTag(if (selected) null else tag)
+                }
+            }
+        }
+        Text(if (model.searchFilters.ratingSource == "Douban") "豆瓣榜单与评分来自公开页面，个人使用；登录豆瓣账号可读取个人片单。" else model.searchStage,
             color = TvColors.Secondary, fontSize = 11.sp, modifier = Modifier.padding(horizontal = layout.gutter, vertical = 5.dp))
         if (model.catalogStatus.isNotBlank()) Text(model.catalogStatus, color = TvColors.Secondary,
             fontSize = 11.sp, modifier = Modifier.padding(horizontal = layout.gutter, vertical = 4.dp))

@@ -128,9 +128,11 @@ Official references:
 Until the personal-account integration is accepted, `main` and stable candidates
 must exclude `feature/douban-personal-account`. Its account data/UI directories
 (`data/douban` and `ui/douban`) cause any `cinematvChannel=stable` build to fail.
-This is a source-presence guard, not a hidden runtime toggle. Existing public
-catalogue ratings/Top250 are unrelated and remain supported. Dev may integrate
-that branch independently; do not merge its unaccepted code into `main`.
+This is a source-presence guard, not a hidden runtime toggle. The account-free
+public list channel lives under `data/douban/public`, so it is also excluded;
+exposing it in stable requires moving that package out and reviewing the remaining
+account references. Dev may integrate that branch independently; do not merge its
+unaccepted code into `main`.
 
 A stable label is not certification. Production publication additionally needs:
 

@@ -233,3 +233,11 @@ val verifyRecommendationCore by tasks.registering {
     }
 }
 tasks.named("preBuild") { dependsOn(verifyRecommendationCore) }
+
+// The live parser probe needs captured pages and is skipped otherwise. CI forbids
+// skipped tests, so it stays out of the default unit-test task unless explicitly asked for.
+tasks.withType(org.gradle.api.tasks.testing.Test::class.java).configureEach {
+    if (!providers.gradleProperty("doubanLiveProbe").isPresent) {
+        filter { excludeTestsMatching("dev.cinematv.data.douban.public.LiveDoubanParserProbeTest") }
+    }
+}

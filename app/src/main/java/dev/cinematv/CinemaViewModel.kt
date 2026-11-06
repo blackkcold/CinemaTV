@@ -7,6 +7,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import dev.cinematv.data.*
+import dev.cinematv.data.douban.public.toMediaItem
 import dev.cinematv.data.recommendation.LocalRecommendationPipeline
 import dev.cinematv.data.recommendation.LocalRecommendationSnapshot
 import kotlinx.coroutines.Dispatchers
@@ -29,6 +30,10 @@ enum class Page { HOME, EXPLORE, MOVIES, SERIES, SEARCH, LIVE, LIBRARY, SETTINGS
 
 class CinemaViewModel(application: Application, val repo: LibreTvRepository) : AndroidViewModel(application) {
     constructor(application: Application) : this(application, LibreTvRepository(application))
+    /** Anonymous public lists; no account, cookie or licence declaration involved. */
+    private val publicDouban by lazy {
+        dev.cinematv.data.douban.public.DoubanPublicChannel.chart(application)
+    }
     val focusCoordinator = FocusCoordinator()
     var reducedMotion by mutableStateOf(repo.reducedMotion)
         private set
@@ -238,12 +243,62 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
     private var chartGeneration = 0L
     var chartLoading by mutableStateOf(false)
         private set
+    var doubanTagLoading by mutableStateOf(false)
+        private set
+    var doubanTagNotice by mutableStateOf("")
+        private set
+    private var doubanList by mutableStateOf<List<MediaItem>>(emptyList())
+    private var doubanTagJob: Job? = null
     val searchYears: List<String> get() = (catalogMovies + catalogSeries + queryCatalog + movieChart.items + seriesChart.items + remoteSearch +
         repo.library.snapshot.records.map { it.item }).map { it.year }.filter { it.matches(Regex("\\d{4}")) }.distinct().sortedDescending()
 
     fun cycleSearchYear() {
         val choices = listOf<String?>(null) + searchYears
         updateSearchFilters(searchFilters.copy(year = choices[(choices.indexOf(searchFilters.year) + 1) % choices.size]))
+    }
+
+    /** Select or clear a curated public tag. No account, cookie or BFF is involved. */
+    fun selectDoubanTag(tag: String?) {
+        updateSearchFilters(searchFilters.copy(
+            doubanTag = tag,
+            doubanTopOnly = false,
+            ratingSource = "Douban",
+            minRating = null
+        ))
+    }
+
+    private fun loadDoubanTag(tag: String) {
+        doubanTagJob?.cancel()
+        doubanTagJob = viewModelScope.launch {
+            doubanTagLoading = true
+            doubanTagNotice = ""
+            try {
+                val kind = if (dev.cinematv.data.douban.public.DoubanPublicCatalog.isTvTag(tag))
+                    dev.cinematv.data.douban.public.DoubanPublicKind.TV
+                else dev.cinematv.data.douban.public.DoubanPublicKind.MOVIE
+                val page = dev.cinematv.data.douban.public.DoubanPublicChannel
+                    .repository(getApplication()).browse(tag, kind = kind)
+                doubanList = page.items.map { it.toMediaItem() }
+                val asOf = page.fetchedAt.takeIf { it > 0 }?.let { at ->
+                    " · 截至 " + java.time.format.DateTimeFormatter.ofPattern("HH:mm")
+                        .withZone(java.time.ZoneId.systemDefault())
+                        .format(java.time.Instant.ofEpochMilli(at))
+                }.orEmpty()
+                doubanTagNotice = when {
+                    page.stale -> "豆瓣「$tag」暂时不可用，显示上次结果$asOf"
+                    page.items.isEmpty() -> "豆瓣「$tag」暂无可用条目"
+                    else -> "豆瓣「$tag」· ${page.items.size} 部$asOf"
+                }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (stop: dev.cinematv.data.douban.public.DoubanPublicException) {
+                doubanTagNotice = stop.message
+            } catch (_: Exception) {
+                doubanTagNotice = "豆瓣标签暂时不可用，请稍后再试"
+            } finally {
+                doubanTagLoading = false
+                rebuildSearch()
+            }
+        }
     }
 
     var failoverBusy by mutableStateOf(false)
@@ -650,6 +705,9 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
     fun navigate(destination: Page) {
         if (destination == Page.PLAYER || destination == Page.DETAIL) return
         invalidatePlayback()
+        dev.cinematv.diagnostics.DiagnosticLog.verbose("ui.route", fields = mapOf(
+            "from" to page.name.lowercase(), "to" to destination.name.lowercase()
+        ))
         page = destination
         section = destination
         when (destination) {
@@ -836,24 +894,30 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
 
     fun updateSearchFilters(filters: SearchFilters) {
         val wasTop = searchFilters.doubanTopOnly
+        val wasDouban = RatingPolicy.normalizeProvider(searchFilters.ratingSource.orEmpty()) == "douban"
+        val previousTag = searchFilters.doubanTag
         searchFilters = filters
+        val isDouban = RatingPolicy.normalizeProvider(filters.ratingSource.orEmpty()) == "douban"
+        if (filters.doubanTag != previousTag) {
+            if (filters.doubanTag == null) {
+                doubanTagJob?.cancel(); doubanTagJob = null
+                doubanList = emptyList(); doubanTagLoading = false; doubanTagNotice = ""
+            } else loadDoubanTag(filters.doubanTag)
+        }
         rebuildSearch()
         if (filters.doubanTopOnly && !wasTop) loadLicensedChart()
-        else if (!filters.doubanTopOnly) {
+        else if (!isDouban) {
             chartGeneration++; chartJob?.cancel(); chartLoading = false; rebuildSearch()
-        }
+        } else if (!wasDouban && filters.doubanTag == null && movieChart.items.isEmpty() && !chartLoading) loadLicensedChart()
     }
 
     private fun loadLicensedChart() {
         chartJob?.cancel()
         val request = ++chartGeneration
         chartNotice = ""
-        if (!repo.hasMetadataCatalog) {
-            chartLoading = false
-            chartNotice = "未配置授权目录；豆瓣筛选不会使用其他来源替代。"
-            rebuildSearch()
-            return
-        }
+        // No metadata server is a normal configuration, not a failure: the anonymous
+        // public channel reads the same chart without BFF, cookie or licence declaration.
+        val public = !repo.hasMetadataCatalog
         val generation = searchGeneration
         val keyword = completedSearchQuery
         chartJob = viewModelScope.launch {
@@ -865,6 +929,8 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
                 while (true) {
                     if (!firstPass && System.currentTimeMillis() >= deadline) break
                     for (tv in listOf(false, true)) {
+                        // The anonymous Top 250 is a movie chart; TV keeps its own path.
+                        if (public && tv) continue
                         // Movie acquisition owns its own refresh state. An empty TV
                         // response cannot replace it or trigger movie polling.
                         if (!firstPass && (nextChecks[tv] ?: Long.MAX_VALUE) > System.currentTimeMillis()) continue
@@ -873,7 +939,8 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
                                 System.currentTimeMillis(), Long.MAX_VALUE) == null) continue
                         try {
                             CatalogChartPaging.load(fetch = { offset ->
-                                val page = repo.catalog(keyword, tv, offset, topOnly = true)
+                                val page = if (public) publicDouban.top250(offset)
+                                    else repo.catalog(keyword, tv, offset, topOnly = true)
                                 ensureActive()
                                 if (generation != searchGeneration || request != chartGeneration)
                                     throw CancellationException("Chart request replaced")
@@ -885,6 +952,13 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
                             val now = System.currentTimeMillis()
                             CatalogRefreshPolicy.nextDelay((if (tv) seriesChart else movieChart).catalog, now, deadline)
                                 ?.let { nextChecks[tv] = now + it }
+                        } catch (publicStop: dev.cinematv.data.douban.public.DoubanPublicException) {
+                            chartNotice = publicStop.message + publicStop.retryAt
+                                .takeIf { it > System.currentTimeMillis() }
+                                ?.let { until -> " · " + java.time.format.DateTimeFormatter
+                                    .ofPattern("HH:mm").withZone(java.time.ZoneId.systemDefault())
+                                    .format(java.time.Instant.ofEpochMilli(until)) + " 后可重试" }
+                                .orEmpty()
                         } catch (cancelled: CancellationException) { throw cancelled }
                         catch (_: Exception) {
                             chartNotice = "${if (tv) "剧集" else "电影"}榜单暂未更新完成，已保留成功读取的结果。"
@@ -915,11 +989,16 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
 
     private fun rebuildSearch() {
         val chartOnly = searchFilters.doubanTopOnly
+        val doubanSource = RatingPolicy.normalizeProvider(searchFilters.ratingSource.orEmpty()) == "douban"
         searchHits = SearchIndex.search(completedSearchQuery,
             // Saved titles can still contribute aliases/source alternatives, but an
             // old saved rank must not reappear in a newly fetched chart snapshot.
             library = repo.localItems().let { if (chartOnly) it.map { item -> item.copy(doubanTopRank = null) } else it },
-            catalog = if (chartOnly) movieChart.items + seriesChart.items else catalogMovies + catalogSeries + queryCatalog,
+            catalog = if (chartOnly) (movieChart.items + seriesChart.items).distinctBy { it.presentationKey }
+                else (catalogMovies + catalogSeries + queryCatalog +
+                    (if (doubanSource) movieChart.items else emptyList()) +
+                    (if (searchFilters.doubanTag != null) doubanList else emptyList()))
+                    .distinctBy { it.presentationKey },
             remote = remoteSearch, filters = searchFilters, limit = 1000)
         results = searchHits.map { it.item }
         catalogAttribution = (if (chartOnly) results else featured + tvShows + results).map { it.catalogAttribution }
@@ -927,12 +1006,18 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
         catalogStatus = if (!chartOnly) listOf(false, true).filter { searchFilters.isTv == null || searchFilters.isTv == it }
             .map { tv -> searchBrowseState(tv).description().takeIf(String::isNotBlank)?.let { "${if (tv) "剧集" else "电影"}：$it" } }
             .filterNotNull().joinToString("\n") else buildList {
-            if (repo.hasMetadataCatalog) {
+            if (repo.hasMetadataCatalog || movieChart.catalog.acquisition != null || seriesChart.catalog.acquisition != null) {
                 add("电影：${CatalogStatus.message(movieChart)}")
                 if (seriesChart.items.isNotEmpty()) add("剧集：${CatalogStatus.message(seriesChart)}")
             }
             if (chartNotice.isNotBlank()) add(chartNotice)
         }.joinToString("\n")
+        if (!chartOnly && doubanSource && catalogStatus.isBlank() && movieChart.catalog.acquisition != null) {
+            catalogStatus = CatalogStatus.message(movieChart)
+        }
+        if (!chartOnly && searchFilters.doubanTag != null && doubanTagNotice.isNotBlank()) {
+            catalogStatus = listOf(catalogStatus, doubanTagNotice).filter(String::isNotBlank).joinToString("\n")
+        }
         if (results.size >= 1000) catalogStatus += "\n搜索展示上限为 1000 条，请缩小关键词或筛选范围。"
     }
 
@@ -1001,7 +1086,8 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
                 if (searchGeneration == generation && repo.isCurrentConnection(connection)) busy = false
             }
         }
-        if (searchFilters.doubanTopOnly) loadLicensedChart()
+        if (searchFilters.doubanTopOnly ||
+            RatingPolicy.normalizeProvider(searchFilters.ratingSource.orEmpty()) == "douban") loadLicensedChart()
     }
 
     fun episodeProgress(index: Int) = selected?.let { repo.library.snapshot.progress(it, index) }
@@ -1248,6 +1334,14 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
     fun history() = repo.history()
 
     fun back() {
+        val target = when (page) {
+            Page.PLAYER -> playerReturnPage
+            Page.DETAIL -> section
+            else -> Page.HOME
+        }
+        dev.cinematv.diagnostics.DiagnosticLog.verbose("ui.back", fields = mapOf(
+            "from" to page.name.lowercase(), "to" to target.name.lowercase()
+        ))
         when (page) {
             Page.PLAYER -> { invalidatePlayback(returningToDetail = playerReturnPage == Page.DETAIL); page = playerReturnPage }
             Page.DETAIL -> { invalidatePlayback(); page = section }

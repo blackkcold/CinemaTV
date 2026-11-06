@@ -25,7 +25,7 @@ export function Button({ id, group = 'actions', children, onClick, disabled = fa
     onClick={onClick} onFocus={onFocus}>{children}</button>;
 }
 export function Metadata({ item }: { item: Card }) {
-  return <div className="metadata"><span>{item.isTv ? '剧集' : '电影'}</span>{item.year && <span>{item.year}</span>}{item.category && <span>{item.category}</span>}{item.rating && <span className="rating">{item.ratingSource} {item.rating}</span>}</div>;
+  return <div className="metadata"><span>{item.isTv ? '剧集' : '电影'}</span>{item.year && <span>{item.year}</span>}{item.category && <span>{item.category}</span>}{item.rating && <span className="rating">{item.ratingSource} {item.rating}</span>}{item.rank ? <span className="rank">TOP {item.rank}</span> : null}</div>;
 }
 export function Scene({ item }: { item: Card | null }) {
   const [loaded, setLoaded] = useState('');
@@ -58,6 +58,7 @@ export function Poster({ item, row, wide, act, index, total, side, onFocused }: 
     <span className="poster-art"><span className="poster-fallback"><Icon name="play" /><span>{item.title}</span></span>
       {src && <img key={src} src={src} alt="" loading="lazy" decoding="async" onError={event => { event.currentTarget.style.opacity = '0'; }} />}
       <span className="poster-shine" />{item.favorite && <span className="favorite-mark"><Icon name="check" /></span>}
+      {item.rank ? <span className="poster-rank">TOP {item.rank}</span> : null}
       {progress > 0 && <span className="progress"><span style={{ width: `${progress}%` }} /></span>}
     </span><span className="poster-label">{item.title}</span><span className="poster-meta">{progress > 0 ? `${Math.floor(item.positionMs / 60000)} 分钟 · 继续观看` : item.year || item.sourceName || (item.isTv ? '剧集' : '电影')}</span>
   </button>;

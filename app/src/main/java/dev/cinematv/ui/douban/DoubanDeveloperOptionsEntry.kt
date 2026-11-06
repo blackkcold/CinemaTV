@@ -28,8 +28,15 @@ fun DoubanDeveloperOptionsEntry(model: CinemaViewModel, tv: Boolean) {
     var confirm by remember { mutableStateOf<Boolean?>(null) }
     var wasOpen by remember { mutableStateOf(false) }
     val trigger = remember { FocusRequester() }
+    val primary = remember { FocusRequester() }
+    val dismissFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { options.initialize() }
-    LaunchedEffect(open) { if (!open && wasOpen) { withFrameNanos { }; runCatching { trigger.requestFocus() } } }
+    LaunchedEffect(open) {
+        if (open) {
+            withFrameNanos { }
+            runCatching { (if (busy) dismissFocus else primary).requestFocus() }
+        } else if (wasOpen) { withFrameNanos { }; runCatching { trigger.requestFocus() } }
+    }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         AccountButton(tv, onClick = { wasOpen = true; open = true },
             modifier = Modifier.focusRequester(trigger).testTag("developer-options-entry")) { Text("开发者选项 · Dev") }
@@ -42,12 +49,14 @@ fun DoubanDeveloperOptionsEntry(model: CinemaViewModel, tv: Boolean) {
             Text("真实账号登录及完整同步尚未完成验证。仅 Dev 提供；开启只显示实验入口，不会自动登录、读取片单或启动局域网服务。")
             Text("关闭时停止请求并删除本机会话和同步缓存，已导入的片库保留。切换到 Stable 前请先关闭并完成清理；换渠道不会自动清理残留。")
             if (notice.isNotBlank()) Text(notice, Modifier.testTag("douban-experiment-notice"))
+            DiagnosticsSection(tv)
             if (!enabled) AccountButton(tv, enabled = !busy, outlined = true,
                 onClick = { scope.launch { options.disableAndClear() } }) { Text("重试清理残留会话") }
         } }, confirmButton = {
             AccountButton(tv, enabled = !busy, onClick = { confirm = !enabled },
-                modifier = Modifier.testTag("douban-experiment-toggle")) { Text(if (enabled) "关闭并清理豆瓣账号" else "开启豆瓣账号实验") }
-        }, dismissButton = { AccountButton(tv, enabled = !busy, onClick = { open = false }) { Text("返回") } })
+                modifier = Modifier.focusRequester(primary).testTag("douban-experiment-toggle")) { Text(if (enabled) "关闭并清理豆瓣账号" else "开启豆瓣账号实验") }
+        }, dismissButton = { AccountButton(tv, enabled = !busy, onClick = { open = false },
+            modifier = Modifier.focusRequester(dismissFocus)) { Text("返回") } })
     confirm?.let { enabling ->
         AlertDialog(onDismissRequest = { confirm = null }, title = { Text(if (enabling) "开启豆瓣账号实验？" else "关闭并清理豆瓣账号？") },
             text = { Text(if (enabling) "这是尚未完成真实账号验收的实验功能。开启不是账号访问授权；官方扫码与保存本机会话仍需分别确认。不会自动发送请求。"

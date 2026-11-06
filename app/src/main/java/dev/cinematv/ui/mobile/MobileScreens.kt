@@ -62,6 +62,8 @@ import dev.cinematv.data.EpisodePlaybackAction
 import dev.cinematv.data.MediaItem
 import dev.cinematv.data.SearchFilters
 import dev.cinematv.ui.shared.metadataLine
+import dev.cinematv.ui.shared.doubanRankLabel
+import dev.cinematv.ui.shared.cardMetadataLine
 import dev.cinematv.ui.shared.ManualWorkAssociationPanel
 import dev.cinematv.ui.shared.WorkNavigationPanel
 import dev.cinematv.ui.shared.TmdbLogo
@@ -187,10 +189,16 @@ private fun MobileMediaCard(item: MediaItem, model: CinemaViewModel, modifier: M
                 contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
             ) else Text(item.title, Modifier.align(Alignment.Center).padding(12.dp),
                 color = Ivory, fontSize = 15.sp, maxLines = 3)
+            item.doubanRankLabel()?.let { rank ->
+                Text(rank, color = Ivory, fontSize = 11.sp, fontWeight = FontWeight.Medium,
+                    modifier = Modifier.align(Alignment.TopStart).padding(7.dp)
+                        .background(Ink.copy(alpha = .8f), RoundedCornerShape(5.dp))
+                        .padding(horizontal = 7.dp, vertical = 4.dp))
+            }
         }
         Text(item.title, color = Ivory, fontSize = 14.sp, maxLines = 1,
             overflow = TextOverflow.Ellipsis)
-        Text(listOf(item.year, item.category).filter(String::isNotBlank).joinToString(" · "),
+        Text(item.cardMetadataLine().ifBlank { listOf(item.year, item.category).filter(String::isNotBlank).joinToString(" · ") },
             color = Muted, fontSize = 12.sp, maxLines = 1)
     }
 }
@@ -336,7 +344,15 @@ private fun MobileSearch(model: CinemaViewModel) {
                 onClick = { model.updateSearchFilters(model.searchFilters.copy(minRating = null, ratingSource = "Douban", doubanTopOnly = true)) }, label = { Text("豆瓣 TOP250") }) }
             item { TextButton(onClick = { model.updateSearchFilters(SearchFilters()) }) { Text("重置") } }
         }
-        if (model.searchFilters.ratingSource == "Douban") Text("仅使用有效授权目录；未配置时无豆瓣结果。", color = Muted,
+        if (model.searchFilters.ratingSource == "Douban") LazyRow(
+            contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(dev.cinematv.data.douban.public.DoubanPublicCatalog.uiTags, key = { it }) { tag ->
+                val selected = model.searchFilters.doubanTag == tag
+                FilterChip(selected = selected, onClick = { model.selectDoubanTag(if (selected) null else tag) },
+                    label = { Text(tag) })
+            }
+        }
+        if (model.searchFilters.ratingSource == "Douban") Text("豆瓣榜单与评分来自公开页面，个人使用；登录后可读取个人片单。", color = Muted,
             fontSize = 11.sp, modifier = Modifier.padding(horizontal = 20.dp))
         if (model.catalogStatus.isNotBlank()) Text(model.catalogStatus, color = Muted,
             fontSize = 11.sp, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
