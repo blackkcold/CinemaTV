@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "baseDevSha": "7d3ec0055cf8cf48edb18b8ea91763114633123a",
+  "branchOnly": true,
+  "publicationAllowed": false,
+  "lanes": {
+    "tv26": {"configuration": "dev-debug", "scope": "actual-tv-native-fallback", "minimumCases": 7},
+    "tv29": {"configuration": "dev-debug", "scope": "actual-tv-provider-policy", "minimumCases": 7},
+    "phone35": {"configuration": "dev-debug", "scope": "phone-native-current-dev", "minimumCases": 43},
+    "native-phone": {"configuration": "preview-debug", "scope": "phone-full-native-and-official-libretv", "minimumCases": 93},
+    "native-compat26": {"configuration": "preview-debug", "scope": "native-component-compatibility", "minimumCases": 43},
+    "native1080": {"configuration": "preview-debug", "scope": "native-components-not-hybrid-launcher", "minimumCases": 62},
+    "hybrid1080": {"configuration": "dev-debug", "scope": "actual-tv-hybrid-production-host", "minimumCases": 9},
+    "account26": {"configuration": "preview-debug", "scope": "synthetic-account-native-api26", "minimumCases": 17},
+    "account33": {"configuration": "preview-debug", "scope": "synthetic-account-native-api33", "minimumCases": 17},
+    "recommendation33": {"configuration": "preview-debug", "scope": "native-phone-recommendation", "minimumCases": 1},
+    "updates-phone": {"configuration": "preview-debug", "scope": "native-phone-update-settings-only", "minimumCases": 1},
+    "updates-tv": {"configuration": "preview-debug", "scope": "native-tv-update-settings-only", "minimumCases": 1},
+    "native4k": {"configuration": "preview-debug", "scope": "native-components-4k-software-rendering", "minimumCases": 18},
+    "hybrid4k": {"configuration": "dev-debug", "scope": "actual-tv-hybrid-4k-software-rendering", "minimumCases": 9}
+  }
+}
