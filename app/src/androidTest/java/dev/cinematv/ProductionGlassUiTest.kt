@@ -229,7 +229,7 @@ class ProductionGlassUiTest {
         rule.onNodeWithText("查看影片").performTouchInput { click() }
         rule.waitUntil(15_000) { model.page == Page.DETAIL && !model.busy && model.selected?.episodes?.size == 36 }
         awaitScene()
-        rule.onNodeWithText("播放 / 续播").assertIsDisplayed().assertHasClickAction()
+        rule.onNodeWithTag("mobile-play-primary").assertIsDisplayed().assertHasClickAction()
         // Detail has no local glass recording. Its first real traversal must be
         // Basic, without reusing the disposed Home hero's Full/Blur recording.
         try {
