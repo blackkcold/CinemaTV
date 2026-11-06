@@ -665,7 +665,8 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
             RecommendationSignal(it.item, it.status,
                 favorite = it.favorite, notInterested = it.status == LibraryStatus.DROPPED)
         }
-        val offline = repo.localItems()
+        // Douban is a separate chain; its public score and rank never decorate a home card.
+        val offline = repo.localItems().map { it.withoutDoubanHomeBadges() }
         val movieInput = catalogMovies.ifEmpty { offline.filter { !it.isTv } }.toList()
         val seriesInput = catalogSeries.ifEmpty { offline.filter { it.isTv } }.toList()
         recommendationJob = viewModelScope.launch {
@@ -1414,7 +1415,7 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
     fun libraryByStatus(status: LibraryStatus): List<MediaItem> = WorkNavigationProjection.deduplicate(repo.libraryByStatus(status), associations = workAssociations)
 
     fun favorites() = WorkNavigationProjection.deduplicate(repo.favorites(), associations = workAssociations)
-    fun history() = repo.history()
+    fun history() = repo.history().map { it.withoutDoubanHomeBadges() }
 
     fun back() {
         val target = when (page) {
