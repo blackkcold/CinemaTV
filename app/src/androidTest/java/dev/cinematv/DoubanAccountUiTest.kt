@@ -97,6 +97,10 @@ private fun <R : TestRule, A : ComponentActivity> AndroidComposeTestRule<R, A>.w
 /** A portrait launcher can still be rotating when the landscape fixture has semantics. */
 private fun <R : TestRule, A : ComponentActivity> AndroidComposeTestRule<R, A>.waitForTvWindow() {
     if (activity !is TvTestActivity) return
+    if (Build.VERSION.SDK_INT >= 30) {
+        waitForSettledTvWindow(activity)
+        return
+    }
     fun ready() = runOnUiThread {
         val decor = activity.window.decorView
         activity.lifecycle.currentState == Lifecycle.State.RESUMED && decor.isAttachedToWindow &&
