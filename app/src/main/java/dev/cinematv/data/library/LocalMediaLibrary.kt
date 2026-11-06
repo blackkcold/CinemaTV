@@ -149,6 +149,16 @@ class LocalMediaLibrary(
         dao.upsertEntry(current.copy(favorite = !current.favorite, updatedAt = now()))
     }
 
+    /** Explicit desired state is safe when an IPC acknowledgement is delayed or lost. */
+    suspend fun setFavorite(item: MediaItem, favorite: Boolean) = mutate {
+        require(item.id.isNotBlank()) { "A favorite needs a provider ID" }
+        val saved = currentItemOrBootstrapLocked(item)
+        val current = entryLocked(saved)
+        if (current.favorite != favorite) {
+            dao.upsertEntry(current.copy(favorite = favorite, updatedAt = now()))
+        }
+    }
+
     suspend fun saveProgress(item: MediaItem, positionMs: Long, episodeIndex: Int = 0, durationMs: Long = 0L) = mutate {
         if (item.id.isNotBlank()) saveProgressLocked(item, positionMs, episodeIndex, durationMs, now())
     }

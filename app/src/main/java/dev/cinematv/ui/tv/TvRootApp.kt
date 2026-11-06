@@ -23,7 +23,7 @@ import dev.cinematv.ui.tv.pages.*
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun TvRootApp(model: CinemaViewModel, onSceneDecoded: (String?) -> Unit = {}) {
+fun TvRootApp(model: CinemaViewModel, settingsInitialSection: Int = 0, onSceneDecoded: (String?) -> Unit = {}) {
     CinemaTvTheme(model.reducedMotion, model.glassQuality) {
       PosterMotionProvider(resetKey = model.focusRoute) { posterInput ->
         val keyboard = LocalSoftwareKeyboardController.current
@@ -73,7 +73,7 @@ fun TvRootApp(model: CinemaViewModel, onSceneDecoded: (String?) -> Unit = {}) {
                         Page.PLAYER -> TvPlayerPage(model)
                         Page.LIVE -> LiveScreen(model)
                         Page.LIBRARY -> LibraryScreen(model)
-                        Page.SETTINGS -> SettingsScreen(model)
+                        Page.SETTINGS -> SettingsScreen(model, initialSection = settingsInitialSection)
                     }
                 }
                 }

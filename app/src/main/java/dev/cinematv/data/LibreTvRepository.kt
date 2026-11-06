@@ -657,4 +657,5 @@ class LibreTvRepository(context: Context, val library: LocalMediaLibrary = Local
     fun libraryByStatus(status: LibraryStatus): List<MediaItem> = library.snapshot.byStatus(status).mapNotNull { it.usableMetadata() }
     suspend fun setLibraryStatus(item: MediaItem, status: LibraryStatus?) = library.setStatus(item, status)
     suspend fun toggleFavorite(item: MediaItem) = library.toggleFavorite(item)
+    suspend fun setFavorite(item: MediaItem, favorite: Boolean) = library.setFavorite(item, favorite)
 }

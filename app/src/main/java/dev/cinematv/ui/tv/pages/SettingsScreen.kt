@@ -28,7 +28,7 @@ import dev.cinematv.ui.tv.design.*
 import dev.cinematv.ui.tv.focus.*
 
 @Composable
-fun SettingsScreen(model: CinemaViewModel) {
+fun SettingsScreen(model: CinemaViewModel, initialSection: Int = 0) {
     val uriHandler = LocalUriHandler.current
     val layout = LocalTvLayout.current
     val entry = LocalContentFocus.current
@@ -40,7 +40,7 @@ fun SettingsScreen(model: CinemaViewModel) {
     }
     if (recommendationOpen) RecommendationDashboardDialog(model.recommendationSnapshots, tv = true,
         onDismiss = { recommendationOpen = false }, onOpenItem = { recommendationOpen = false; model.open(it) })
-    var section by rememberSaveable { mutableIntStateOf(0) }
+    var section by rememberSaveable(initialSection) { mutableIntStateOf(initialSection.coerceIn(0, 3)) }
     RestorePageFocus(model)
     Column(Modifier.fillMaxSize().padding(horizontal = layout.gutter, vertical = 28.dp), verticalArrangement = Arrangement.spacedBy(22.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
