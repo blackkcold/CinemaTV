@@ -17,6 +17,9 @@ data class DoubanAccountState(val phase: DoubanPhase = DoubanPhase.DISCONNECTED,
     val snapshot: DoubanSnapshot? = null, val message: String = "尚未连接豆瓣", val retryAt: Long = 0)
 class DoubanAccessException(val phase: DoubanPhase, override val message: String, val retryAt: Long = 0) : Exception(message)
 
+/** The final URL after explicit same-origin redirects; identity evidence, never a cookie. */
+data class DoubanFetch(val body: String, val finalUrl: String = "")
+
 /** One shared process service owns this gate. A persisted deadline cannot be reset by refresh. */
 class DoubanRequestGate(private val now: () -> Long = System::currentTimeMillis) {
     var notBefore: Long = 0; private set
@@ -26,6 +29,8 @@ class DoubanRequestGate(private val now: () -> Long = System::currentTimeMillis)
     fun attempted() { notBefore = maxOf(notBefore, now() + 4_000) }
     fun stop(phase: DoubanPhase, deadline: Long = 0) { if (phase != DoubanPhase.RATE_LIMITED) stopped = phase; notBefore = maxOf(notBefore, deadline) }
     fun userReauthenticated() { stopped = null /* provider Retry-After deliberately survives */ }
+    /** Explicit user action: disconnect. Provider-directed waits are otherwise never shortened. */
+    fun reset() { notBefore = 0; stopped = null }
 }
 
 /** Never infer identity from title, and never silently replace a local mark. */

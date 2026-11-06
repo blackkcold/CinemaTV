@@ -63,7 +63,13 @@ private fun DoubanAccountPanel(model: CinemaViewModel, tv: Boolean, dismiss: () 
                 item { Text("豆瓣个人账号", style = MaterialTheme.typography.headlineSmall) }
                 item { Text("Dev 实验 · 真实账号登录及完整同步尚未完成验证", style = MaterialTheme.typography.bodySmall) }
                 item { Text(state.owner?.displayName ?: "尚未登录") }
-                item { Text(state.message, modifier = Modifier.testTag("douban-account-status")) }
+                item { Text(listOf(state.message,
+                    state.retryAt.takeIf { it > System.currentTimeMillis() }?.let { until ->
+                        java.time.format.DateTimeFormatter.ofPattern("HH:mm")
+                            .withZone(java.time.ZoneId.systemDefault())
+                            .format(java.time.Instant.ofEpochMilli(until)) + " 后可重试"
+                    }.orEmpty()).filter(String::isNotBlank).joinToString(" · "),
+                    modifier = Modifier.testTag("douban-account-status")) }
                 item { Text("登录态与片单只留在本机。仅在你点击同步时读取，不修改豆瓣记录。", style = MaterialTheme.typography.bodySmall) }
                 item { Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     AccountButton(tv, onClick = login, enabled = state.phase != DoubanPhase.SYNCING, modifier = Modifier.focusRequester(initial)) { Text(if(state.owner == null) "官方扫码登录" else "重新登录 / 验证") }

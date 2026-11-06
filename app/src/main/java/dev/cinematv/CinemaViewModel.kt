@@ -7,6 +7,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import dev.cinematv.data.*
+import dev.cinematv.data.douban.public.toMediaItem
 import dev.cinematv.data.recommendation.LocalRecommendationPipeline
 import dev.cinematv.data.recommendation.LocalRecommendationSnapshot
 import kotlinx.coroutines.Dispatchers
@@ -29,6 +30,10 @@ enum class Page { HOME, EXPLORE, MOVIES, SERIES, SEARCH, LIVE, LIBRARY, SETTINGS
 
 class CinemaViewModel(application: Application, val repo: LibreTvRepository) : AndroidViewModel(application) {
     constructor(application: Application) : this(application, LibreTvRepository(application))
+    /** Anonymous public lists; no account, cookie or licence declaration involved. */
+    private val publicDouban by lazy {
+        dev.cinematv.data.douban.public.DoubanPublicChannel.chart(application)
+    }
     val focusCoordinator = FocusCoordinator()
     var reducedMotion by mutableStateOf(repo.reducedMotion)
         private set
@@ -58,6 +63,9 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
         private set
     var tvShows by mutableStateOf<List<MediaItem>>(emptyList())
         private set
+    /** One bounded LibreTV search; a LibreTV-only install has no other browse source. */
+    var discovery by mutableStateOf(DiscoveryState())
+        private set
     var results by mutableStateOf<List<MediaItem>>(emptyList())
         private set
     var focused by mutableStateOf<MediaItem?>(null)
@@ -82,6 +90,11 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
     var passwordRequired by mutableStateOf(false)
         private set
     var authorized by mutableStateOf(false)
+        private set
+    /** Single connection truth for every surface; see [ConnectionState]. */
+    var connectionState by mutableStateOf<ConnectionState>(
+        if (repo.isConnected) ConnectionState.Connecting else ConnectionState.Unconfigured
+    )
         private set
     var busy by mutableStateOf(false)
         private set
@@ -128,6 +141,7 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
     private var epgRequestedAt = 0L
     private var connectionJob: Job? = null
     private var connectionAttempt = 0L
+    private var defaultLoginAttempted = false
     private var alternativesJob: Job? = null
     private var searchJob: Job? = null
     private var backdropJob: Job? = null
@@ -139,6 +153,9 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
         private set
     private var channelsJob: Job? = null
     private var homeJob: Job? = null
+    private var discoveryJob: Job? = null
+    private var discoveryRotation = 0
+    private val discoveryStore by lazy { HomeDiscoveryStore(application) }
     private var catalogMovies by mutableStateOf<List<MediaItem>>(emptyList())
     private var catalogSeries by mutableStateOf<List<MediaItem>>(emptyList())
     val browseMovies get() = catalogMovies.ifEmpty { featured }.mapNotNull { it.usableMetadata() }
@@ -238,12 +255,62 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
     private var chartGeneration = 0L
     var chartLoading by mutableStateOf(false)
         private set
+    var doubanTagLoading by mutableStateOf(false)
+        private set
+    var doubanTagNotice by mutableStateOf("")
+        private set
+    private var doubanList by mutableStateOf<List<MediaItem>>(emptyList())
+    private var doubanTagJob: Job? = null
     val searchYears: List<String> get() = (catalogMovies + catalogSeries + queryCatalog + movieChart.items + seriesChart.items + remoteSearch +
         repo.library.snapshot.records.map { it.item }).map { it.year }.filter { it.matches(Regex("\\d{4}")) }.distinct().sortedDescending()
 
     fun cycleSearchYear() {
         val choices = listOf<String?>(null) + searchYears
         updateSearchFilters(searchFilters.copy(year = choices[(choices.indexOf(searchFilters.year) + 1) % choices.size]))
+    }
+
+    /** Select or clear a curated public tag. No account, cookie or BFF is involved. */
+    fun selectDoubanTag(tag: String?) {
+        updateSearchFilters(searchFilters.copy(
+            doubanTag = tag,
+            doubanTopOnly = false,
+            ratingSource = "Douban",
+            minRating = null
+        ))
+    }
+
+    private fun loadDoubanTag(tag: String) {
+        doubanTagJob?.cancel()
+        doubanTagJob = viewModelScope.launch {
+            doubanTagLoading = true
+            doubanTagNotice = ""
+            try {
+                val kind = if (dev.cinematv.data.douban.public.DoubanPublicCatalog.isTvTag(tag))
+                    dev.cinematv.data.douban.public.DoubanPublicKind.TV
+                else dev.cinematv.data.douban.public.DoubanPublicKind.MOVIE
+                val page = dev.cinematv.data.douban.public.DoubanPublicChannel
+                    .repository(getApplication()).browse(tag, kind = kind)
+                doubanList = page.items.map { it.toMediaItem() }
+                val asOf = page.fetchedAt.takeIf { it > 0 }?.let { at ->
+                    " · 截至 " + java.time.format.DateTimeFormatter.ofPattern("HH:mm")
+                        .withZone(java.time.ZoneId.systemDefault())
+                        .format(java.time.Instant.ofEpochMilli(at))
+                }.orEmpty()
+                doubanTagNotice = when {
+                    page.stale -> "豆瓣「$tag」暂时不可用，显示上次结果$asOf"
+                    page.items.isEmpty() -> "豆瓣「$tag」暂无可用条目"
+                    else -> "豆瓣「$tag」· ${page.items.size} 部$asOf"
+                }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (stop: dev.cinematv.data.douban.public.DoubanPublicException) {
+                doubanTagNotice = stop.message
+            } catch (_: Exception) {
+                doubanTagNotice = "豆瓣标签暂时不可用，请稍后再试"
+            } finally {
+                doubanTagLoading = false
+                rebuildSearch()
+            }
+        }
     }
 
     var failoverBusy by mutableStateOf(false)
@@ -293,9 +360,12 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
     private fun connectionError(error: Throwable, connection: LibreTvConnection = repo.connectionContext()) {
         if (error is CancellationException || !repo.isCurrentConnectionError(error, connection)) return
         message = ConnectionErrors.message(error)
+        connectionState = connectionStateForFailure(repo.server, error)
         if (ConnectionErrors.classify(error) == ConnectionFailure.AUTHENTICATION) {
             authorized = false
             passwordRequired = true
+            discoveryJob?.cancel()
+            discovery = DiscoveryState()
             if (page != Page.PLAYER) page = Page.SETTINGS
         }
     }
@@ -304,6 +374,7 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
         connectionJob?.cancel()
         val attempt = ++connectionAttempt
         val connection = repo.connectionContext()
+        if (!connectionState.isUsable) connectionState = ConnectionState.Connecting
         connectionJob = viewModelScope.launch {
             busy = true
             try { readConnection(connection, attempt) }
@@ -323,13 +394,30 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
         if (attempt != connectionAttempt || !repo.isCurrentStatus(status, connection)) return
         passwordRequired = status.passwordRequired
         authorized = status.verified
+        connectionState = connectionStateFor(repo.server, status)
         sources = status.sources
         liveSources = status.liveSources
         defaultSourceSubscriptions = status.defaultSubscriptions
         sourceSubscriptions = repo.sourceSubscriptions()
         message = if (authorized) "" else if (status.passwordRequired) "此服务器要求密码，请在设置中登录。"
             else "服务器未配置访问密码（PASSWORD），请联系管理员完成配置。"
-        if (authorized) loadHome()
+        if (authorized) { loadHome(); loadDiscovery(); return }
+        // A personal local build may carry the endpoint password. Try it once per connection
+        // attempt; never loop, and never override an explicit user login or a rejected password.
+        val defaultPassword = BuildConfig.LIBRETV_DEFAULT_PASSWORD
+        if (status.passwordRequired && !defaultLoginAttempted && defaultPassword.isNotBlank()) {
+            defaultLoginAttempted = true
+            connectionState = ConnectionState.Authenticating
+            val verified = repo.login(defaultPassword, connection)
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+            if (attempt != connectionAttempt || !repo.isCurrentConnection(connection)) return
+            if (verified) readConnection(connection, attempt)
+            else {
+                authorized = false; passwordRequired = true
+                connectionState = ConnectionState.AuthRejected
+                message = "默认密码未通过，请在设置中登录。"
+            }
+        }
     }
 
     /** Replacing a server cannot retain any in-flight response's UI ownership. Local library stays intact. */
@@ -338,13 +426,15 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
         connectionJob?.cancel()
         searchGeneration++; detailGeneration++; browseGeneration++; chartGeneration++; sourceSubscriptionGeneration++
         listOf(searchJob, searchMoreJob, detailJob, alternativesJob, channelsJob, epgJob, backdropJob,
-            homeJob, chartJob, recommendationJob, sourceSubscriptionJob).forEach { it?.cancel() }
+            homeJob, chartJob, recommendationJob, sourceSubscriptionJob, discoveryJob).forEach { it?.cancel() }
+        discovery = DiscoveryState()
         browseJobs.values.forEach { it.cancel() }
         browseJobs.clear()
         busy = false
         chartLoading = false
         authorized = false
         passwordRequired = false
+        connectionState = if (repo.isConnected) ConnectionState.Connecting else ConnectionState.Unconfigured
         password = ""
         selected = null
         focused = null
@@ -367,6 +457,7 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
     }
 
     fun connect() {
+        defaultLoginAttempted = false
         runCatching {
             repo.configureServer(serverAddress)
             cancelConnectionWork()
@@ -407,6 +498,7 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
         sourceSubscriptionBusy = false
         val attempt = ++connectionAttempt
         val connection = repo.beginAuthentication()
+        connectionState = ConnectionState.Authenticating
         val submittedPassword = password
         password = ""
         connectionJob = viewModelScope.launch {
@@ -416,7 +508,11 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
                 ensureActive()
                 if (attempt != connectionAttempt || !repo.isCurrentConnection(connection)) return@launch
                 if (verified) readConnection(connection, attempt)
-                else { authorized = false; passwordRequired = true; message = "密码错误" }
+                else {
+                    authorized = false; passwordRequired = true
+                    connectionState = ConnectionState.AuthRejected
+                    message = "密码错误"
+                }
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (error: Exception) {
                 if (attempt == connectionAttempt) connectionError(error, connection)
@@ -569,7 +665,8 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
             RecommendationSignal(it.item, it.status,
                 favorite = it.favorite, notInterested = it.status == LibraryStatus.DROPPED)
         }
-        val offline = repo.localItems()
+        // Douban is a separate chain; its public score and rank never decorate a home card.
+        val offline = repo.localItems().map { it.withoutDoubanHomeBadges() }
         val movieInput = catalogMovies.ifEmpty { offline.filter { !it.isTv } }.toList()
         val seriesInput = catalogSeries.ifEmpty { offline.filter { it.isTv } }.toList()
         recommendationJob = viewModelScope.launch {
@@ -595,6 +692,48 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
                 .map { it.catalogAttribution }.filter(String::isNotBlank).distinct().joinToString("\n")
         }
     }
+
+    /**
+     * Discovery is one explicit search, never a background crawl: the previous job is
+     * cancelled, a fresh cache short-circuits the network, and a failure only affects this rail.
+     */
+    fun loadDiscovery(rotating: Boolean = false) {
+        discoveryJob?.cancel()
+        if (!authorized) return
+        if (rotating) discoveryRotation++
+        val connection = repo.connectionContext()
+        val enabled = repo.sources().filter { it.enabled }
+        if (enabled.isEmpty()) {
+            discovery = DiscoveryState(message = "没有启用的片源")
+            return
+        }
+        val query = HomeDiscoveryStore.queryAt(connection.server.hashCode(), discoveryRotation)
+        val key = HomeDiscoveryStore.keyFor(connection.server, connection.generation, query, enabled)
+        discoveryJob = viewModelScope.launch {
+            discoveryStore.read(key)?.let { cached ->
+                discovery = DiscoveryState(cached.query, cached.items, fromCache = true)
+                return@launch
+            }
+            discovery = discovery.copy(loading = true, message = "")
+            try {
+                repo.searchSnapshots(query, connection).collect { snapshot ->
+                    discovery = discovery.copy(query = query, items = snapshot.items, loading = !snapshot.complete, fromCache = false)
+                    if (snapshot.complete) {
+                        discoveryStore.write(query, System.currentTimeMillis(), snapshot.items, key)
+                        discovery = discovery.copy(loading = false)
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                // Discovery never blanks the page and never rewrites the connection state.
+                discovery = discovery.copy(loading = false,
+                    message = if (discovery.items.isEmpty()) ConnectionErrors.message(error) else "")
+            }
+        }
+    }
+
+    fun rotateDiscovery() = loadDiscovery(rotating = true)
 
     private fun loadHome() {
         homeJob?.cancel()
@@ -650,6 +789,9 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
     fun navigate(destination: Page) {
         if (destination == Page.PLAYER || destination == Page.DETAIL) return
         invalidatePlayback()
+        dev.cinematv.diagnostics.DiagnosticLog.verbose("ui.route", fields = mapOf(
+            "from" to page.name.lowercase(), "to" to destination.name.lowercase()
+        ))
         page = destination
         section = destination
         when (destination) {
@@ -836,24 +978,30 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
 
     fun updateSearchFilters(filters: SearchFilters) {
         val wasTop = searchFilters.doubanTopOnly
+        val wasDouban = RatingPolicy.normalizeProvider(searchFilters.ratingSource.orEmpty()) == "douban"
+        val previousTag = searchFilters.doubanTag
         searchFilters = filters
+        val isDouban = RatingPolicy.normalizeProvider(filters.ratingSource.orEmpty()) == "douban"
+        if (filters.doubanTag != previousTag) {
+            if (filters.doubanTag == null) {
+                doubanTagJob?.cancel(); doubanTagJob = null
+                doubanList = emptyList(); doubanTagLoading = false; doubanTagNotice = ""
+            } else loadDoubanTag(filters.doubanTag)
+        }
         rebuildSearch()
         if (filters.doubanTopOnly && !wasTop) loadLicensedChart()
-        else if (!filters.doubanTopOnly) {
+        else if (!isDouban) {
             chartGeneration++; chartJob?.cancel(); chartLoading = false; rebuildSearch()
-        }
+        } else if (!wasDouban && filters.doubanTag == null && movieChart.items.isEmpty() && !chartLoading) loadLicensedChart()
     }
 
     private fun loadLicensedChart() {
         chartJob?.cancel()
         val request = ++chartGeneration
         chartNotice = ""
-        if (!repo.hasMetadataCatalog) {
-            chartLoading = false
-            chartNotice = "未配置授权目录；豆瓣筛选不会使用其他来源替代。"
-            rebuildSearch()
-            return
-        }
+        // No metadata server is a normal configuration, not a failure: the anonymous
+        // public channel reads the same chart without BFF, cookie or licence declaration.
+        val public = !repo.hasMetadataCatalog
         val generation = searchGeneration
         val keyword = completedSearchQuery
         chartJob = viewModelScope.launch {
@@ -865,6 +1013,8 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
                 while (true) {
                     if (!firstPass && System.currentTimeMillis() >= deadline) break
                     for (tv in listOf(false, true)) {
+                        // The anonymous Top 250 is a movie chart; TV keeps its own path.
+                        if (public && tv) continue
                         // Movie acquisition owns its own refresh state. An empty TV
                         // response cannot replace it or trigger movie polling.
                         if (!firstPass && (nextChecks[tv] ?: Long.MAX_VALUE) > System.currentTimeMillis()) continue
@@ -873,7 +1023,8 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
                                 System.currentTimeMillis(), Long.MAX_VALUE) == null) continue
                         try {
                             CatalogChartPaging.load(fetch = { offset ->
-                                val page = repo.catalog(keyword, tv, offset, topOnly = true)
+                                val page = if (public) publicDouban.top250(offset)
+                                    else repo.catalog(keyword, tv, offset, topOnly = true)
                                 ensureActive()
                                 if (generation != searchGeneration || request != chartGeneration)
                                     throw CancellationException("Chart request replaced")
@@ -885,6 +1036,13 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
                             val now = System.currentTimeMillis()
                             CatalogRefreshPolicy.nextDelay((if (tv) seriesChart else movieChart).catalog, now, deadline)
                                 ?.let { nextChecks[tv] = now + it }
+                        } catch (publicStop: dev.cinematv.data.douban.public.DoubanPublicException) {
+                            chartNotice = publicStop.message + publicStop.retryAt
+                                .takeIf { it > System.currentTimeMillis() }
+                                ?.let { until -> " · " + java.time.format.DateTimeFormatter
+                                    .ofPattern("HH:mm").withZone(java.time.ZoneId.systemDefault())
+                                    .format(java.time.Instant.ofEpochMilli(until)) + " 后可重试" }
+                                .orEmpty()
                         } catch (cancelled: CancellationException) { throw cancelled }
                         catch (_: Exception) {
                             chartNotice = "${if (tv) "剧集" else "电影"}榜单暂未更新完成，已保留成功读取的结果。"
@@ -915,11 +1073,16 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
 
     private fun rebuildSearch() {
         val chartOnly = searchFilters.doubanTopOnly
+        val doubanSource = RatingPolicy.normalizeProvider(searchFilters.ratingSource.orEmpty()) == "douban"
         searchHits = SearchIndex.search(completedSearchQuery,
             // Saved titles can still contribute aliases/source alternatives, but an
             // old saved rank must not reappear in a newly fetched chart snapshot.
             library = repo.localItems().let { if (chartOnly) it.map { item -> item.copy(doubanTopRank = null) } else it },
-            catalog = if (chartOnly) movieChart.items + seriesChart.items else catalogMovies + catalogSeries + queryCatalog,
+            catalog = if (chartOnly) (movieChart.items + seriesChart.items).distinctBy { it.presentationKey }
+                else (catalogMovies + catalogSeries + queryCatalog +
+                    (if (doubanSource) movieChart.items else emptyList()) +
+                    (if (searchFilters.doubanTag != null) doubanList else emptyList()))
+                    .distinctBy { it.presentationKey },
             remote = remoteSearch, filters = searchFilters, limit = 1000)
         results = searchHits.map { it.item }
         catalogAttribution = (if (chartOnly) results else featured + tvShows + results).map { it.catalogAttribution }
@@ -927,12 +1090,18 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
         catalogStatus = if (!chartOnly) listOf(false, true).filter { searchFilters.isTv == null || searchFilters.isTv == it }
             .map { tv -> searchBrowseState(tv).description().takeIf(String::isNotBlank)?.let { "${if (tv) "剧集" else "电影"}：$it" } }
             .filterNotNull().joinToString("\n") else buildList {
-            if (repo.hasMetadataCatalog) {
+            if (repo.hasMetadataCatalog || movieChart.catalog.acquisition != null || seriesChart.catalog.acquisition != null) {
                 add("电影：${CatalogStatus.message(movieChart)}")
                 if (seriesChart.items.isNotEmpty()) add("剧集：${CatalogStatus.message(seriesChart)}")
             }
             if (chartNotice.isNotBlank()) add(chartNotice)
         }.joinToString("\n")
+        if (!chartOnly && doubanSource && catalogStatus.isBlank() && movieChart.catalog.acquisition != null) {
+            catalogStatus = CatalogStatus.message(movieChart)
+        }
+        if (!chartOnly && searchFilters.doubanTag != null && doubanTagNotice.isNotBlank()) {
+            catalogStatus = listOf(catalogStatus, doubanTagNotice).filter(String::isNotBlank).joinToString("\n")
+        }
         if (results.size >= 1000) catalogStatus += "\n搜索展示上限为 1000 条，请缩小关键词或筛选范围。"
     }
 
@@ -1001,7 +1170,8 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
                 if (searchGeneration == generation && repo.isCurrentConnection(connection)) busy = false
             }
         }
-        if (searchFilters.doubanTopOnly) loadLicensedChart()
+        if (searchFilters.doubanTopOnly ||
+            RatingPolicy.normalizeProvider(searchFilters.ratingSource.orEmpty()) == "douban") loadLicensedChart()
     }
 
     fun episodeProgress(index: Int) = selected?.let { repo.library.snapshot.progress(it, index) }
@@ -1245,9 +1415,17 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
     fun libraryByStatus(status: LibraryStatus): List<MediaItem> = WorkNavigationProjection.deduplicate(repo.libraryByStatus(status), associations = workAssociations)
 
     fun favorites() = WorkNavigationProjection.deduplicate(repo.favorites(), associations = workAssociations)
-    fun history() = repo.history()
+    fun history() = repo.history().map { it.withoutDoubanHomeBadges() }
 
     fun back() {
+        val target = when (page) {
+            Page.PLAYER -> playerReturnPage
+            Page.DETAIL -> section
+            else -> Page.HOME
+        }
+        dev.cinematv.diagnostics.DiagnosticLog.verbose("ui.back", fields = mapOf(
+            "from" to page.name.lowercase(), "to" to target.name.lowercase()
+        ))
         when (page) {
             Page.PLAYER -> { invalidatePlayback(returningToDetail = playerReturnPage == Page.DETAIL); page = playerReturnPage }
             Page.DETAIL -> { invalidatePlayback(); page = section }
@@ -1256,3 +1434,12 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
         }
     }
 }
+
+/** Home discovery is deliberately small: one query, one list, one message. */
+data class DiscoveryState(
+    val query: String = "",
+    val items: List<MediaItem> = emptyList(),
+    val loading: Boolean = false,
+    val message: String = "",
+    val fromCache: Boolean = false
+)

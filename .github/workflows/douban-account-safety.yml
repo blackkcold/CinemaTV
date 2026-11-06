@@ -5,8 +5,12 @@ on:
     paths:
       - 'app/src/main/java/dev/cinematv/data/douban/**'
       - 'app/src/main/java/dev/cinematv/ui/douban/**'
+      - 'app/src/main/java/dev/cinematv/diagnostics/**'
+      - 'app/src/main/AndroidManifest.xml'
+      - 'app/src/main/res/xml/diagnostic_file_paths.xml'
       - 'app/src/main/java/dev/cinematv/data/library/LocalMediaLibrary.kt'
       - 'app/src/androidTest/java/dev/cinematv/DoubanAccountUiTest.kt'
+      - 'app/src/androidTest/java/dev/cinematv/DiagnosticsUiTest.kt'
       - 'app/src/androidTest/java/dev/cinematv/data/DoubanDeviceSecurityTest.kt'
       - '.github/workflows/douban-account-safety.yml'
       - 'app/build.gradle.kts'
@@ -71,7 +75,7 @@ jobs:
           emulator-build: '15004761'
           disable-animations: false
           emulator-options: '-no-window -no-audio -gpu lavapipe -feature -Vulkan -no-snapshot -no-boot-anim -memory 2048'
-          script: bash scripts/run-device-qa.sh '${{ matrix.size }}' '${{ matrix.density }}' 'dev.cinematv.DoubanAccountUiTest,dev.cinematv.DoubanDisabledLoginActivityTest,dev.cinematv.TvDoubanAccountUiTest,dev.cinematv.data.DoubanDeviceSecurityTest,dev.cinematv.data.DoubanDeveloperOptionsTest'
+          script: bash scripts/run-device-qa.sh '${{ matrix.size }}' '${{ matrix.density }}' 'dev.cinematv.DoubanAccountUiTest,dev.cinematv.DoubanDisabledLoginActivityTest,dev.cinematv.TvDoubanAccountUiTest,dev.cinematv.DiagnosticsUiTest,dev.cinematv.TvDiagnosticsUiTest,dev.cinematv.TvDiagnosticsConfirmFocusTest,dev.cinematv.DiagnosticsLayoutTest,dev.cinematv.data.DoubanDeviceSecurityTest,dev.cinematv.data.DoubanDeveloperOptionsTest'
       - name: Require all synthetic safety cases executed
         run: |
           python3 - <<'PY'
@@ -79,9 +83,9 @@ jobs:
           import xml.etree.ElementTree as ET
           import re
           cases = [c for p in Path('app/build/outputs/androidTest-results').rglob('TEST-*.xml') for c in ET.parse(p).getroot().iter('testcase')]
-          sources = ['app/src/androidTest/java/dev/cinematv/DoubanAccountUiTest.kt', 'app/src/androidTest/java/dev/cinematv/data/DoubanDeviceSecurityTest.kt', 'app/src/androidTest/java/dev/cinematv/data/DoubanDeveloperOptionsTest.kt']
+          sources = ['app/src/androidTest/java/dev/cinematv/DoubanAccountUiTest.kt', 'app/src/androidTest/java/dev/cinematv/data/DoubanDeviceSecurityTest.kt', 'app/src/androidTest/java/dev/cinematv/data/DoubanDeveloperOptionsTest.kt', 'app/src/androidTest/java/dev/cinematv/DiagnosticsUiTest.kt']
           expected = {name for path in sources for name in re.findall(r'@Test\s+fun\s+(\w+)', Path(path).read_text())}
-          assert len(expected) >= 17, 'Missing required developer-option coverage'
+          assert len(expected) >= 21, 'Missing required developer-option coverage'
           actual = [c for c in cases if c.get('name') in expected]
           assert {c.get('name') for c in actual} == expected, 'Missing device test'
           assert all(c.find('failure') is None and c.find('error') is None and c.find('skipped') is None for c in actual), 'Device test did not pass'

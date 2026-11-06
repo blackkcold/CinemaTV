@@ -1,6 +1,7 @@
 package dev.cinematv.data
 
 import android.content.Context
+import dev.cinematv.BuildConfig
 import dev.cinematv.data.library.LocalMediaLibrary
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -43,7 +44,9 @@ class LibreTvRepository(context: Context, val library: LocalMediaLibrary = Local
     @Volatile var persistenceWarning: String = ""
         private set
     private val prefs = context.getSharedPreferences("cinema_settings", Context.MODE_PRIVATE)
-    private val connections = LibreTvConnectionSession(prefs.getString("server", "").orEmpty())
+    private val connections = LibreTvConnectionSession(
+        resolveServer(prefs.getString("server", ""), BuildConfig.LIBRETV_DEFAULT_SERVER)
+    )
     private val subscriptionLock = Any()
     private val loadedSubscriptions = runCatching {
         SourceSubscriptionContract.decodeRecords(prefs.getString("source_subscriptions_v1", null))
@@ -736,6 +739,7 @@ class LibreTvRepository(context: Context, val library: LocalMediaLibrary = Local
             metadataIds = entry.metadataIds,
             rating = item.rating.ifBlank { entry.rating }, ratingSource = item.ratingSource.ifBlank { entry.ratingSource },
             ratingLicenseExpiresAt = if (item.rating.isNotBlank()) item.ratingLicenseExpiresAt else entry.ratingLicenseExpiresAt,
+            ratingPublic = if (item.rating.isNotBlank()) item.ratingPublic else entry.ratingPublic,
             doubanTopRank = item.doubanTopRank ?: entry.doubanTopRank,
             catalogProvider = item.catalogProvider, catalogAttribution = item.catalogAttribution,
             catalogLicenseExpiresAt = item.catalogLicenseExpiresAt,
@@ -788,3 +792,10 @@ class LibreTvRepository(context: Context, val library: LocalMediaLibrary = Local
     suspend fun toggleFavorite(item: MediaItem) = library.toggleFavorite(item)
     suspend fun setFavorite(item: MediaItem, favorite: Boolean) = library.setFavorite(item, favorite)
 }
+
+/**
+ * An explicit on-device setting always wins. Only a blank setting falls back to the endpoint a
+ * personal local build was compiled with; a public build compiles that default as empty.
+ */
+internal fun resolveServer(stored: String?, configuredDefault: String): String =
+    stored?.trim()?.takeIf { it.isNotEmpty() } ?: configuredDefault

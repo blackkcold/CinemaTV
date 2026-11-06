@@ -30,6 +30,7 @@ class TvTestActivity : ComponentActivity() {
     var testFontScaleOverride by mutableStateOf<Float?>(null)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        dev.cinematv.diagnostics.DiagnosticLog.install(this)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         @Suppress("DEPRECATION")
         window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_FULLSCREEN or

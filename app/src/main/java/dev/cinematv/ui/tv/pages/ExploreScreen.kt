@@ -24,6 +24,8 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import dev.cinematv.ui.typography.CinemaTvText as Text
 import dev.cinematv.CinemaViewModel
+import dev.cinematv.ConnectionAction
+import dev.cinematv.ConnectionCopy
 import dev.cinematv.ui.GlassAction
 import dev.cinematv.ui.shared.*
 import dev.cinematv.ui.tv.components.CatalogPagingControls
@@ -70,7 +72,11 @@ fun ExploreScreen(model: CinemaViewModel) {
         Text("下一段旅程，随心发现。", color = TvColors.Text, fontSize = 28.sp, fontWeight = FontWeight.SemiBold)
         Text("左右探索 · 按确认键走进故事", color = TvColors.Secondary, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
         if (items.isEmpty()) {
-            GlassAction("连接服务器", Modifier.focusRequester(entry).padding(top = 30.dp).width(160.dp).height(45.dp)) { model.navigate(dev.cinematv.Page.SETTINGS) }
+            val action = ConnectionCopy.action(model.connectionState)
+            GlassAction(if (action == ConnectionAction.SEARCH) "开始搜索" else "连接影视服务",
+                Modifier.focusRequester(entry).padding(top = 30.dp).width(160.dp).height(45.dp)) {
+                model.navigate(if (action == ConnectionAction.SEARCH) dev.cinematv.Page.SEARCH else dev.cinematv.Page.SETTINGS)
+            }
         } else LazyRow(state = list, modifier = Modifier.testTag("discovery-coverflow").fillMaxWidth().weight(1f).focusRestorer(),
             verticalAlignment = Alignment.CenterVertically,
             contentPadding = PaddingValues(horizontal = inset, vertical = 25.dp),

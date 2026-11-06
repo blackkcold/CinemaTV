@@ -59,6 +59,7 @@ import dev.cinematv.ui.icons.CinemaIcon
 import dev.cinematv.ui.icons.CinemaSymbol
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.text
 import androidx.compose.ui.text.AnnotatedString
@@ -98,6 +99,8 @@ fun GlassAction(
     onFocus: () -> Unit = {},
     icon: CinemaSymbol? = null,
     iconSelected: Boolean = selected,
+    /** A disabled action keeps its layout, is skipped by the remote and dims to 40%. */
+    enabled: Boolean = true,
     onClick: () -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
@@ -112,11 +115,13 @@ fun GlassAction(
     Box(
         modifier = modifier
             .heightIn(min = 40.dp)
+            .graphicsLayer { alpha = if (enabled) 1f else .4f }
             .trackTvContentFocus()
             .onFocusChanged { focused = it.isFocused; if (it.isFocused) onFocus() }
-            .focusProperties { canFocus = true }
-            .semantics { this.selected = selected }
-            .clickable(interactionSource = interactions, indication = null, role = Role.Button, onClick = onClick),
+            .focusProperties { canFocus = enabled }
+            .semantics { this.selected = selected; if (!enabled) disabled() }
+            .clickable(enabled = enabled, interactionSource = interactions, indication = null,
+                role = Role.Button, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
         // Transform the background through the engine's inverse-layer support;

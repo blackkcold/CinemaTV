@@ -1,7 +1,7 @@
 export type Route = 'HOME' | 'EXPLORE' | 'MOVIES' | 'SERIES' | 'SEARCH' | 'DETAIL' | 'LIVE' | 'LIBRARY' | 'SETTINGS' | 'PLAYER';
 export interface Card {
   key: string; title: string; poster: string; backdrop: string; year: string; category: string;
-  description: string; rating: string; ratingSource: string; isTv: boolean; favorite: boolean;
+  description: string; rating: string; ratingSource: string; rank?: number | null; isTv: boolean; favorite: boolean;
   status: string; positionMs: number; durationMs: number; lastEpisode: number; sourceName: string; attribution: string;
 }
 export interface Episode { id: string; index: number; label: string; progress: number | null; completed: boolean; }
@@ -18,7 +18,8 @@ export interface Snapshot {
   notice: string; attribution: string; recommendationReason: string; selected: Card | null; episodes: Episode[];
   resumeEpisode: Episode | null;
   episodePage: number; episodeTotal: number; alternatives: Card[]; query: string; history: string[];
-  filters: { type: string; year: string; minRating: number; ratingSource: string; topOnly: boolean }; years: string[];
+  filters: { type: string; year: string; minRating: number; ratingSource: string; topOnly: boolean; tag?: string }; years: string[];
+  tags: string[];
   catalogFilters: CatalogFilters; categories: string[]; catalogYears: string[];
   liveGroups: { id: string; name: string }[]; liveGroup: string; channels: Channel[]; activeChannel: string; liveSources: { id: string; name: string }[]; activeLiveSource: string;
   programs: { id: string; title: string; start: number; stop: number }[];

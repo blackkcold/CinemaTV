@@ -101,6 +101,10 @@ export function Search({ state, act, native }: { state: Snapshot; act: Action; n
       <Button id="filter:chart" group="filters" selected={state.filters.topOnly} onClick={() => act('search.filter', { ...state.filters, minRating: 0, ratingSource: state.filters.topOnly ? '' : 'Douban', topOnly: !state.filters.topOnly })}>豆瓣 Top 250</Button>
       <Button id="filter:reset" group="filters" onClick={() => act('search.filter', { type: '', year: '', minRating: 0, ratingSource: '', topOnly: false })}>重置筛选</Button>
     </div>
+    {state.tags.length > 0 && <div className="chips tags" data-scroll="tags" data-focus-layout="row" aria-label="豆瓣分类">
+      {state.tags.map(tag => <Button key={tag} id={`tag:${tag}`} group="tags" selected={state.filters.tag === tag}
+        onClick={() => act('search.filter', { ...state.filters, tag: state.filters.tag === tag ? '' : tag, topOnly: false, minRating: 0, ratingSource: '' })}>{tag}</Button>)}
+    </div>}
     {state.filters.ratingSource === 'Douban' && <p className="footnote">豆瓣筛选仅显示有效授权目录；未配置时不会替代为其他评分。</p>}
     <p className="status-line" role="status">{state.busy ? '正在检索，已收到的结果可直接查看' : state.query ? `“${state.query}” · ${state.total} 项结果` : '先搜索，再挑选你想看的故事'}</p>
     {state.items.length ? <Grid state={state} act={act} /> : <Empty title={state.busy ? '正在寻找' : state.query ? '暂未找到匹配作品' : '想看什么？'}

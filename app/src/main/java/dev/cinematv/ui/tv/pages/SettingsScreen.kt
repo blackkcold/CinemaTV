@@ -24,6 +24,7 @@ import dev.cinematv.ui.shared.TmdbLogo
 import dev.cinematv.ui.shared.NativeSettingsSection
 import dev.cinematv.ui.shared.LibraryProgressReviews
 import dev.cinematv.CinemaViewModel
+import dev.cinematv.ConnectionCopy
 import dev.cinematv.Page
 import dev.cinematv.ui.GlassAction
 import dev.cinematv.ui.TvInput
@@ -95,7 +96,7 @@ fun SettingsScreen(model: CinemaViewModel, initialSection: Int = 0) {
                                     item { TvInput(model.password, { model.password = it }, "LibreTV 登录密码", Modifier.fillMaxWidth().height(52.dp), isPassword = true, onSubmit = model::login) }
                                     item { GlassAction("登录", Modifier.width(130.dp).height(43.dp), prominent = true) { model.login() } }
                                 }
-                                item { Text(if (model.authorized) "已连接 · 点播源 ${model.sources.size} 个 · 直播订阅 ${model.liveSources.size} 个" else if (model.busy) "正在连接…" else "未认证或未连接", color = TvColors.Secondary, fontSize = 13.sp) }
+                                item { Text(ConnectionCopy.summary(model.connectionState), color = TvColors.Secondary, fontSize = 13.sp) }
                                 item { SettingTitle("高清剧照（可选）", "配置独立元数据服务后，获取匹配作品的横版背景。") }
                                 item { TvInput(model.metadataAddress, { model.metadataAddress = it }, "BFF 服务地址", Modifier.fillMaxWidth().height(52.dp)) }
                                 item { TvInput(model.metadataAccessToken, { model.metadataAccessToken = it }, "BFF 访问令牌（本次会话有效）", Modifier.fillMaxWidth().height(52.dp), isPassword = true) }

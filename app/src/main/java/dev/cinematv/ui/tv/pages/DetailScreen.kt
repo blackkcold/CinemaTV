@@ -68,6 +68,7 @@ fun DetailScreen(model: CinemaViewModel) {
                     horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     GlassAction(if (resumeProgress?.completed == true) "▶ 重新播放" else if (item.positionMs > 0) "▶ 继续播放" else "▶ 立即播放",
                         Modifier.focusRequester(entry).focusRequester(primary).width(150.dp).height(45.dp), prominent = true, icon = CinemaSymbol.Play,
+                        enabled = item.episodes.isNotEmpty(),
                         onFocus = { model.focusCoordinator.remember(model.focusRoute, "actions", "play") }) {
                         model.playEpisode(resumeIndex, if (resumeProgress?.completed == true) EpisodePlaybackAction.RESTART else EpisodePlaybackAction.RESUME)
                     }

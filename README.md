@@ -115,7 +115,7 @@ CinemaTV 连接你自建的 [LibreTV](https://github.com/LibreSpark/LibreTV)，�
 - 不附带服务器凭据、公共片源、豆瓣目录数据或商业影视海报。
 - 本地片库、设置和播放链接不进入 Android 云备份或设备迁移；不上传偏好与推荐历史。
 - 播放链接不会发送给 TMDB。可选元数据服务仍须由运营者遵守其使用条件。
-- 豆瓣获取默认关闭，需要适用授权与获准端点验证；不能把配置声明当成授权证明。
+- 豆瓣获取默认关闭；BFF 采集需要适用授权与获准端点验证，不能把配置声明当成授权证明。客户端另有个人使用的公开列表通道，授权口径与边界见 [豆瓣公开页面访问](docs/DOUBAN_PUBLIC_ACCESS.md)。
 
 [本地数据说明](docs/LOCAL_LIBRARY.md) · [来源与授权边界](docs/DOUBAN_ACQUISITION.md)
 

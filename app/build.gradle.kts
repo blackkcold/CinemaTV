@@ -59,6 +59,28 @@ if (updatesEnabled) {
     }
 }
 
+// A personal local build may bake a LibreTV endpoint so a private device starts connected.
+// It must never reach a public artifact: refused on Actions and in a publishable candidate,
+// and asserted against the decoded candidate manifest by scripts/hybrid/artifacts.py.
+val personalDefaultNames = listOf("CINEMATV_LIBRETV_SERVER", "CINEMATV_LIBRETV_PASSWORD")
+val personalServer = System.getenv("CINEMATV_LIBRETV_SERVER").orEmpty()
+val personalPassword = System.getenv("CINEMATV_LIBRETV_PASSWORD").orEmpty()
+val personalBuild = personalDefaultNames.any { !System.getenv(it).isNullOrBlank() }
+require(System.getenv("GITHUB_ACTIONS") != "true" || !personalBuild) {
+    "Personal LibreTV defaults must never be configured in GitHub Actions"
+}
+if (unsignedCandidate) {
+    require(!personalBuild) {
+        "Personal LibreTV defaults must not be baked into a publishable unsigned candidate"
+    }
+}
+
+fun javaStringLiteral(value: String): String = "\"" + value
+    .replace("\\", "\\\\")
+    .replace("\"", "\\\"")
+    .replace("\n", "\\n")
+    .replace("\r", "\\r") + "\""
+
 android {
     namespace = "dev.cinematv"
     if (updateAcceptance) testBuildType = "release"
@@ -75,6 +97,9 @@ android {
         require(versionCode!! in 1..2_100_000_000)
         buildConfigField("String", "UPDATE_CHANNEL", "\"$updateChannel\"")
         buildConfigField("boolean", "UPDATES_ENABLED", updatesEnabled.toString())
+        buildConfigField("String", "LIBRETV_DEFAULT_SERVER", javaStringLiteral(personalServer))
+        buildConfigField("String", "LIBRETV_DEFAULT_PASSWORD", javaStringLiteral(personalPassword))
+        manifestPlaceholders["privateBuild"] = personalBuild.toString()
         manifestPlaceholders["updateChannel"] = updateChannel
         manifestPlaceholders["channelIcon"] = if (updateChannel == "dev") "@mipmap/ic_launcher_dev" else "@mipmap/ic_launcher"
         manifestPlaceholders["channelRoundIcon"] = if (updateChannel == "dev") "@mipmap/ic_launcher_dev" else "@mipmap/ic_launcher_round"
@@ -233,3 +258,11 @@ val verifyRecommendationCore by tasks.registering {
     }
 }
 tasks.named("preBuild") { dependsOn(verifyRecommendationCore) }
+
+// The live parser probe needs captured pages and is skipped otherwise. CI forbids
+// skipped tests, so it stays out of the default unit-test task unless explicitly asked for.
+tasks.withType(org.gradle.api.tasks.testing.Test::class.java).configureEach {
+    if (!providers.gradleProperty("doubanLiveProbe").isPresent) {
+        filter { excludeTestsMatching("dev.cinematv.data.douban.public.LiveDoubanParserProbeTest") }
+    }
+}

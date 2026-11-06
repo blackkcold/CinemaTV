@@ -6,9 +6,10 @@ if [ "$#" -ne 1 ]; then
   exit 2
 fi
 : "${ANDROID_HOME:?Android SDK is required}"
-for variable in ${!CINEMATV_KEYSTORE_@} CINEMATV_KEY_PASSWORD CINEMATV_KEY_ALIAS; do
+for variable in ${!CINEMATV_KEYSTORE_@} CINEMATV_KEY_PASSWORD CINEMATV_KEY_ALIAS \
+    CINEMATV_LIBRETV_SERVER CINEMATV_LIBRETV_PASSWORD; do
   if declare -p "$variable" >/dev/null 2>&1; then
-    echo 'Unsigned candidate refuses external signing credentials' >&2
+    echo 'Unsigned candidate refuses external signing credentials and personal build defaults' >&2
     exit 1
   fi
 done

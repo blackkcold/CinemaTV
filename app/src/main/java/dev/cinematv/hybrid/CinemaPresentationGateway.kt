@@ -72,6 +72,7 @@ class CinemaPresentationGateway(
             .put("backdrop", images.register(item.backdrop, landscape = true, expiresAt = item.catalogLicenseExpiresAt))
             .put("rating", if (rating != null) text(item.rating, 12) else "")
             .put("ratingSource", if (rating != null) text(item.ratingSource.ifBlank { "来源评分" }, 40) else "")
+            .put("rank", item.doubanTopRank?.takeIf { it in 1..250 } ?: JSONObject.NULL)
             .put("isTv", item.isTv).put("favorite", model.repo.isFavorite(item))
             .put("status", model.repo.libraryStatus(item)?.name.orEmpty())
             .put("positionMs", item.positionMs.coerceAtLeast(0)).put("durationMs", item.durationMs.coerceAtLeast(0))
@@ -136,7 +137,8 @@ class CinemaPresentationGateway(
         val selected = model.selected?.takeIf { model.page in setOf(Page.DETAIL, Page.PLAYER) }?.usableMetadata()
             ?.let(model.repo.library.snapshot::applyProgress)
         val scene = if (model.page == Page.DETAIL) selected else model.focused?.usableMetadata()
-            ?: (sliced.firstOrNull() ?: model.featured.firstOrNull()?.usableMetadata())
+            ?: (sliced.firstOrNull() ?: model.featured.firstOrNull()?.usableMetadata()
+                ?: model.discovery.items.firstOrNull()?.usableMetadata())
         val result = JSONObject().put("protocol", 1).put("route", model.page.name).put("routeKey", routeKey())
             .put("section", model.section.name).put("busy", model.busy || (model.page == Page.SEARCH && (model.chartLoading || model.searchCatalogLoading)) ||
                 (model.page == Page.MOVIES && model.movieBrowse.loading) || (model.page == Page.SERIES && model.seriesBrowse.loading) ||
@@ -166,7 +168,8 @@ class CinemaPresentationGateway(
             .put("filters", JSONObject().put("type", when (model.searchFilters.isTv) { true -> "SERIES"; false -> "MOVIES"; null -> "" })
                 .put("year", model.searchFilters.year.orEmpty()).put("minRating", model.searchFilters.minRating ?: 0)
                 .put("ratingSource", when (model.searchFilters.ratingSource?.let(RatingPolicy::normalizeProvider)) { "tmdb" -> "TMDB"; "douban" -> "Douban"; else -> "" })
-                .put("topOnly", model.searchFilters.doubanTopOnly))
+                .put("topOnly", model.searchFilters.doubanTopOnly).put("tag", model.searchFilters.doubanTag.orEmpty()))
+            .put("tags", org.json.JSONArray(dev.cinematv.data.douban.public.DoubanPublicCatalog.uiTags))
             .put("years", JSONArray(model.searchYears.take(100)))
             .put("catalogFilters", JSONObject().put("category", state.catalogFilter.category).put("year", state.catalogFilter.year).put("rated", state.catalogFilter.rated))
             // The displayed filter value must be the exact value the native projection can match.
@@ -185,6 +188,9 @@ class CinemaPresentationGateway(
             shelf("continue", "继续观看", model.history(), 40)
             shelf("movies", "为你精选", model.featured, 24)
             shelf("series", "值得追的故事", model.tvShows, 24)
+            if (model.discovery.items.isNotEmpty()) {
+                shelf("discover", "发现 · 搜索「${model.discovery.query}」", model.discovery.items, 24)
+            }
         }
         result.put("shelves", shelves)
         val episodeTotal = selected?.episodes?.size ?: 0
@@ -312,8 +318,12 @@ class CinemaPresentationGateway(
                 if (!rating.isFinite() || rating !in 0.0..10.0) throw HybridRequestFailure("BAD_PARAMS")
                 val ratingSource = if (p.has("ratingSource")) HybridProtocol.string(p, "ratingSource", 8, true) else ""
                 if (ratingSource !in setOf("", "TMDB", "Douban")) throw HybridRequestFailure("BAD_PARAMS")
+                val tag = HybridProtocol.string(p, "tag", 40, true)
+                if (tag.isNotEmpty() && tag !in dev.cinematv.data.douban.public.DoubanPublicCatalog.uiTags)
+                    throw HybridRequestFailure("BAD_PARAMS")
                 model.updateSearchFilters(SearchFilters(isTv = when (type) { "MOVIES" -> false; "SERIES" -> true; else -> null },
-                    year = year.ifBlank { null }, minRating = rating.takeIf { it > 0 }, ratingSource = ratingSource.ifBlank { null }, doubanTopOnly = HybridProtocol.boolean(p, "topOnly")))
+                    year = year.ifBlank { null }, minRating = rating.takeIf { it > 0 }, ratingSource = ratingSource.ifBlank { null },
+                    doubanTopOnly = HybridProtocol.boolean(p, "topOnly"), doubanTag = tag.ifBlank { null }))
                 routeState().page = 0; routeState().bookmark = null; session.changed()
             }
             "search.year" -> { model.cycleSearchYear(); routeState().page = 0; routeState().bookmark = null; session.changed() }

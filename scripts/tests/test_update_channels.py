@@ -57,11 +57,22 @@ class UpdateChannelsTest(unittest.TestCase):
 
     def test_private_file_provider_has_no_broad_roots(self):
         manifest = ET.parse(ROOT / "app/src/main/AndroidManifest.xml").getroot()
-        provider = manifest.find("application/provider")
+        providers = manifest.findall("application/provider")
+        self.assertEqual(len(providers), 2)
+        provider = next(item for item in providers
+                        if item.get(A + "authorities") == "${applicationId}.updates")
         self.assertEqual(provider.get(A + "exported"), "false")
-        self.assertEqual(provider.get(A + "authorities"), "${applicationId}.updates")
+        self.assertEqual(provider.get(A + "grantUriPermissions"), "true")
         paths = ET.parse(ROOT / "app/src/main/res/xml/update_file_paths.xml").getroot()
         self.assertEqual([(item.tag, item.get("path")) for item in paths], [("cache-path", "verified-updates/")])
+
+        diagnostics = next(item for item in providers
+                           if item.get(A + "authorities") == "${applicationId}.diagnostics")
+        self.assertEqual(diagnostics.get(A + "exported"), "false")
+        self.assertEqual(diagnostics.get(A + "grantUriPermissions"), "true")
+        diagnostic_paths = ET.parse(ROOT / "app/src/main/res/xml/diagnostic_file_paths.xml").getroot()
+        self.assertEqual([(item.tag, item.get("path")) for item in diagnostic_paths],
+                         [("external-files-path", "diagnostics/"), ("files-path", "diagnostics/")])
 
     def test_dev_icon_is_different_but_retains_approved_foreground(self):
         icon = ET.parse(ROOT / "app/src/main/res/mipmap-anydpi-v26/ic_launcher_dev.xml").getroot()
@@ -88,7 +99,8 @@ class UpdateChannelsTest(unittest.TestCase):
         self.assertIn('src/main/java/dev/cinematv/data/douban', build)
         self.assertIn('src/main/java/dev/cinematv/ui/douban', build)
         self.assertIn('it.isFile && it.extension == "kt"', build)
-        # Public catalogue ratings are independent of the personal-account experiment.
+        # The account-free public list package lives under data/douban and is excluded with it.
+        self.assertTrue(list((ROOT / "app/src/main/java/dev/cinematv/data/douban/public").glob("*.kt")))
         self.assertNotIn('contains("douban")', build)
 
     def test_obsolete_workflow_cannot_receive_keys_or_publish(self):

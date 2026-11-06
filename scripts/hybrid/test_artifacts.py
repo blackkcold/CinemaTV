@@ -62,15 +62,23 @@ class HybridArtifactTest(unittest.TestCase):
 
     def manifest(self, **overrides):
         values = dict(package="dev.cinematv", versionName="0.9.0-dev.1", versionCode="13",
-                      minSdk="26", channel="dev", label="CinemaTV Dev", debuggable="false")
+                      minSdk="26", channel="dev", label="CinemaTV Dev", debuggable="false",
+                      private="false")
         values.update(overrides)
         path = Path(self.temp.name) / "manifest.xml"
         path.write_text(('<manifest xmlns:android="http://schemas.android.com/apk/res/android" '
             'package="{package}" android:versionName="{versionName}" android:versionCode="{versionCode}">'
             '<uses-sdk android:minSdkVersion="{minSdk}"/><application android:debuggable="{debuggable}" '
             'android:label="{label}"><meta-data android:name="dev.cinematv.UPDATE_CHANNEL" '
-            'android:value="{channel}"/></application></manifest>').format(**values))
+            'android:value="{channel}"/><meta-data android:name="dev.cinematv.PRIVATE_BUILD" '
+            'android:value="{private}"/></application></manifest>').format(**values))
         return path
+
+    def test_candidate_receipt_rejects_a_personal_build_manifest(self):
+        output = Path(self.temp.name) / "candidate-personal"
+        with self.assertRaisesRegex(ValueError, "personal build"):
+            artifacts.candidate_receipt(self.root, self.apk, self.manifest(private="true"), output)
+        self.assertFalse(output.exists())
 
     def test_unsigned_receipt_binds_bytes_source_and_preserves_acceptance_limits(self):
         output = Path(self.temp.name) / "candidate"

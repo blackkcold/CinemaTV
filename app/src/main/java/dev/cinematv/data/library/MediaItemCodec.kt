@@ -25,6 +25,7 @@ object MediaItemCodec {
         .put("episodeIds", JSONArray(item.episodeIds)).put("playlistKnown", item.playlistKnown)
         .put("episodeNames", JSONArray(item.episodeNames)).put("seasonNumber", item.seasonNumber)
         .put("ratingLicenseExpiresAt", item.ratingLicenseExpiresAt)
+        .put("ratingPublic", item.ratingPublic)
         .put("mediaTypeKnown", item.mediaTypeKnown).put("catalogProvider", item.catalogProvider)
         .put("catalogAttribution", item.catalogAttribution).put("catalogLicenseExpiresAt", item.catalogLicenseExpiresAt)
 
@@ -56,6 +57,7 @@ object MediaItemCodec {
             episodeIds = strings(j.optJSONArray("episodeIds")), playlistKnown = j.optBoolean("playlistKnown", false),
             seasonNumber = if (j.isNull("seasonNumber")) null else j.optInt("seasonNumber").takeIf { it >= 0 },
             ratingLicenseExpiresAt = j.optLong("ratingLicenseExpiresAt").coerceAtLeast(0),
+            ratingPublic = j.optBoolean("ratingPublic", false),
             mediaTypeKnown = j.optBoolean("mediaTypeKnown", true),
             catalogProvider = j.optString("catalogProvider"), catalogAttribution = j.optString("catalogAttribution"),
             catalogLicenseExpiresAt = j.optLong("catalogLicenseExpiresAt")

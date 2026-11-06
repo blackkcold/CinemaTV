@@ -6,11 +6,11 @@ fun MediaItem.usableMetadata(now: Long = System.currentTimeMillis()): MediaItem?
         // Earlier clients labeled upstream scores with the transport name. Do not
         // resurrect those unverified values from history, favorites or detail.
         return if (RatingPolicy.provider(this) == "libretv") copy(
-            rating = "", ratingSource = "", doubanTopRank = null, ratingLicenseExpiresAt = 0
+            rating = "", ratingSource = "", doubanTopRank = null, ratingLicenseExpiresAt = 0, ratingPublic = false
         ) else this
     }
     if (source == null) return null
     return copy(poster = "", backdrop = "", description = "", rating = "", ratingSource = "",
         aliases = emptyList(), actors = emptyList(), doubanTopRank = null, metadataIds = emptyMap(),
-        ratingLicenseExpiresAt = 0, catalogProvider = "", catalogAttribution = "", catalogLicenseExpiresAt = 0)
+        ratingLicenseExpiresAt = 0, ratingPublic = false, catalogProvider = "", catalogAttribution = "", catalogLicenseExpiresAt = 0)
 }

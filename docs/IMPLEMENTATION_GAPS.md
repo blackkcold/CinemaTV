@@ -62,6 +62,22 @@ provenance and CI run rather than inferred from this planning snapshot.
 Prior v0.5 emulator results cannot stand in for these modified paths. No stable
 certification, private-backend access or live Douban rights is implied.
 
+## 2026-11-06 status
+
+The client now has an account-free public list channel (Top 250, tags, hot, doulist)
+and a dev-only diagnostic log. Authorization wording, the robots.txt conflict and the
+stable boundary are recorded in [DOUBAN_PUBLIC_ACCESS.md](DOUBAN_PUBLIC_ACCESS.md);
+the log schema and retention are in [DIAGNOSTICS.md](DIAGNOSTICS.md). Real-account
+login, physical-TV acceptance and stable inclusion remain unverified.
+
+Hardening pass (same day, uncommitted): field keys are now a closed allowlist, queue
+drops are counted and shown, a failed writer recovers on a 10 s cooldown or on
+re-enable, a killed process can no longer merge into a half line, and 1970/restored
+timestamps fall back to the date in the file name. `DiagnosticsUiTest` covers the phone
+flow, TV remote focus/Back/confirm-default, and the 360dp + 1.3 font row layout;
+`scripts/diagnostics/pull-logs.sh` fetches the directory with `adb pull` or `run-as`.
+Manual-device checklist: [QA_DIAGNOSTICS.md](QA_DIAGNOSTICS.md).
+
 ## Original product gaps identified at v0.5
 
 1. **Source resolution and real upstream semantics.** `LibreTvRepository.detail`
@@ -107,9 +123,10 @@ status with its actual evidence; this plan alone does not mark them complete.
 
 ## External gates that code cannot substitute for
 
-- Douban acquisition stays disabled until applicable rights and a permitted live
-  endpoint are verified. Configuration declarations or synthetic tests are not
-  permission or live acceptance.
+- The licensed BFF acquisition stays disabled until applicable rights and a permitted
+  live endpoint are verified. Configuration declarations or synthetic tests are not
+  permission or live acceptance. The account-free public-page channel is a separate,
+  documented personal-use decision; it serves lists only, not subject detail.
 - Private deployment testing requires separate explicit user authorization after
   isolated testing. No private address, credentials or password-manager data are
   needed for the current implementation work.
