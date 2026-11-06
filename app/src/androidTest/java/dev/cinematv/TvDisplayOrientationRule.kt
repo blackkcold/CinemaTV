@@ -27,7 +27,7 @@ internal fun actualTestDisplay(): TestDisplayGeometry {
     return TestDisplayGeometry(display.rotation, size.x, size.y)
 }
 
-/** Runs outside the Compose/Activity rule, so no TV window is launched during display rotation. */
+/** Sets the rotation policy before launch; the TV window gate waits for the actual display. */
 internal class TvDisplayOrientationRule : TestRule {
     override fun apply(base: Statement, description: Description): Statement = object : Statement() {
         override fun evaluate() {
@@ -44,8 +44,12 @@ internal class TvDisplayOrientationRule : TestRule {
             var failure: Throwable? = null
             try {
                 check(automation.setRotation(target)) { "Unable to prepare the test display rotation" }
-                awaitCondition("Actual display did not settle in landscape before TV Activity launch") {
-                    actualTestDisplay().let { it.rotation == target && it.landscape }
+                // A foreground launcher may request NOSENSOR or portrait, which overrides the
+                // user rotation lock. Only the requested policy can settle before the TV Activity
+                // launches; waitForTvWindow then requires the real display to be landscape.
+                awaitCondition("Test display rotation policy was not applied before TV Activity launch") {
+                    Settings.System.getInt(resolver, Settings.System.ACCELEROMETER_ROTATION) == 0 &&
+                        Settings.System.getInt(resolver, Settings.System.USER_ROTATION) == target
                 }
                 base.evaluate()
             } catch (error: Throwable) {
@@ -56,10 +60,11 @@ internal class TvDisplayOrientationRule : TestRule {
                 try {
                     val restore = if (previousAuto == 0) previousRotation else UiAutomation.ROTATION_UNFREEZE
                     check(automation.setRotation(restore)) { "Unable to restore the test display rotation policy" }
+                    // The foreground launcher may override a restored user rotation preference.
+                    // Verify the original policy, not a physical angle that policy cannot force.
                     awaitCondition("Test display rotation policy was not restored") {
                         Settings.System.getInt(resolver, Settings.System.ACCELEROMETER_ROTATION) == previousAuto &&
-                            (previousAuto != 0 || (Settings.System.getInt(resolver, Settings.System.USER_ROTATION) == previousRotation &&
-                                actualTestDisplay().rotation == previousRotation))
+                            (previousAuto != 0 || Settings.System.getInt(resolver, Settings.System.USER_ROTATION) == previousRotation)
                     }
                 } catch (restoreFailure: Throwable) {
                     if (failure != null) failure.addSuppressed(restoreFailure) else throw restoreFailure
