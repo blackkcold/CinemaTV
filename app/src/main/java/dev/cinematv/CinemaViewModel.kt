@@ -602,7 +602,7 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun focusChannel(channel: TvChannel) {
-        if (activeChannel?.id == channel.id) return
+        if (activeChannel?.let { ChannelIdentity.key(activeLiveSource, it) } == ChannelIdentity.key(activeLiveSource, channel)) return
         activeChannel = channel
         epgPrograms = emptyList()
         epgJob?.cancel()
@@ -786,7 +786,7 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
             ?: if (item.episodes.size == 1) "播放" else "第 ${index + 1} 集"
         val progress = episodeProgress(index) ?: return name
         return when {
-            progress.durationMs > 0 && progress.positionMs.toDouble() / progress.durationMs >= .95 -> "$name ✓"
+            progress.completed -> "$name · 重新播放"
             progress.positionMs > 0 -> "$name · ${progress.positionMs / 60000}分"
             else -> name
         }
@@ -808,7 +808,7 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
                 playerReturnPage == Page.DETAIL && selected?.presentationKey == session.mediaKey
             } else playerReturnPage == Page.LIVE
 
-    fun playEpisode(index: Int = 0) {
+    fun playEpisode(index: Int = 0, action: EpisodePlaybackAction = EpisodePlaybackAction.RESUME) {
         val item = selected ?: return
         val url = item.episodes.getOrNull(index)
         if (url == null || (!url.startsWith("https://") && !url.startsWith("http://"))) {
@@ -822,7 +822,7 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
         playbackUrl = url
         playbackTitle = item.title + if (item.episodes.size > 1) " · 第${index + 1}集" else ""
         val progress = repo.library.snapshot.progress(item, index)
-        playbackPosition = progress?.positionMs ?: 0L
+        playbackPosition = EpisodePlaybackPolicy.startPosition(progress, action)
         playingEpisode = index
         page = Page.PLAYER
         if (repo.libraryStatus(item) == null) viewModelScope.launch {
@@ -940,7 +940,7 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
             }
             ensureActive()
             if (!isCurrentPlayback(session)) return@launch
-            if (episodeIndex + 1 < entry.episodes.size) playEpisode(episodeIndex + 1)
+            if (episodeIndex + 1 < entry.episodes.size) playEpisode(episodeIndex + 1, EpisodePlaybackAction.RESTART)
             else try {
                 repo.setLibraryStatus(entry, LibraryStatus.WATCHED)
             } catch (cancelled: CancellationException) { throw cancelled }

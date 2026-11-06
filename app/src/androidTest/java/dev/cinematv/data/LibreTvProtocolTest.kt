@@ -243,6 +243,36 @@ class LibreTvProtocolTest {
         assertTrue(repo.localItems().isEmpty())
     }
 
+    @Test fun cachedDetailKeyFromAnotherClientUsesCurrentLocalSourceWhenUrlMatches() = runBlocking {
+        val source = repo.sources().single()
+        val payload = detail()
+        payload.getJSONObject("videoInfo").put("sourceKey", "other-device-local-key")
+            .put("sourceUrl", source.url)
+        server.enqueue(payload.toString())
+        val result = repo.detail(work.copy(id = "same-provider-id", source = source))
+        assertEquals(source, result.source)
+        assertEquals("same-provider-id", result.id)
+        assertEquals(source.key, repo.localItems().single().source?.key)
+    }
+
+    @Test fun matchingKeyCannotAuthorizeDetailFromAnotherSourceUrl() = runBlocking {
+        val payload = detail()
+        payload.getJSONObject("videoInfo").put("sourceUrl", "https://wrong.example.test/provider")
+        server.enqueue(payload.toString())
+        try { repo.detail(work.copy(id = "one", source = repo.sources().single())); fail("Wrong source URL") }
+        catch (_: LibreTvProtocolException) { }
+        assertTrue(repo.localItems().isEmpty())
+    }
+
+    @Test fun cachedSearchKeyDoesNotOverrideTheReportedSourceUrl() = runBlocking {
+        val cached = row("cache").put("sourceKey", "another-device")
+            .put("sourceUrl", repo.sources().single().url)
+        server.enqueue(search(cached, row("wrong").put("sourceUrl", "https://wrong.example.test/provider")).toString())
+        val found = repo.searchSnapshot("Fixture").items
+        assertEquals(listOf("cache"), found.map { it.id })
+        assertEquals(repo.sources().single(), found.single().source)
+    }
+
     @Test fun truncatedNdjsonRetainsPartialResultButNeverClaimsCompletion() = runBlocking {
         server.enqueue(search(row("partial")).put("type", "source")
             .put("sourceKey", repo.sources().single().key).put("ok", true).put("ms", 14).toString() + "\n")

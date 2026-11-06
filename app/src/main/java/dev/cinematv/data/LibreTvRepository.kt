@@ -408,8 +408,7 @@ class LibreTvRepository(context: Context, val library: LocalMediaLibrary = Local
     private fun decodeSearchList(items: JSONArray?, active: List<TvSource>): List<MediaItem> =
         parseArray(items) { j ->
             val name = j.optString("name")
-            val source = active.firstOrNull { it.key == j.optString("sourceKey") }
-                ?: active.firstOrNull { it.url == j.optString("sourceUrl") }
+            val source = SourceResponseIdentity.resolve(active, j.optString("sourceKey"), j.optString("sourceUrl"))
                 ?: return@parseArray null
             if (name.isBlank() || j.optString("vodId").isBlank() ||
                 (!source.url.startsWith("https://") && !source.url.startsWith("http://"))) null else MediaItem(
@@ -574,7 +573,7 @@ class LibreTvRepository(context: Context, val library: LocalMediaLibrary = Local
         val info = j.optJSONObject("videoInfo") ?: JSONObject()
         val reportedKey = info.optString("sourceKey").takeUnless { it.isBlank() || it == "null" }
         val reportedUrl = info.optString("sourceUrl").takeUnless { it.isBlank() || it == "null" }
-        if ((reportedKey != null && reportedKey != src.key) || (reportedUrl != null && reportedUrl != src.url)) {
+        if (!SourceResponseIdentity.matches(src, reportedKey, reportedUrl)) {
             throw LibreTvProtocolException("LibreTV 详情来源与请求不符")
         }
         val episodes = j.optJSONArray("episodes") ?: throw LibreTvProtocolException("LibreTV 详情响应缺少播放列表")
