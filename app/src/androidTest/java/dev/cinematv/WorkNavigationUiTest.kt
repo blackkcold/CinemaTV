@@ -60,7 +60,12 @@ private fun workNavigationScenario(rule: ComposeContentTestRule, activity: Compo
         fun revealPanel() { rule.onNodeWithText("季与片源").performScrollTo(); rule.waitForIdle() }
         fun choose(tag: String) {
             revealPanel()
-            val node = rule.onNodeWithTag(tag).performScrollTo()
+            // performScrollTo only moves the closest scrollable ancestor. Revealing the
+            // heading can leave both rails below the phone viewport; scrolling a child
+            // option then moves its horizontal LazyRow without revealing it vertically.
+            val railTag = if (tag.startsWith("work-seasons:")) "work-seasons-rail" else "work-sources-rail"
+            rule.onNodeWithTag(railTag).performScrollTo().performScrollToNode(hasTestTag(tag))
+            val node = rule.onNodeWithTag(tag).assertIsDisplayed()
             if (tv) {
                 node.performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.RequestFocus) { it() }
                 node.assertIsFocused()
@@ -68,6 +73,7 @@ private fun workNavigationScenario(rule: ComposeContentTestRule, activity: Compo
             } else node.performClick()
             rule.waitUntil(15000) { !model.busy }
             rule.waitForIdle()
+            rule.onNodeWithTag(tag).assertIsSelected()
         }
         choose("work-sources:${MediaDomainMapper.entryId(b)}")
         rule.runOnIdle {

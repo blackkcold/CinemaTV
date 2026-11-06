@@ -27,7 +27,8 @@ fun WorkNavigationPanel(model: CinemaViewModel, tv: Boolean) {
         Text("季与片源", color = TvColors.Text, fontSize = 20.sp)
         val seasonState = rememberTvListState(model, "work-seasons")
         if (tv) RegisterLazyFocusRegion(model, "work-seasons", seasonState, navigation.seasons.map { it.id })
-        LazyRow(state = seasonState, horizontalArrangement = Arrangement.spacedBy(10.dp),
+        LazyRow(modifier = Modifier.testTag("work-seasons-rail"), state = seasonState,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
             contentPadding = PaddingValues(vertical = 8.dp)) {
             items(navigation.seasons, key = { it.id }) { season ->
                 WorkOption(model, tv, "work-seasons", season.id, season.label,
@@ -39,7 +40,8 @@ fun WorkNavigationPanel(model: CinemaViewModel, tv: Boolean) {
         val sources = navigation.currentSeason?.sources.orEmpty()
         val sourceState = rememberTvListState(model, "work-sources:${navigation.selectedSeasonId}")
         if (tv) RegisterLazyFocusRegion(model, "work-sources", sourceState, sources.map { it.id })
-        LazyRow(state = sourceState, horizontalArrangement = Arrangement.spacedBy(10.dp),
+        LazyRow(modifier = Modifier.testTag("work-sources-rail"), state = sourceState,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
             contentPadding = PaddingValues(vertical = 8.dp)) {
             items(sources, key = { it.id }) { source ->
                 WorkOption(model, tv, "work-sources", source.id, source.label,
