@@ -45,6 +45,7 @@ import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.RuleChain
 import org.junit.rules.TestRule
 import org.junit.runner.RunWith
 import java.io.File
@@ -100,7 +101,8 @@ private fun <R : TestRule, A : ComponentActivity> AndroidComposeTestRule<R, A>.w
         val decor = activity.window.decorView
         activity.lifecycle.currentState == Lifecycle.State.RESUMED && decor.isAttachedToWindow &&
             decor.hasWindowFocus() && decor.isShown && decor.width > decor.height && decor.height > 0 &&
-            activity.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+            activity.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE &&
+            actualTestDisplay().landscape
     }
     waitUntil(10_000) { ready() }
     val committed = CountDownLatch(1)
@@ -228,7 +230,8 @@ class DoubanAccountUiTest {
 /** TV presentation host on a controlled emulator; not physical Android TV certification. */
 @RunWith(AndroidJUnit4::class)
 class TvDoubanAccountUiTest {
-    @get:Rule val rule = createAndroidComposeRule<TvTestActivity>()
+    val rule = createAndroidComposeRule<TvTestActivity>()
+    @get:Rule val rules: TestRule = RuleChain.outerRule(TvDisplayOrientationRule()).around(rule)
     @Before fun startDisabled() { rule.resetExperiment() }
     @After fun leaveDisabled() { rule.resetExperiment() }
 

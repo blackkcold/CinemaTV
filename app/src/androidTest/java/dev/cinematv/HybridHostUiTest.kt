@@ -142,18 +142,19 @@ class HybridHostUiTest {
         var native = JSONObject()
         instrumentation.runOnMainSync {
             native = JSONObject().put("width", current.width).put("height", current.height)
+                .put("contentHeight", current.contentHeight)
                 .put("scrollX", current.scrollX).put("scrollY", current.scrollY)
                 .put("layoutWidth", current.layoutParams?.width).put("layoutHeight", current.layoutParams?.height)
                 .put("isFocused", current.isFocused).put("hasFocus", current.hasFocus())
                 .put("windowFocus", current.hasWindowFocus())
         }
         val dom = evaluate("""JSON.stringify((() => {
-            const rect = s => { const n=document.querySelector(s); if(!n) return null; const r=n.getBoundingClientRect(); return {x:r.x,y:r.y,width:r.width,height:r.height,scrollTop:n.scrollTop,scrollLeft:n.scrollLeft}; };
+            const rect = s => { const n=document.querySelector(s); if(!n) return null; const r=n.getBoundingClientRect(); return {x:r.x,y:r.y,width:r.width,height:r.height,scrollTop:n.scrollTop,scrollLeft:n.scrollLeft,scrollHeight:n.scrollHeight,clientHeight:n.clientHeight}; };
             const style = s => { const n=document.querySelector(s); if(!n) return null; const c=getComputedStyle(n); return {top:c.top,height:c.height,overflowY:c.overflowY,scrollPaddingTop:c.scrollPaddingTop}; };
             return {innerWidth,innerHeight,dpr:devicePixelRatio,windowX:scrollX,windowY:scrollY,
                 documentHeight:document.documentElement.clientHeight,documentScroll:document.scrollingElement?.scrollTop,
                 documentScrollHeight:document.documentElement.scrollHeight,
-                bodyScroll:document.body.scrollTop,app:rect('.tv-app'),content:rect('.content'),topbar:rect('.topbar'),
+                bodyScroll:document.body.scrollTop,body:rect('body'),app:rect('.tv-app'),content:rect('.content'),topbar:rect('.topbar'),
                 visualViewport:window.visualViewport ? {height:visualViewport.height,offsetTop:visualViewport.offsetTop,pageTop:visualViewport.pageTop,scale:visualViewport.scale} : null,
                 computed:{topbar:style('.topbar'),content:style('.content'),body:style('body')},
                 documentFocus:document.hasFocus(),active:document.activeElement?.dataset.focus || '',activeRect:rect('[data-focus]:focus')}; })())""")
@@ -245,8 +246,9 @@ class HybridHostUiTest {
         return JSONObject(evaluate("JSON.stringify(window.__hybridQaReplies[${JSONObject.quote(id)}])"))
     }
     private fun screenshot(label: String) {
+        rule.waitForIdle()
         instrumentation.waitForIdleSync()
-        awaitWebCompositorFrame()
+        awaitPresentationFrame()
         val bitmap = instrumentation.uiAutomation.takeScreenshot() ?: throw AssertionError("Compositor screenshot was empty")
         try {
             assertTrue(bitmap.width > bitmap.height)
@@ -256,45 +258,99 @@ class HybridHostUiTest {
         } finally { bitmap.recycle() }
     }
 
-    /** DOM readiness alone does not fence Chromium's compositor after a renderer rebuild. */
-    private fun awaitWebCompositorFrame() {
-        val current = web() ?: return
+    /** Fence both Chromium and the native replacement after a WebView is destroyed. */
+    private fun awaitPresentationFrame() {
+        val current = web()
         val ready = CountDownLatch(1)
         val active = java.util.concurrent.atomic.AtomicBoolean(true)
         var cleanup: (() -> Unit)? = null
         var failure: Throwable? = null
         instrumentation.runOnMainSync {
-            current.postVisualStateCallback(SystemClock.uptimeMillis(), object : WebView.VisualStateCallback() {
+            fun awaitDraw(view: View) {
+                if (!active.get()) return
+                try {
+                    check(view.isAttachedToWindow)
+                    val observer = view.viewTreeObserver
+                    if (Build.VERSION.SDK_INT >= 29 && view.isHardwareAccelerated) {
+                        val committed = Runnable { if (active.get()) ready.countDown() }
+                        observer.registerFrameCommitCallback(committed)
+                        cleanup = { if (observer.isAlive) observer.unregisterFrameCommitCallback(committed); Unit }
+                    } else {
+                        val drawn = object : android.view.ViewTreeObserver.OnDrawListener {
+                            private var observed = false
+                            override fun onDraw() {
+                                if (observed || !active.get()) return
+                                observed = true
+                                view.postOnAnimation { if (active.get()) ready.countDown() }
+                            }
+                        }
+                        observer.addOnDrawListener(drawn)
+                        cleanup = { if (observer.isAlive) observer.removeOnDrawListener(drawn) }
+                    }
+                    view.postInvalidateOnAnimation()
+                } catch (error: Throwable) { failure = error; ready.countDown() }
+            }
+            if (current == null) awaitDraw(activity.window.decorView)
+            else current.postVisualStateCallback(SystemClock.uptimeMillis(), object : WebView.VisualStateCallback() {
                 override fun onComplete(requestId: Long) {
                     if (!active.get()) return
-                    try {
-                        check(current.isAttachedToWindow && HybridDom.find(activity.window.decorView) === current)
-                        val observer = current.viewTreeObserver
-                        if (Build.VERSION.SDK_INT >= 29 && current.isHardwareAccelerated) {
-                            val committed = Runnable { ready.countDown() }
-                            observer.registerFrameCommitCallback(committed)
-                            cleanup = { if (observer.isAlive) observer.unregisterFrameCommitCallback(committed); Unit }
-                        } else {
-                            val drawn = object : android.view.ViewTreeObserver.OnDrawListener {
-                                override fun onDraw() {
-                                    current.postOnAnimation { if (active.get()) ready.countDown() }
-                                }
-                            }
-                            observer.addOnDrawListener(drawn)
-                            cleanup = { if (observer.isAlive) observer.removeOnDrawListener(drawn) }
-                        }
-                        current.postInvalidateOnAnimation()
-                    } catch (error: Throwable) { failure = error; ready.countDown() }
+                    if (HybridDom.find(activity.window.decorView) !== current) {
+                        failure = AssertionError("WebView changed while fencing its compositor")
+                        ready.countDown()
+                    } else awaitDraw(current)
                 }
             })
         }
         try {
-            assertTrue("Web compositor did not submit the tested state within 8s", ready.await(8, TimeUnit.SECONDS))
+            assertTrue("Presentation did not submit the tested state within 8s", ready.await(8, TimeUnit.SECONDS))
             failure?.let { throw it }
         } finally {
             active.set(false)
             instrumentation.runOnMainSync { cleanup?.invoke() }
         }
+    }
+
+    private fun assertFixedWebViewport(geometry: JSONObject) {
+        val native = geometry.getJSONObject("native")
+        val dom = geometry.getJSONObject("dom")
+        val width = dom.getDouble("innerWidth")
+        val height = dom.getDouble("innerHeight")
+        val dpr = dom.getDouble("dpr")
+        assertTrue("A usable DOM viewport is required: $geometry", width > 0 && height > 0 && dpr > 0)
+        assertEquals(ViewGroup.LayoutParams.MATCH_PARENT, native.getInt("layoutWidth"))
+        assertEquals(ViewGroup.LayoutParams.MATCH_PARENT, native.getInt("layoutHeight"))
+        assertEquals(native.getDouble("width"), width * dpr, 1.0)
+        assertEquals(native.getDouble("height"), height * dpr, 1.0)
+        // Chromium may promote a full-viewport overflow element to its effective
+        // root scroller and mirror that element's offset into WebView.scrollY.
+        // Assert the actual document/visual viewport and fixed elements instead;
+        // native offsets remain in the evidence as diagnostics.
+        for (key in listOf("windowX", "windowY", "documentScroll", "bodyScroll")) {
+            assertEquals("Document $key must remain fixed: $geometry", 0.0, dom.getDouble(key), .5)
+        }
+        assertEquals(height, dom.getDouble("documentHeight"), 1.0)
+        assertEquals(height, dom.getDouble("documentScrollHeight"), 1.0)
+        for (key in listOf("body", "app", "content")) {
+            val rect = dom.getJSONObject(key)
+            assertEquals("$key x must stay at the viewport origin", 0.0, rect.getDouble("x"), .5)
+            assertEquals("$key y must stay at the viewport origin", 0.0, rect.getDouble("y"), .5)
+            assertEquals("$key must fill the viewport width", width, rect.getDouble("width"), 1.0)
+            assertEquals("$key must fill the viewport height", height, rect.getDouble("height"), 1.0)
+        }
+        val visual = dom.getJSONObject("visualViewport")
+        assertEquals(height, visual.getDouble("height"), 1.0)
+        assertEquals(0.0, visual.getDouble("offsetTop"), .5)
+        assertEquals(0.0, visual.getDouble("pageTop"), .5)
+        assertEquals(1.0, visual.getDouble("scale"), .001)
+        val content = dom.getJSONObject("content")
+        assertEquals("The vertical content container must not move horizontally", 0.0, content.getDouble("scrollLeft"), .5)
+        assertTrue("Only the declared content container may scroll: $geometry", content.getDouble("scrollTop") >= 0 &&
+            content.getDouble("scrollTop") <= content.getDouble("scrollHeight") - content.getDouble("clientHeight") + .5)
+        val topbar = dom.getJSONObject("topbar")
+        assertEquals("Floating navigation must retain its 4.2vh inset", height * .042, topbar.getDouble("y"), 1.0)
+        assertTrue("Floating navigation must fit the fixed viewport", topbar.getDouble("height") > 0 &&
+            topbar.getDouble("x") >= 0 && topbar.getDouble("x") + topbar.getDouble("width") <= width + 1 &&
+            topbar.getDouble("y") + topbar.getDouble("height") < height)
     }
 
     @Test fun productionPagesAcceptRemoteInput() {
@@ -321,18 +377,19 @@ class HybridHostUiTest {
             repeat(9) { key(KeyEvent.KEYCODE_DPAD_RIGHT) }
             assertNotEquals("Offscreen rail navigation must advance", original, focused())
             assertTrue(focused().startsWith("card:"))
-            awaitWebCompositorFrame()
+            awaitPresentationFrame()
             val geometry = webGeometry()!!
             File(output, "${name.methodName}-after-nine-rights-geometry.json").writeText(geometry.toString(2))
+            assertFixedWebViewport(geometry)
             val dom = geometry.getJSONObject("dom")
             val card = dom.getJSONObject("activeRect")
             val topbar = dom.getJSONObject("topbar")
             assertTrue("Focused poster must clear the floating navigation: $geometry",
                 card.getDouble("y") >= topbar.getDouble("y") + topbar.getDouble("height") - 1)
             assertTrue("Focused poster must fit within the viewport: $geometry",
-                card.getDouble("y") + card.getDouble("height") <= dom.getDouble("innerHeight") + 1)
-            assertEquals("The native WebView must not scroll outside declared page/rail containers", 0,
-                geometry.getJSONObject("native").getInt("scrollY"))
+                card.getDouble("width") > 0 && card.getDouble("height") > 0 && card.getDouble("x") >= -1 &&
+                    card.getDouble("x") + card.getDouble("width") <= dom.getDouble("innerWidth") + 1 &&
+                    card.getDouble("y") + card.getDouble("height") <= dom.getDouble("innerHeight") + 1)
         } else {
             rule.onNodeWithText("观看详情").assertExists()
             assertNativeFocusAfterDown(traverseRail = true)
