@@ -67,7 +67,7 @@ jobs:
         env:
           EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
-          bash -n scripts/hybrid/build-dev-candidate.sh scripts/hybrid/run-device.sh scripts/hybrid/run-phone.sh scripts/hybrid/wait-device.sh
+          bash -n scripts/hybrid/build-dev-candidate.sh scripts/hybrid/run-device.sh scripts/hybrid/run-phone.sh scripts/hybrid/wait-device.sh scripts/hybrid/run-tv-emulator.sh
           python3 -m unittest discover -s scripts/hybrid -p 'test_*.py' -v
           python3 scripts/hybrid/artifacts.py check-source
           bash scripts/generate-test-media.sh
@@ -155,22 +155,22 @@ jobs:
           path: ${{ runner.temp }}/hybrid-device-apks
       - name: Enable KVM
         run: sudo chmod 666 /dev/kvm
-      - uses: reactivecircus/android-emulator-runner@v2
+      - name: Boot Android TV and run bounded exact-APK gates
         timeout-minutes: 26
-        with:
-          api-level: ${{ matrix.api }}
-          target: android-tv
-          arch: ${{ matrix.arch }}
-          profile: tv_1080p
-          emulator-build: '15004761'
-          disable-animations: false
-          emulator-options: '-no-window -no-audio -gpu lavapipe -feature -Vulkan -no-snapshot -no-boot-anim -memory 2048 -skin ${{ matrix.size }}'
-          script: bash scripts/hybrid/run-device.sh "$RUNNER_TEMP/hybrid-device-apks" "$RUNNER_TEMP/hybrid-evidence" '${{ matrix.mode }}' '${{ matrix.size }}' '${{ matrix.density }}'
+        # sys.boot_completed can precede input/window service registration.
+        # The owned launcher waits for those services before sending any input;
+        # the harness then verifies the requested display and every PNG's size.
+        run: |
+          bash scripts/hybrid/run-tv-emulator.sh '${{ matrix.api }}' '${{ matrix.arch }}' \
+            "$RUNNER_TEMP/hybrid-device-apks" "$RUNNER_TEMP/hybrid-evidence" \
+            '${{ matrix.mode }}' '${{ matrix.size }}' '${{ matrix.density }}'
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: hybrid-device-${{ matrix.name }}
-          path: ${{ runner.temp }}/hybrid-evidence/
+          path: |
+            ${{ runner.temp }}/hybrid-evidence/
+            ${{ runner.temp }}/hybrid-evidence-emulator/
           if-no-files-found: error
       - name: Preserve scope of device evidence
         if: always()
