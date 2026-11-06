@@ -27,6 +27,7 @@ internal class HybridNativeDiagnostics(
         var writes: Int = 0,
         var applies: Int = 0,
         var firstAppWriteStack: List<String> = emptyList(),
+        var firstFrameworkWriteStack: List<String> = emptyList(),
     )
 
     private val started = SystemClock.uptimeMillis()
@@ -74,10 +75,16 @@ internal class HybridNativeDiagnostics(
             if (write) {
                 record.writes++
                 if (record.firstAppWriteStack.isEmpty()) {
-                    record.firstAppWriteStack = Throwable().stackTrace.asSequence()
+                    val stack = Throwable().stackTrace
+                    record.firstAppWriteStack = stack.asSequence()
                         .filter { it.className.startsWith("dev.cinematv.") && !it.className.startsWith(javaClass.name) }
                         .take(8).map { it.toString() }.toList()
-                        .ifEmpty { listOf("<no app frame at global write>") }
+                    if (record.firstAppWriteStack.isEmpty()) {
+                        record.firstAppWriteStack = listOf("<no app frame at global write>")
+                        record.firstFrameworkWriteStack = stack.asSequence()
+                            .filter { it.className.startsWith("androidx.compose.") || it.className.startsWith("coil3.") }
+                            .take(16).map { it.toString() }.toList()
+                    }
                 }
             } else record.applies++
         }
@@ -117,7 +124,8 @@ internal class HybridNativeDiagnostics(
         synchronized(records) {
             records.values.sortedByDescending { it.writes + it.applies }.forEach {
                 states.put(JSONObject().put("identity", it.identity).put("writes", it.writes).put("applies", it.applies)
-                    .put("firstAppWriteStack", JSONArray(it.firstAppWriteStack)))
+                    .put("firstAppWriteStack", JSONArray(it.firstAppWriteStack))
+                    .put("firstFrameworkWriteStack", JSONArray(it.firstFrameworkWriteStack)))
             }
         }
         File(output, "$label-native-idle.json").writeText(JSONObject()

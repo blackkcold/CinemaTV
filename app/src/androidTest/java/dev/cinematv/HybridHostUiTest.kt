@@ -8,6 +8,9 @@ import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebView
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.lifecycle.ViewModelProvider
@@ -17,6 +20,10 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.webkit.WebViewCompat
 import dev.cinematv.hybrid.HybridPolicy
+import dev.cinematv.data.MediaItem
+import dev.cinematv.ui.shared.metadataLine
+import dev.cinematv.ui.shared.presentationKey
+import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.junit.*
 import org.junit.Assert.*
@@ -53,6 +60,14 @@ class HybridHostUiTest {
         scenario.onActivity {
             activity = it
             model = ViewModelProvider(it)[CinemaViewModel::class.java]
+        }
+        // Isolate the first Home rail from the playback case's persisted history.
+        // Persistence is still verified across the player rebuild within that case.
+        runBlocking {
+            model.repo.library.initialize()
+            model.repo.library.clearHistory()
+        }
+        scenario.onActivity {
             model.updateReducedMotion(true)
             model.repo.configureMetadata(server.base, "hybrid-offline-fixture-token")
             model.serverAddress = server.base
@@ -108,8 +123,11 @@ class HybridHostUiTest {
         }
     }
     private fun key(code: Int) {
-        if (code == KeyEvent.KEYCODE_BACK) Espresso.pressBack()
-        else instrumentation.sendKeyDownUpSync(code)
+        // Espresso's KeyEventActionBase regenerates downTime for ACTION_UP.
+        // Inject one real press with shared identity, as Android remotes do.
+        val downTime = SystemClock.uptimeMillis()
+        instrumentation.sendKeySync(KeyEvent(downTime, downTime, KeyEvent.ACTION_DOWN, code, 0))
+        instrumentation.sendKeySync(KeyEvent(downTime, SystemClock.uptimeMillis(), KeyEvent.ACTION_UP, code, 0))
         instrumentation.waitForIdleSync()
         SystemClock.sleep(100)
     }
@@ -125,6 +143,9 @@ class HybridHostUiTest {
         instrumentation.runOnMainSync {
             native = JSONObject().put("width", current.width).put("height", current.height)
                 .put("scrollX", current.scrollX).put("scrollY", current.scrollY)
+                .put("layoutWidth", current.layoutParams?.width).put("layoutHeight", current.layoutParams?.height)
+                .put("isFocused", current.isFocused).put("hasFocus", current.hasFocus())
+                .put("windowFocus", current.hasWindowFocus())
         }
         val dom = evaluate("""JSON.stringify((() => {
             const rect = s => { const n=document.querySelector(s); if(!n) return null; const r=n.getBoundingClientRect(); return {x:r.x,y:r.y,width:r.width,height:r.height,scrollTop:n.scrollTop,scrollLeft:n.scrollLeft}; };
@@ -135,15 +156,64 @@ class HybridHostUiTest {
                 bodyScroll:document.body.scrollTop,app:rect('.tv-app'),content:rect('.content'),topbar:rect('.topbar'),
                 visualViewport:window.visualViewport ? {height:visualViewport.height,offsetTop:visualViewport.offsetTop,pageTop:visualViewport.pageTop,scale:visualViewport.scale} : null,
                 computed:{topbar:style('.topbar'),content:style('.content'),body:style('body')},
-                active:document.activeElement?.dataset.focus || '',activeRect:rect('[data-focus]:focus')}; })())""")
+                documentFocus:document.hasFocus(),active:document.activeElement?.dataset.focus || '',activeRect:rect('[data-focus]:focus')}; })())""")
         return JSONObject().put("native", native).put("dom", JSONObject(dom))
     }
-    private fun assertNativeFocusAfterDown() {
+    private fun assertNativeFocusAfterDown(traverseRail: Boolean = false) {
+        val destinations = if (traverseRail) rule.runOnIdle { model.featured.take(10) } else emptyList()
         val diagnostic = HybridNativeDiagnostics(instrumentation, activity, model, output, name.methodName)
         try {
             key(KeyEvent.KEYCODE_DPAD_DOWN)
             assertTrue(rule.onAllNodes(isFocused()).fetchSemanticsNodes().isNotEmpty())
+            if (traverseRail) {
+                assertEquals(10, destinations.size)
+                fun assertDestination(index: Int) {
+                    rule.onNode(hasContentDescription(destinations[index].title) and isFocused()).assertIsFocused()
+                    rule.runOnIdle {
+                        assertEquals("rail:为你精选", model.focusCoordinator.last("HOME")?.region)
+                        assertEquals(destinations[index].presentationKey, model.focusCoordinator.last("HOME")?.itemKey)
+                    }
+                }
+                assertDestination(0)
+                repeat(9) { index -> key(KeyEvent.KEYCODE_DPAD_RIGHT); assertDestination(index + 1) }
+                assertNativeCardVisible(destinations[9])
+                screenshot("${name.methodName}-native-after-nine-rights")
+            }
         } finally { diagnostic.close() }
+    }
+    private fun assertNativeCardVisible(item: MediaItem) {
+        val matcher = hasContentDescription(item.title) and isFocused()
+        val card = rule.onNode(matcher).assertIsDisplayed().fetchSemanticsNode()
+        val root = rule.onRoot().fetchSemanticsNode()
+        var viewportNode = card.parent
+        while (viewportNode != null && !viewportNode.config.contains(SemanticsProperties.VerticalScrollAxisRange)) {
+            viewportNode = viewportNode.parent
+        }
+        val column = requireNotNull(viewportNode) { "Focused native card has no vertical viewport" }
+        fun bounds(node: SemanticsNode): Rect = rule.runOnUiThread {
+            root.layoutInfo.coordinates.localBoundingBoxOf(node.layoutInfo.coordinates, clipBounds = false)
+        }
+        val rootBounds = bounds(root)
+        val columnBounds = bounds(column)
+        val viewport = Rect(maxOf(rootBounds.left, columnBounds.left), maxOf(rootBounds.top, columnBounds.top),
+            minOf(rootBounds.right, columnBounds.right), minOf(rootBounds.bottom, columnBounds.bottom))
+        val bottomSpace = 4f * card.layoutInfo.density.density
+        fun assertInside(label: String, node: SemanticsNode) {
+            val rect = bounds(node)
+            assertTrue("$label must be fully visible: $rect in $viewport", rect.width > 0 && rect.height > 0 &&
+                rect.left >= viewport.left - .5f && rect.top >= viewport.top - .5f &&
+                rect.right <= viewport.right + .5f && rect.bottom <= viewport.bottom - bottomSpace + .5f)
+        }
+        assertInside("Focused native card", card)
+        for (text in listOf(item.title, item.metadataLine())) {
+            assertTrue("Synthetic caption and metadata must be populated", text.isNotBlank())
+            val nodes = rule.onAllNodes(hasText(text) and hasAnyAncestor(matcher), useUnmergedTree = true).fetchSemanticsNodes()
+            assertTrue("Focused card must retain $text", nodes.isNotEmpty())
+            nodes.forEach { assertInside("Native caption/metadata", it) }
+        }
+        File(output, "${name.methodName}-native-after-nine-rights-geometry.json").writeText(JSONObject()
+            .put("card", bounds(card).toString()).put("viewport", viewport.toString())
+            .put("bottomSpacePx", bottomSpace).put("focusedKey", item.presentationKey).toString(2))
     }
     private fun playerBackPress() {
         val downTime = SystemClock.uptimeMillis()
@@ -265,7 +335,7 @@ class HybridHostUiTest {
                 geometry.getJSONObject("native").getInt("scrollY"))
         } else {
             rule.onNodeWithText("观看详情").assertExists()
-            assertNativeFocusAfterDown()
+            assertNativeFocusAfterDown(traverseRail = true)
             rule.onNodeWithContentDescription("打开搜索").performClick()
             rule.onNodeWithText("想看的，在这里。").assertExists()
             assertNull(web())
