@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.os.Build
 import android.os.SystemClock
 import android.view.KeyEvent
+import android.view.View
 import android.webkit.WebView
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
@@ -23,6 +24,8 @@ import org.junit.rules.TestName
 import org.junit.runner.RunWith
 import java.io.File
 import java.security.MessageDigest
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 /** Regression tests against the real packaged WebView and native review surfaces on a modern TV. */
 @RunWith(AndroidJUnit4::class)
@@ -107,6 +110,9 @@ class HybridAuditUiTest {
         key(KeyEvent.KEYCODE_DPAD_CENTER)
     }
     private fun capture(name: String) {
+        rule.waitForIdle()
+        instrumentation.waitForIdleSync()
+        awaitPresentationFrame()
         val bitmap = requireNotNull(instrumentation.uiAutomation.takeScreenshot()) { "No Android compositor screenshot" }
         try { File(output, "$name.png").outputStream().use { assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) } }
         finally { bitmap.recycle() }
@@ -114,6 +120,58 @@ class HybridAuditUiTest {
             .put("api", Build.VERSION.SDK_INT).put("route", model.page.name)
             .put("activity", activity.javaClass.name).put("expectedMode", "hybrid").put("installedApkSha256", installedApkSha256).put("webViewPresent", web() != null)
             .put("syntheticContent", true).put("quarantinedProgressCount", model.quarantinedProgressCount).toString(2))
+    }
+
+    /** A semantic node can exist before the native replacement has submitted its first frame. */
+    private fun awaitPresentationFrame() {
+        val current = web()
+        val ready = CountDownLatch(1)
+        val active = java.util.concurrent.atomic.AtomicBoolean(true)
+        var cleanup: (() -> Unit)? = null
+        var failure: Throwable? = null
+        instrumentation.runOnMainSync {
+            fun awaitDraw(view: View) {
+                if (!active.get()) return
+                try {
+                    check(view.isAttachedToWindow)
+                    val observer = view.viewTreeObserver
+                    if (Build.VERSION.SDK_INT >= 29 && view.isHardwareAccelerated) {
+                        val committed = Runnable { if (active.get()) ready.countDown() }
+                        observer.registerFrameCommitCallback(committed)
+                        cleanup = { if (observer.isAlive) observer.unregisterFrameCommitCallback(committed); Unit }
+                    } else {
+                        val drawn = object : android.view.ViewTreeObserver.OnDrawListener {
+                            private var observed = false
+                            override fun onDraw() {
+                                if (observed || !active.get()) return
+                                observed = true
+                                view.postOnAnimation { if (active.get()) ready.countDown() }
+                            }
+                        }
+                        observer.addOnDrawListener(drawn)
+                        cleanup = { if (observer.isAlive) observer.removeOnDrawListener(drawn) }
+                    }
+                    view.postInvalidateOnAnimation()
+                } catch (error: Throwable) { failure = error; ready.countDown() }
+            }
+            if (current == null) awaitDraw(activity.window.decorView)
+            else current.postVisualStateCallback(SystemClock.uptimeMillis(), object : WebView.VisualStateCallback() {
+                override fun onComplete(requestId: Long) {
+                    if (!active.get()) return
+                    if (HybridDom.find(activity.window.decorView) !== current) {
+                        failure = AssertionError("WebView changed while fencing its compositor")
+                        ready.countDown()
+                    } else awaitDraw(current)
+                }
+            })
+        }
+        try {
+            assertTrue("Presentation did not submit the tested state within 8s", ready.await(8, TimeUnit.SECONDS))
+            failure?.let { throw it }
+        } finally {
+            active.set(false)
+            instrumentation.runOnMainSync { cleanup?.invoke() }
+        }
     }
 
     @Test fun emptyFilteredCatalogLoadsNextPage() {
@@ -156,13 +214,13 @@ class HybridAuditUiTest {
         key(KeyEvent.KEYCODE_BACK); awaitRoute(Page.SETTINGS)
         rule.waitUntil(10_000) { evaluate("document.activeElement?.dataset.focus || ''") == "settings:subscriptions" }
         click("settings:library")
-        rule.onNodeWithTag("library-progress-review").assertExists()
+        rule.onNodeWithTag("library-progress-review", useUnmergedTree = true).assertIsDisplayed()
         rule.onNodeWithText("原片单第 4 项", substring = true).assertExists()
         key(KeyEvent.KEYCODE_BACK); awaitRoute(Page.SETTINGS)
         click("nav:LIBRARY"); awaitRoute(Page.LIBRARY)
         click("library:HISTORY")
         click("library:manage")
-        rule.onNodeWithTag("library-progress-review").assertExists()
+        rule.onNodeWithTag("library-progress-review", useUnmergedTree = true).assertIsDisplayed()
         rule.onNodeWithText("打开当前片单").assertExists()
         rule.onNodeWithText("当时的片单缺少明确的剧集身份", substring = true).assertExists()
         rule.onNodeWithTag("library-review-record:${before.keys.single()}")
