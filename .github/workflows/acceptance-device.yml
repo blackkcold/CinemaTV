@@ -1,0 +1,101 @@
+name: Acceptance / single device
+on:
+  workflow_call:
+    inputs:
+      lane:
+        type: string
+        required: true
+permissions:
+  contents: read
+jobs:
+  device:
+    name: ${{ inputs.lane }} / exact APK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    concurrency:
+      group: cinematv-emulator-exclusive
+      cancel-in-progress: false
+      queue: max
+    env:
+      EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      CINEMA_ACCEPTANCE_LANE: ${{ inputs.lane }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Select a declared current-code profile
+        id: profile
+        run: python3 scripts/acceptance/native.py describe --lane "$CINEMA_ACCEPTANCE_LANE"
+      - uses: actions/download-artifact@v4
+        with:
+          name: acceptance-${{ steps.profile.outputs.configuration }}-apks
+          path: ${{ runner.temp }}/acceptance-apks
+      - name: Record interval and install host comparison dependency
+        run: |
+          python3 scripts/acceptance/manifest.py begin --output "$RUNNER_TEMP/lane-start.json"
+          python3 -m pip install --disable-pip-version-check 'Pillow==11.3.0'
+      - name: Prepare official LibreTV before emulator allocation
+        if: steps.profile.outputs.official == 'true'
+        run: bash scripts/acceptance/prepare-official.sh
+      - name: Enable KVM
+        run: sudo chmod 666 /dev/kvm
+      - name: Actual Android TV production host
+        if: steps.profile.outputs.kind == 'tv'
+        timeout-minutes: 28
+        env:
+          TV_API: ${{ steps.profile.outputs.api }}
+          TV_ARCH: ${{ steps.profile.outputs.arch }}
+          TV_MODE: ${{ steps.profile.outputs.mode }}
+          TV_SIZE: ${{ steps.profile.outputs.size }}
+          TV_DENSITY: ${{ steps.profile.outputs.density }}
+        run: |
+          bash scripts/hybrid/run-tv-emulator.sh "$TV_API" "$TV_ARCH" \
+            "$RUNNER_TEMP/acceptance-apks" "$RUNNER_TEMP/acceptance-evidence" \
+            "$TV_MODE" "$TV_SIZE" "$TV_DENSITY"
+      - name: Native contracts or independent phone UI
+        if: steps.profile.outputs.kind != 'tv'
+        timeout-minutes: 35
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ steps.profile.outputs.api }}
+          target: ${{ steps.profile.outputs.target }}
+          arch: ${{ steps.profile.outputs.arch }}
+          profile: pixel_2
+          cores: 2
+          emulator-build: '15004761'
+          disable-animations: false
+          emulator-options: "-no-window -no-audio -gpu lavapipe -feature -Vulkan -no-snapshot -no-boot-anim -memory 2048 ${{ steps.profile.outputs.api == '26' && '-skin 1920x1080' || '' }}"
+          script: bash scripts/acceptance/run-lane.sh "$CINEMA_ACCEPTANCE_LANE" "$RUNNER_TEMP/acceptance-apks" "$RUNNER_TEMP/acceptance-evidence"
+      - name: Preserve bounded environment and original failure evidence
+        if: always()
+        run: |
+          python3 scripts/acceptance/diagnostics.py --lane "$CINEMA_ACCEPTANCE_LANE" --evidence "$RUNNER_TEMP/acceptance-evidence"
+          if [ -d qa ]; then cp -R qa "$RUNNER_TEMP/acceptance-evidence/official-host"; fi
+      - name: Bind completed cases and evidence to installed configuration
+        env:
+          KIND: ${{ steps.profile.outputs.kind }}
+        run: |
+          RESULTS=(--result native-receipt.json)
+          if [ "$KIND" = tv ]; then RESULTS=(--result device-receipt.json --result regression-receipt.json); fi
+          if [ "$KIND" = phone ]; then RESULTS=(--result phone-receipt.json); fi
+          python3 scripts/acceptance/manifest.py record --lane "$CINEMA_ACCEPTANCE_LANE" \
+            --bundle "$RUNNER_TEMP/acceptance-apks" --evidence "$RUNNER_TEMP/acceptance-evidence" \
+            --started "$RUNNER_TEMP/lane-start.json" "${RESULTS[@]}" \
+            --output "$RUNNER_TEMP/acceptance-evidence/lane-receipt.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: acceptance-device-${{ inputs.lane }}
+          path: |
+            ${{ runner.temp }}/acceptance-evidence/
+            ${{ runner.temp }}/acceptance-evidence-emulator/
+            ${{ runner.temp }}/lane-start.json
+          if-no-files-found: error
+      - name: Keep evidence scope explicit
+        if: always()
+        run: echo 'Exact-source emulator evidence only. No production signing, publication, physical GPU/HDR/codec or long-play certification.' >> "$GITHUB_STEP_SUMMARY"
