@@ -86,6 +86,12 @@ private fun associationEditor(rule: ComposeContentTestRule, activity: ComponentA
         }
         fun choose(tag: String) = click(dialogNode(hasTestTag("association-$tag")))
         fun open() {
+            if (!tv) {
+                // The phone's transient status Surface covers the bottom of Detail and
+                // intercepts touch. Wait for its real dismissal before scrolling the
+                // opener into that area; Compose idleness does not expire its timer.
+                rule.waitUntil(8_000) { model.message.isBlank() }
+            }
             if (tv) {
                 // TV detail is lazy; find its vertical list, not a horizontal season/source rail.
                 rule.onNode(hasScrollToIndexAction() and
@@ -97,8 +103,14 @@ private fun associationEditor(rule: ComposeContentTestRule, activity: ComponentA
                 rule.onNodeWithTag("association-open").performScrollTo()
             }
             click(rule.onNodeWithTag("association-open").assertIsDisplayed())
+            rule.waitUntil(5_000) { rule.onAllNodes(isDialog()).fetchSemanticsNodes().size == 1 }
             if (tv) rule.onNodeWithTag("association-close").assertIsFocused()
             dialogNode(hasText(associationEvidence(selected))).assertExists()
+        }
+        fun awaitSaved(change: () -> Boolean) {
+            // Room publishes the association before the VM posts the success notice.
+            // Observe both so open() cannot race an as-yet-unpublished touch overlay.
+            rule.waitUntil(15_000) { change() && (tv || model.message.isNotBlank()) }
         }
         fun selectTarget() {
             choose("target:$targetId")
@@ -126,7 +138,7 @@ private fun associationEditor(rule: ComposeContentTestRule, activity: ComponentA
         open(); selectTarget(); choose("season-0")
         dialogNode(hasText("当前片源季数（手动标签）：特别篇 / 第0季")).assertExists()
         choose("confirm")
-        rule.waitUntil(15000) { model.workAssociations.entries[sourceId]?.season == 0 }
+        awaitSaved { model.workAssociations.entries[sourceId]?.season == 0 }
         closedWithFocus()
         rule.runOnIdle { assertEquals(model.workAssociations.workId(source), model.workAssociations.workId(target)) }
 
@@ -135,19 +147,19 @@ private fun associationEditor(rule: ComposeContentTestRule, activity: ComponentA
         dialogNode(hasText("当前片源季数（手动标签）：未知")).assertExists()
         val specialsRevision = model.workAssociations.revision
         choose("confirm")
-        rule.waitUntil(15000) { model.workAssociations.revision != specialsRevision }
+        awaitSaved { model.workAssociations.revision != specialsRevision }
         closedWithFocus()
         val unknownEntries = model.workAssociations.entries
         rule.runOnIdle { assertTrue(sourceId in unknownEntries); assertNull(model.workAssociations.seasonLabel(source)) }
         open(); choose("unlink")
-        rule.waitUntil(15000) { sourceId !in model.workAssociations.entries }
+        awaitSaved { sourceId !in model.workAssociations.entries }
         closedWithFocus()
         rule.runOnIdle {
             assertFalse(targetId in model.workAssociations.entries)
             assertEquals(MediaDomainMapper.workId(source), model.workAssociations.workId(source))
         }
         open(); choose("undo")
-        rule.waitUntil(15000) { model.workAssociations.entries == unknownEntries }
+        awaitSaved { model.workAssociations.entries == unknownEntries }
         closedWithFocus()
         rule.runOnIdle { assertNull(model.workAssociations.seasonLabel(source)); assertNull(model.workAssociations.undoEntries) }
     }
