@@ -59,7 +59,7 @@ jobs:
         env:
           EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
-          bash -n scripts/hybrid/build-dev-candidate.sh scripts/hybrid/run-device.sh
+          bash -n scripts/hybrid/build-dev-candidate.sh scripts/hybrid/run-device.sh scripts/hybrid/wait-device.sh
           python3 -m unittest discover -s scripts/hybrid -p 'test_*.py' -v
           python3 scripts/hybrid/artifacts.py check-source
           bash scripts/generate-test-media.sh

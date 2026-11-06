@@ -38,15 +38,22 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.webkit.WebViewAssetLoader
 import androidx.webkit.WebViewCompat
 import dev.cinematv.BuildConfig
+import dev.cinematv.ui.shared.RemoteBackPress
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import org.json.JSONObject
 
 /** Back is consumed once at the native boundary; only arrows/OK reach the web spatial navigator. */
 class CinemaWebView(context: Context, private val back: () -> Unit) : WebView(context) {
+    private val backPress = RemoteBackPress()
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.keyCode == KeyEvent.KEYCODE_BACK) {
-            if (event.action == KeyEvent.ACTION_UP && !event.isCanceled) back()
+            when (event.action) {
+                KeyEvent.ACTION_DOWN -> backPress.down(event.downTime, event.repeatCount)
+                KeyEvent.ACTION_UP -> if (backPress.up(event.downTime, event.isCanceled)) back()
+            }
+            // A player/native panel can disappear between down and up. Consume
+            // that orphan release without popping the freshly restored web route.
             return true
         }
         if (event.keyCode == KeyEvent.KEYCODE_DPAD_CENTER) {
@@ -55,6 +62,16 @@ class CinemaWebView(context: Context, private val back: () -> Unit) : WebView(co
                 event.scanCode, event.flags, event.source))
         }
         return super.dispatchKeyEvent(event)
+    }
+
+    override fun onWindowFocusChanged(hasWindowFocus: Boolean) {
+        if (!hasWindowFocus) backPress.reset()
+        super.onWindowFocusChanged(hasWindowFocus)
+    }
+
+    override fun onDetachedFromWindow() {
+        backPress.reset()
+        super.onDetachedFromWindow()
     }
 }
 

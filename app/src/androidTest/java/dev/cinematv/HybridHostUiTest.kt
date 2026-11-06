@@ -74,7 +74,8 @@ class HybridHostUiTest {
                     .put("method", name.methodName).put("expectedMode", expectedMode).put("api", Build.VERSION.SDK_INT)
                     .put("provider", runCatching { WebViewCompat.getCurrentWebViewPackage(activity)?.versionName }.getOrNull())
                     .put("route", model.page.name).put("webViewPresent", web() != null)
-                    .put("activity", activity.javaClass.name).put("syntheticContent", true).toString(2))
+                    .put("activity", activity.javaClass.name).put("syntheticContent", true)
+                    .put("webGeometry", runCatching { webGeometry() }.getOrNull()).toString(2))
             }
         } finally {
             if (::scenario.isInitialized) scenario.close()
@@ -118,6 +119,46 @@ class HybridHostUiTest {
     }
     private fun click(id: String) { focus(id); key(KeyEvent.KEYCODE_DPAD_CENTER) }
     private fun focused() = evaluate("document.activeElement?.dataset.focus || ''")
+    private fun webGeometry(): JSONObject? {
+        val current = web() ?: return null
+        var native = JSONObject()
+        instrumentation.runOnMainSync {
+            native = JSONObject().put("width", current.width).put("height", current.height)
+                .put("scrollX", current.scrollX).put("scrollY", current.scrollY)
+        }
+        val dom = evaluate("""JSON.stringify((() => {
+            const rect = s => { const n=document.querySelector(s); if(!n) return null; const r=n.getBoundingClientRect(); return {x:r.x,y:r.y,width:r.width,height:r.height,scrollTop:n.scrollTop,scrollLeft:n.scrollLeft}; };
+            const style = s => { const n=document.querySelector(s); if(!n) return null; const c=getComputedStyle(n); return {top:c.top,height:c.height,overflowY:c.overflowY,scrollPaddingTop:c.scrollPaddingTop}; };
+            return {innerWidth,innerHeight,dpr:devicePixelRatio,windowX:scrollX,windowY:scrollY,
+                documentHeight:document.documentElement.clientHeight,documentScroll:document.scrollingElement?.scrollTop,
+                documentScrollHeight:document.documentElement.scrollHeight,
+                bodyScroll:document.body.scrollTop,app:rect('.tv-app'),content:rect('.content'),topbar:rect('.topbar'),
+                visualViewport:window.visualViewport ? {height:visualViewport.height,offsetTop:visualViewport.offsetTop,pageTop:visualViewport.pageTop,scale:visualViewport.scale} : null,
+                computed:{topbar:style('.topbar'),content:style('.content'),body:style('body')},
+                active:document.activeElement?.dataset.focus || '',activeRect:rect('[data-focus]:focus')}; })())""")
+        return JSONObject().put("native", native).put("dom", JSONObject(dom))
+    }
+    private fun assertNativeFocusAfterDown() {
+        val diagnostic = HybridNativeDiagnostics(instrumentation, activity, model, output, name.methodName)
+        try {
+            key(KeyEvent.KEYCODE_DPAD_DOWN)
+            assertTrue(rule.onAllNodes(isFocused()).fetchSemanticsNodes().isNotEmpty())
+        } finally { diagnostic.close() }
+    }
+    private fun playerBackPress() {
+        val downTime = SystemClock.uptimeMillis()
+        instrumentation.sendKeySync(KeyEvent(downTime, downTime, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_BACK, 0))
+        try {
+            instrumentation.runOnMainSync {
+                assertEquals("A Back down must stay with the player until its matching release", Page.PLAYER, model.page)
+            }
+        } finally {
+            instrumentation.sendKeySync(KeyEvent(downTime, SystemClock.uptimeMillis(), KeyEvent.ACTION_UP, KeyEvent.KEYCODE_BACK, 0))
+        }
+        instrumentation.waitForIdleSync()
+        rule.waitForIdle()
+        assertTrue("One player Back must never skip its detail return route", model.page in setOf(Page.PLAYER, Page.DETAIL))
+    }
     private fun openFirstDetail() {
         if (hybrid) click("hero:open") else rule.runOnIdle { model.open(model.featured.first()) }
         rule.waitUntil(25_000) { model.page == Page.DETAIL && !model.busy && model.selected?.episodes?.isNotEmpty() == true }
@@ -135,6 +176,7 @@ class HybridHostUiTest {
     }
     private fun screenshot(label: String) {
         instrumentation.waitForIdleSync()
+        awaitWebCompositorFrame()
         val bitmap = instrumentation.uiAutomation.takeScreenshot() ?: throw AssertionError("Compositor screenshot was empty")
         try {
             assertTrue(bitmap.width > bitmap.height)
@@ -142,6 +184,47 @@ class HybridHostUiTest {
             path.outputStream().use { assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) }
             assertTrue(path.length() > 1024)
         } finally { bitmap.recycle() }
+    }
+
+    /** DOM readiness alone does not fence Chromium's compositor after a renderer rebuild. */
+    private fun awaitWebCompositorFrame() {
+        val current = web() ?: return
+        val ready = CountDownLatch(1)
+        val active = java.util.concurrent.atomic.AtomicBoolean(true)
+        var cleanup: (() -> Unit)? = null
+        var failure: Throwable? = null
+        instrumentation.runOnMainSync {
+            current.postVisualStateCallback(SystemClock.uptimeMillis(), object : WebView.VisualStateCallback() {
+                override fun onComplete(requestId: Long) {
+                    if (!active.get()) return
+                    try {
+                        check(current.isAttachedToWindow && HybridDom.find(activity.window.decorView) === current)
+                        val observer = current.viewTreeObserver
+                        if (Build.VERSION.SDK_INT >= 29 && current.isHardwareAccelerated) {
+                            val committed = Runnable { ready.countDown() }
+                            observer.registerFrameCommitCallback(committed)
+                            cleanup = { if (observer.isAlive) observer.unregisterFrameCommitCallback(committed); Unit }
+                        } else {
+                            val drawn = object : android.view.ViewTreeObserver.OnDrawListener {
+                                override fun onDraw() {
+                                    current.postOnAnimation { if (active.get()) ready.countDown() }
+                                }
+                            }
+                            observer.addOnDrawListener(drawn)
+                            cleanup = { if (observer.isAlive) observer.removeOnDrawListener(drawn) }
+                        }
+                        current.postInvalidateOnAnimation()
+                    } catch (error: Throwable) { failure = error; ready.countDown() }
+                }
+            })
+        }
+        try {
+            assertTrue("Web compositor did not submit the tested state within 8s", ready.await(8, TimeUnit.SECONDS))
+            failure?.let { throw it }
+        } finally {
+            active.set(false)
+            instrumentation.runOnMainSync { cleanup?.invoke() }
+        }
     }
 
     @Test fun productionPagesAcceptRemoteInput() {
@@ -168,12 +251,23 @@ class HybridHostUiTest {
             repeat(9) { key(KeyEvent.KEYCODE_DPAD_RIGHT) }
             assertNotEquals("Offscreen rail navigation must advance", original, focused())
             assertTrue(focused().startsWith("card:"))
+            awaitWebCompositorFrame()
+            val geometry = webGeometry()!!
+            File(output, "${name.methodName}-after-nine-rights-geometry.json").writeText(geometry.toString(2))
+            val dom = geometry.getJSONObject("dom")
+            val card = dom.getJSONObject("activeRect")
+            val topbar = dom.getJSONObject("topbar")
+            assertTrue("Focused poster must clear the floating navigation: $geometry",
+                card.getDouble("y") >= topbar.getDouble("y") + topbar.getDouble("height") - 1)
+            assertTrue("Focused poster must fit within the viewport: $geometry",
+                card.getDouble("y") + card.getDouble("height") <= dom.getDouble("innerHeight") + 1)
+            assertEquals("The native WebView must not scroll outside declared page/rail containers", 0,
+                geometry.getJSONObject("native").getInt("scrollY"))
         } else {
             rule.onNodeWithText("观看详情").assertExists()
-            key(KeyEvent.KEYCODE_DPAD_DOWN)
-            rule.onAllNodes(isFocused()).fetchSemanticsNodes().let { assertTrue(it.isNotEmpty()) }
+            assertNativeFocusAfterDown()
             rule.onNodeWithContentDescription("打开搜索").performClick()
-            rule.onNodeWithText("搜索影视").assertExists()
+            rule.onNodeWithText("想看的，在这里。").assertExists()
             assertNull(web())
             Espresso.closeSoftKeyboard()
             key(KeyEvent.KEYCODE_BACK)
@@ -202,7 +296,7 @@ class HybridHostUiTest {
             rule.waitUntil(10_000) { focused() == "settings:updates" }
         } else {
             rule.runOnIdle { model.navigate(Page.SEARCH) }
-            rule.onNodeWithText("搜索影视").assertExists()
+            rule.onNodeWithText("想看的，在这里。").assertExists()
             rule.onNode(hasSetTextAction()).performTextReplacement("旷野")
             rule.onNode(hasSetTextAction()).performImeAction()
             rule.waitUntil(20_000) { !model.busy && model.results.isNotEmpty() }
@@ -224,7 +318,9 @@ class HybridHostUiTest {
         rule.waitUntil(25_000) { model.page == Page.PLAYER && (model.selected?.durationMs ?: 0) > 0 }
         assertNull("A hidden WebView would still consume renderer memory during playback", web())
         screenshot("${name.methodName}-player")
-        repeat(3) { if (model.page == Page.PLAYER) key(KeyEvent.KEYCODE_BACK) }
+        // No panel is open: a complete press hides controls, the next returns to detail.
+        // Check both real key phases so the new WebView cannot reuse the player's up.
+        repeat(2) { if (model.page == Page.PLAYER) playerBackPress() }
         awaitRoute(Page.DETAIL)
         rule.waitUntil(10_000) { (model.selected?.positionMs ?: 0) > 0 }
         assertTrue((model.selected?.durationMs ?: 0) >= 29_000)
@@ -297,8 +393,7 @@ class HybridHostUiTest {
             assertNotSame(old, activity)
             awaitPresentation()
             rule.onNodeWithText("观看详情").assertExists()
-            key(KeyEvent.KEYCODE_DPAD_DOWN)
-            assertTrue(rule.onAllNodes(isFocused()).fetchSemanticsNodes().isNotEmpty())
+            assertNativeFocusAfterDown()
         }
     }
 }

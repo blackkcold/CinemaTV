@@ -121,7 +121,7 @@ Run the artifact-gate tests without an Android SDK:
 
 ```sh
 python3 -m unittest discover -s scripts/hybrid -p 'test_*.py' -v
-bash -n scripts/hybrid/build-dev-candidate.sh scripts/hybrid/run-device.sh
+bash -n scripts/hybrid/build-dev-candidate.sh scripts/hybrid/run-device.sh scripts/hybrid/wait-device.sh
 ```
 
 ## Dev candidate and publication

@@ -224,6 +224,46 @@ class HybridArtifactTest(unittest.TestCase):
             self.assertIn("refuses external signing credentials", result.stderr)
             self.assertNotIn("SYNTHETIC", result.stdout + result.stderr)
 
+    def test_device_startup_recovers_transport_but_rejects_persistent_offline(self):
+        folder = Path(self.temp.name)
+        fake = folder / "fake-adb"
+        fake.write_text("""#!/usr/bin/env bash
+set -eu
+if [ "$1" = version ]; then echo 'Synthetic ADB for readiness contract test'; exit 0; fi
+[ "$1" = -s ] && [ "$2" = emulator-5554 ]
+shift 2
+if [ "$1" = get-state ]; then
+  attempts=0
+  if [ -f "$FAKE_ADB_COUNTER" ]; then attempts=$(cat "$FAKE_ADB_COUNTER"); fi
+  attempts=$((attempts + 1))
+  printf '%s' "$attempts" > "$FAKE_ADB_COUNTER"
+  if [ "$FAKE_ADB_MODE" = offline ] || [ "$attempts" = 1 ] || [ "$attempts" = 3 ]; then
+    echo 'adb: device offline' >&2
+    exit 1
+  fi
+  echo device
+elif [ "$*" = 'shell getprop sys.boot_completed' ]; then
+  printf '1\\r\\n'
+else
+  exit 2
+fi
+""")
+        fake.chmod(0o755)
+        script = Path(__file__).with_name("wait-device.sh")
+        counter = folder / "adb-count"
+        evidence = folder / "startup.txt"
+        env = {**os.environ, "FAKE_ADB_COUNTER": str(counter), "FAKE_ADB_MODE": "reconnect"}
+        result = subprocess.run(["bash", str(script), str(fake), "emulator-5554", str(evidence), "10"],
+                                env=env, capture_output=True, text=True, timeout=15)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(counter.read_text(), "5")
+        self.assertIn("adb: device offline", evidence.read_text())
+        counter.unlink()
+        result = subprocess.run(["bash", str(script), str(fake), "emulator-5554", str(evidence), "2"],
+            env={**env, "FAKE_ADB_MODE": "offline"}, capture_output=True, text=True, timeout=7)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("before the deadline", result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()
