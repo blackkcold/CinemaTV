@@ -10,9 +10,11 @@ plugins {
 }
 
 apply(from = "noto-fonts.gradle")
+apply(from = "tv-web.gradle")
 
 // Keep AGP wiring in the plugin-owning script; the downloader stays plugin-independent.
 tasks.named("preBuild") { dependsOn("prepareNotoFonts") }
+tasks.named("preBuild") { dependsOn("stageTvWeb") }
 
 // Channels share package/signing identity so switching is an ordinary forward upgrade.
 // Properties avoid renaming existing Debug/Release tasks or preview artifact paths.
@@ -115,6 +117,7 @@ android {
     // Keep fonts mmap-eligible; avoid inflating a ~19 MB collection for asset buffer access.
     androidResources { noCompress += listOf("ttc", "ttf") }
     sourceSets["main"].assets.srcDir(layout.buildDirectory.dir("generated/notoAssets"))
+    sourceSets["main"].assets.srcDir(layout.buildDirectory.dir("generated/tvWebAssets"))
     if (updateAcceptance) {
         sourceSets["androidTest"].setRoot("src/updateAcceptance")
     } else {
@@ -139,6 +142,7 @@ dependencies {
     androidTestImplementation(composeBom)
     implementation("androidx.activity:activity-compose:1.11.0")
     implementation("androidx.core:core-ktx:1.17.0")
+    implementation("androidx.webkit:webkit:1.18.0")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.animation:animation")
