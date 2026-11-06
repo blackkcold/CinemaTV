@@ -1,0 +1,78 @@
+name: Dev audit / official LibreTV compatibility
+on:
+  pull_request:
+    branches: [dev]
+    paths: ['app/**', 'scripts/libretv-contracts/**', '.github/workflows/audit-upstreams.yml']
+  push:
+    branches: [dev]
+    paths: ['app/**', 'scripts/libretv-contracts/**', '.github/workflows/audit-upstreams.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: cinematv-audit-upstreams-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  protocol:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ['2.21.1', '2.21.2']
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Download and verify official release and runtime
+        env:
+          LIBRETV_VERSION: ${{ matrix.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/upstream" qa/audit-upstreams
+          cd "$RUNNER_TEMP/upstream"
+          CURL=(curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --connect-timeout 20 --max-time 120 --max-filesize 67108864)
+          "${CURL[@]}" "https://github.com/LibreSpark/LibreTV/releases/download/v$LIBRETV_VERSION/libretv-$LIBRETV_VERSION-standalone.tar.gz" -o "libretv-$LIBRETV_VERSION-standalone.tar.gz"
+          "${CURL[@]}" "https://github.com/LibreSpark/LibreTV/releases/download/v$LIBRETV_VERSION/SHA256SUMS" -o SHA256SUMS
+          "${CURL[@]}" 'https://nodejs.org/dist/v22.23.4/node-v22.23.4-linux-x64.tar.xz' -o node-v22.23.4-linux-x64.tar.xz
+          "${CURL[@]}" 'https://nodejs.org/dist/v22.23.4/SHASUMS256.txt' -o SHASUMS256.txt
+          cd "$GITHUB_WORKSPACE"
+          python3 scripts/libretv-contracts/prepare_official.py --version "$LIBRETV_VERSION" --directory "$RUNNER_TEMP/upstream" --report qa/audit-upstreams/artifacts.json
+      - name: Authentication and rejected-source contracts
+        env:
+          LIBRETV_VERSION: ${{ matrix.version }}
+        run: |
+          python3 scripts/libretv-contracts/run.py --version "$LIBRETV_VERSION" \
+            --archive "$RUNNER_TEMP/upstream/libretv-$LIBRETV_VERSION-standalone.tar.gz" \
+            --sums "$RUNNER_TEMP/upstream/SHA256SUMS" \
+            --node "$RUNNER_TEMP/upstream/node-v22.23.4-linux-x64/bin/node" \
+            --output qa/audit-upstreams/session-contracts.json
+      - name: Controlled search, stream and cross-client detail-cache contracts
+        env:
+          LIBRETV_VERSION: ${{ matrix.version }}
+        run: |
+          python3 scripts/libretv-contracts/positive.py --version "$LIBRETV_VERSION" \
+            --archive "$RUNNER_TEMP/upstream/libretv-$LIBRETV_VERSION-standalone.tar.gz" \
+            --sums "$RUNNER_TEMP/upstream/SHA256SUMS" \
+            --node "$RUNNER_TEMP/upstream/node-v22.23.4-linux-x64/bin/node" \
+            --node-archive "$RUNNER_TEMP/upstream/node-v22.23.4-linux-x64.tar.xz" \
+            --fixture-url 'https://raw.githubusercontent.com/blackkcold/CinemaTV/74d104aa2b4e212163376bcbb1da04bef6670918/scripts/libretv-contracts/fixtures/blender-bbb-static-cms.json' \
+            --output qa/audit-upstreams/positive-contracts.json
+      - name: SourceList discovery, direct-source import and skipped reasons
+        env:
+          LIBRETV_VERSION: ${{ matrix.version }}
+          FIXTURE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          python3 scripts/libretv-contracts/subscriptions.py --version "$LIBRETV_VERSION" --commit "$FIXTURE_COMMIT" \
+            --archive "$RUNNER_TEMP/upstream/libretv-$LIBRETV_VERSION-standalone.tar.gz" \
+            --sums "$RUNNER_TEMP/upstream/SHA256SUMS" \
+            --node "$RUNNER_TEMP/upstream/node-v22.23.4-linux-x64/bin/node" \
+            --node-archive "$RUNNER_TEMP/upstream/node-v22.23.4-linux-x64.tar.xz" \
+            --output qa/audit-upstreams/subscription-contracts.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: official-libretv-${{ matrix.version }}-audit
+          path: qa/audit-upstreams/
+          if-no-files-found: error

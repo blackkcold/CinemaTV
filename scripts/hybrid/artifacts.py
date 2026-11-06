@@ -230,12 +230,19 @@ def device_result(root, bundle, evidence, mode):
         metadata = evidence / "hybrid-evidence" / f"{method}.json"
         require(png.is_file() and metadata.is_file(), "Missing per-case device evidence")
         case = json.loads(metadata.read_text())
-        require(case.get("method") == method and case.get("expectedMode") == mode,
+        expected_mode = mode
+        if mode == "provider-policy":
+            require(case.get("requestedMode") == mode and case.get("api") == 29,
+                    "Provider-policy lane must exercise API29 with its actual WebView")
+            provider_major = str(case.get("provider") or "").split(".")[0]
+            enabled = provider_major.isdigit() and int(provider_major) >= 111 and case.get("messageListener") is True
+            expected_mode = "hybrid" if enabled else "native-fallback"
+        require(case.get("method") == method and case.get("expectedMode") == expected_mode,
                 "Device evidence method or presentation differs from requested lane")
         require(case.get("activity") == "dev.cinematv.MainActivity" and case.get("syntheticContent") is True,
                 "Device evidence did not exercise the declared production host")
         api = case.get("api")
-        require(isinstance(api, int) and (api >= 29 if mode == "hybrid" else api == 26),
+        require(isinstance(api, int) and (api == 29 if mode == "provider-policy" else api >= 29 if mode == "hybrid" else api == 26),
                 "Device evidence API differs from requested lane")
         cases[method] = {"screenshotSha256": sha256(png), "metadataSha256": sha256(metadata)}
     receipt.update(status="passed-synthetic-device-tests", expectedPresentation=mode,
@@ -267,7 +274,7 @@ def main():
     result = sub.add_parser("device-result")
     result.add_argument("--bundle", type=Path, required=True)
     result.add_argument("--evidence", type=Path, required=True)
-    result.add_argument("--mode", choices=("hybrid", "native-fallback"), required=True)
+    result.add_argument("--mode", choices=("hybrid", "native-fallback", "provider-policy"), required=True)
     args = parser.parse_args()
     root = args.root.resolve()
     if args.command == "check-source":

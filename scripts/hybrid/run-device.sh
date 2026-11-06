@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
 # Install the already compiled exact-head APKs; allocate no Gradle JVM beside the emulator.
 set -euo pipefail
-if [ "$#" -ne 3 ] || [[ ! "$3" =~ ^(hybrid|native-fallback)$ ]]; then
-  echo 'Usage: run-device.sh BUNDLE_DIRECTORY EVIDENCE_DIRECTORY hybrid|native-fallback' >&2
+if [ "$#" -lt 3 ] || [ "$#" -gt 5 ] || [[ ! "$3" =~ ^(hybrid|native-fallback|provider-policy)$ ]]; then
+  echo 'Usage: run-device.sh BUNDLE_DIRECTORY EVIDENCE_DIRECTORY hybrid|native-fallback|provider-policy [SIZE] [DENSITY]' >&2
   exit 2
 fi
 BUNDLE=$1
 EVIDENCE=$2
 MODE=$3
+SIZE=${4:-1920x1080}
+DENSITY=${5:-320}
+[[ "$SIZE" =~ ^(1920x1080|3840x2160)$ ]] && [[ "$DENSITY" =~ ^(320|640)$ ]]
 DEVICE_OUTPUT=/sdcard/Android/media/dev.cinematv/hybrid-output
 python3 scripts/hybrid/artifacts.py verify-device-bundle --directory "$BUNDLE"
 mkdir -p "$EVIDENCE"
@@ -44,8 +47,8 @@ bash scripts/hybrid/wait-device.sh "$HYBRID_ADB" "$HYBRID_SERIAL" "$EVIDENCE/sta
 # These are dedicated fresh Android TV emulator instances, never a user's device.
 adb_bounded shell svc power stayon true
 adb_bounded shell wm dismiss-keyguard
-adb_bounded shell wm size 1920x1080
-adb_bounded shell wm density 320
+adb_bounded shell wm size "$SIZE"
+adb_bounded shell wm density "$DENSITY"
 adb_bounded shell settings put system screen_off_timeout 2147483647
 adb_bounded shell settings put secure immersive_mode_confirmations confirmed
 {
@@ -59,7 +62,11 @@ adb_bounded shell settings put secure immersive_mode_confirmations confirmed
   adb_bounded shell dumpsys webviewupdate
 } > "$EVIDENCE/device.txt"
 API=$(adb_bounded shell getprop ro.build.version.sdk | tr -d '\r')
-if [ "$MODE" = hybrid ]; then test "$API" -ge 29; else test "$API" -eq 26; fi
+case "$MODE" in
+  hybrid) test "$API" -ge 29 ;;
+  native-fallback) test "$API" -eq 26 ;;
+  provider-policy) test "$API" -eq 29 ;;
+esac
 timeout --signal=TERM --kill-after=5s 60s "$HYBRID_ADB" -s "$HYBRID_SERIAL" install -r "$BUNDLE/app-debug.apk"
 timeout --signal=TERM --kill-after=5s 60s "$HYBRID_ADB" -s "$HYBRID_SERIAL" install -r "$BUNDLE/app-debug-androidTest.apk"
 adb_bounded shell mkdir -p "$DEVICE_OUTPUT"

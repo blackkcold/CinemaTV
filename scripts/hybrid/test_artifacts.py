@@ -202,6 +202,18 @@ class HybridArtifactTest(unittest.TestCase):
                 api=36, activity="dev.cinematv.MainActivity", syntheticContent=True)))
         result = artifacts.device_result(self.root, bundle, evidence, "hybrid")
         self.assertEqual(set(result["testEvidence"]), set(methods))
+        (evidence / "device-receipt.json").unlink()
+        for method in methods:
+            (captures / f"{method}.json").write_text(json.dumps(dict(method=method,
+                requestedMode="provider-policy", expectedMode="native-fallback", api=29,
+                provider="83.0.0.0", messageListener=False,
+                activity="dev.cinematv.MainActivity", syntheticContent=True)))
+        artifacts.device_result(self.root, bundle, evidence, "provider-policy")
+        with self.assertRaises(ValueError):
+            artifacts.device_result(self.root, bundle, evidence, "hybrid")
+        for method in methods:
+            (captures / f"{method}.json").write_text(json.dumps(dict(method=method, expectedMode="hybrid",
+                api=36, activity="dev.cinematv.MainActivity", syntheticContent=True)))
         case_path = captures / "secondCase.json"
         original = json.loads(case_path.read_text())
         for changed in (dict(expectedMode="native-fallback"), dict(api=26),

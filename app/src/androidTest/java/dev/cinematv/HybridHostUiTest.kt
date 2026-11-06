@@ -22,6 +22,7 @@ import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
 import dev.cinematv.hybrid.HybridPolicy
 import dev.cinematv.data.MediaItem
 import dev.cinematv.ui.shared.metadataLine
@@ -50,8 +51,14 @@ class HybridHostUiTest {
     private lateinit var server: UiFixtureServer
     private var inputTraceEnabled = false
     private val inputTrace = ArrayDeque<JSONObject>()
-    private val expectedMode get() = InstrumentationRegistry.getArguments().getString("hybridExpectedMode")
+    private val requestedMode get() = InstrumentationRegistry.getArguments().getString("hybridExpectedMode")
         ?: if (Build.VERSION.SDK_INT >= 29) "hybrid" else "native-fallback"
+    private val expectedMode get() = if (requestedMode == "provider-policy") {
+        val context = instrumentation.targetContext
+        val provider = WebViewCompat.getCurrentWebViewPackage(context)?.versionName
+        val listener = WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)
+        if (HybridPolicy.evaluate(Build.VERSION.SDK_INT, provider, listener).enabled) "hybrid" else "native-fallback"
+    } else requestedMode
     private val hybrid get() = expectedMode == "hybrid"
     private val output get() = File(InstrumentationRegistry.getArguments().getString("additionalTestOutputDir")
         ?: instrumentation.targetContext.getExternalFilesDir(null)!!.absolutePath, "hybrid-evidence").apply { mkdirs() }
@@ -94,6 +101,8 @@ class HybridHostUiTest {
                 }
                 File(output, "${name.methodName}.json").writeText(JSONObject()
                     .put("method", name.methodName).put("expectedMode", expectedMode).put("api", Build.VERSION.SDK_INT)
+                    .put("requestedMode", requestedMode)
+                    .put("messageListener", runCatching { WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER) }.getOrDefault(false))
                     .put("provider", runCatching { WebViewCompat.getCurrentWebViewPackage(activity)?.versionName }.getOrNull())
                     .put("route", model.page.name).put("webViewPresent", web() != null)
                     .put("activity", activity.javaClass.name).put("syntheticContent", true)
