@@ -9,6 +9,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 import zipfile
+import zlib
 
 import artifacts
 
@@ -181,7 +182,20 @@ class HybridArtifactTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 artifacts.instrumentation_results(bad, ["requiredCase"])
 
-    def test_each_device_case_requires_matching_host_lane_and_exported_evidence(self):
+    def write_device_png(self, path, size):
+        """A valid, flat grayscale PNG fixture; no imaging dependency or real media."""
+        width, height = map(int, size.split("x"))
+
+        def chunk(kind, data):
+            return (struct.pack(">I", len(data)) + kind + data +
+                    struct.pack(">I", zlib.crc32(kind + data)))
+
+        pixels = (b"\x00" + b"\x80" * width) * height
+        path.write_bytes(b"\x89PNG\r\n\x1a\n" +
+                         chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 0, 0, 0, 0)) +
+                         chunk(b"IDAT", zlib.compress(pixels)) + chunk(b"IEND", b""))
+
+    def device_evidence(self, size="1920x1080", density=320):
         methods = ["firstCase", "secondCase"]
         self.write("app/src/androidTest/java/dev/cinematv/HybridHostUiTest.kt",
                    "\n".join(f"@Test fun {name}() {{}}" for name in methods))
@@ -191,16 +205,21 @@ class HybridArtifactTest(unittest.TestCase):
         evidence = Path(self.temp.name) / "evidence"
         captures = evidence / "hybrid-evidence"
         captures.mkdir(parents=True)
-        (evidence / "device.txt").write_text("Synthetic host fixture, not actual device evidence")
+        (evidence / "device.txt").write_text("Synthetic host fixture, not actual device evidence\n"
+                                           f"Physical size: {size}\nPhysical density: {density}\n")
         log = "".join("INSTRUMENTATION_STATUS: class=dev.cinematv.HybridHostUiTest\n"
                       f"INSTRUMENTATION_STATUS: test={name}\nINSTRUMENTATION_STATUS_CODE: 0\n"
                       for name in methods) + "OK (2 tests)\nINSTRUMENTATION_CODE: -1\n"
         (evidence / "instrumentation.txt").write_text(log)
         for name in methods:
-            (captures / f"{name}.png").write_bytes(b"\x89PNG\r\n\x1a\n" + b"synthetic" * 160)
+            self.write_device_png(captures / f"{name}.png", size)
             (captures / f"{name}.json").write_text(json.dumps(dict(method=name, expectedMode="hybrid",
                 api=36, activity="dev.cinematv.MainActivity", syntheticContent=True)))
-        result = artifacts.device_result(self.root, bundle, evidence, "hybrid")
+        return methods, bundle, evidence, captures
+
+    def test_each_device_case_requires_matching_host_lane_and_exported_evidence(self):
+        methods, bundle, evidence, captures = self.device_evidence()
+        result = artifacts.device_result(self.root, bundle, evidence, "hybrid", "1920x1080", 320)
         self.assertEqual(set(result["testEvidence"]), set(methods))
         (evidence / "device-receipt.json").unlink()
         for method in methods:
@@ -208,9 +227,9 @@ class HybridArtifactTest(unittest.TestCase):
                 requestedMode="provider-policy", expectedMode="native-fallback", api=29,
                 provider="83.0.0.0", messageListener=False,
                 activity="dev.cinematv.MainActivity", syntheticContent=True)))
-        artifacts.device_result(self.root, bundle, evidence, "provider-policy")
+        artifacts.device_result(self.root, bundle, evidence, "provider-policy", "1920x1080", 320)
         with self.assertRaises(ValueError):
-            artifacts.device_result(self.root, bundle, evidence, "hybrid")
+            artifacts.device_result(self.root, bundle, evidence, "hybrid", "1920x1080", 320)
         for method in methods:
             (captures / f"{method}.json").write_text(json.dumps(dict(method=method, expectedMode="hybrid",
                 api=36, activity="dev.cinematv.MainActivity", syntheticContent=True)))
@@ -220,11 +239,92 @@ class HybridArtifactTest(unittest.TestCase):
                         dict(activity="dev.cinematv.TvTestActivity"), dict(method="otherCase")):
             case_path.write_text(json.dumps({**original, **changed}))
             with self.assertRaises(ValueError):
-                artifacts.device_result(self.root, bundle, evidence, "hybrid")
+                artifacts.device_result(self.root, bundle, evidence, "hybrid", "1920x1080", 320)
         case_path.write_text(json.dumps(original))
         (captures / "secondCase.png").unlink()
         with self.assertRaisesRegex(ValueError, "Missing per-case"):
-            artifacts.device_result(self.root, bundle, evidence, "hybrid")
+            artifacts.device_result(self.root, bundle, evidence, "hybrid", "1920x1080", 320)
+
+    def test_device_result_accepts_matching_1080_and_4k_evidence(self):
+        methods, bundle, evidence, captures = self.device_evidence()
+        for size, density in (("1920x1080", 320), ("3840x2160", 640)):
+            with self.subTest(size=size, density=density):
+                (evidence / "device.txt").write_text(f"Physical size: {size}\nPhysical density: {density}\n")
+                for method in methods:
+                    self.write_device_png(captures / f"{method}.png", size)
+                result = artifacts.device_result(self.root, bundle, evidence, "hybrid", size, density)
+                self.assertEqual(result["expectedDisplay"], {"size": size, "density": density})
+                self.assertEqual(result["display"], result["expectedDisplay"])
+                self.assertEqual(set(result["testEvidence"]), set(methods))
+                (evidence / "device-receipt.json").unlink()
+
+    def test_device_result_uses_wm_override_instead_of_physical_display(self):
+        _, bundle, evidence, _ = self.device_evidence(size="3840x2160", density=640)
+        (evidence / "device.txt").write_text("Physical size: 1920x1080\r\nOverride size: 3840x2160\r\n"
+                                           "Physical density: 320\r\nOverride density: 640\r\n")
+        result = artifacts.device_result(self.root, bundle, evidence, "hybrid", "3840x2160", 640)
+        self.assertEqual(result["display"], {"size": "3840x2160", "density": 640})
+
+    def test_4k_lane_rejects_1080_wm_even_when_captures_are_4k(self):
+        _, bundle, evidence, _ = self.device_evidence(size="3840x2160", density=640)
+        for sizes in ("Physical size: 1920x1080\n",
+                      "Physical size: 3840x2160\nOverride size: 1920x1080\n"):
+            with self.subTest(sizes=sizes):
+                (evidence / "device.txt").write_text(sizes + "Physical density: 640\n")
+                with self.assertRaisesRegex(ValueError, "wm size differs"):
+                    artifacts.device_result(self.root, bundle, evidence, "hybrid", "3840x2160", 640)
+                self.assertFalse((evidence / "device-receipt.json").exists())
+
+    def test_4k_lane_rejects_each_1080_capture_even_when_wm_is_4k(self):
+        methods, bundle, evidence, captures = self.device_evidence(size="3840x2160", density=640)
+        for method in methods:
+            with self.subTest(method=method):
+                png = captures / f"{method}.png"
+                self.write_device_png(png, "1920x1080")
+                with self.assertRaisesRegex(ValueError, f"PNG dimensions differ.*{method}"):
+                    artifacts.device_result(self.root, bundle, evidence, "hybrid", "3840x2160", 640)
+                self.assertFalse((evidence / "device-receipt.json").exists())
+                self.write_device_png(png, "3840x2160")
+
+    def test_device_result_rejects_wrong_effective_density(self):
+        _, bundle, evidence, _ = self.device_evidence(size="3840x2160", density=640)
+        for densities in ("Physical density: 320\n",
+                          "Physical density: 640\nOverride density: 320\n"):
+            with self.subTest(densities=densities):
+                (evidence / "device.txt").write_text("Physical size: 3840x2160\n" + densities)
+                with self.assertRaisesRegex(ValueError, "wm density differs"):
+                    artifacts.device_result(self.root, bundle, evidence, "hybrid", "3840x2160", 640)
+                self.assertFalse((evidence / "device-receipt.json").exists())
+
+    def test_missing_or_ambiguous_wm_metadata_cannot_pass(self):
+        valid = "Physical size: 1920x1080\nPhysical density: 320\n"
+        for metadata in ("Synthetic host fixture only", valid.replace("Physical density: 320\n", ""),
+                         valid + "Physical size: 1920x1080\n",
+                         valid + "Override density: 320\nOverride density: 640\n"):
+            with self.subTest(metadata=metadata), self.assertRaisesRegex(ValueError, "Missing or ambiguous"):
+                artifacts.device_display(metadata, "1920x1080", 320)
+
+    def test_signature_without_png_ihdr_cannot_pass(self):
+        _, bundle, evidence, captures = self.device_evidence()
+        (captures / "secondCase.png").write_bytes(b"\x89PNG\r\n\x1a\n" + b"synthetic" * 160)
+        with self.assertRaisesRegex(ValueError, "Invalid device PNG"):
+            artifacts.device_result(self.root, bundle, evidence, "hybrid", "1920x1080", 320)
+
+    def test_invalid_wm_override_never_falls_back_to_physical(self):
+        valid = "Physical size: 1920x1080\nPhysical density: 320\n"
+        for override in ("Override size: \n", "Override density: invalid\n"):
+            with self.subTest(override=override), self.assertRaisesRegex(ValueError, "Invalid device wm"):
+                artifacts.device_display(valid + override, "1920x1080", 320)
+
+    def test_device_result_cli_requires_expected_size_and_density(self):
+        script = Path(__file__).with_name("artifacts.py")
+        base = ["python3", str(script), "device-result", "--bundle", "unused", "--evidence", "unused",
+                "--mode", "hybrid"]
+        for arguments in ([], ["--expected-size", "3840x2160"], ["--expected-density", "640"]):
+            with self.subTest(arguments=arguments):
+                result = subprocess.run(base + arguments, capture_output=True, text=True)
+                self.assertEqual(result.returncode, 2)
+                self.assertIn("required", result.stderr)
 
     def test_candidate_script_rejects_any_signing_variable_before_build(self):
         script = Path(__file__).with_name("build-dev-candidate.sh")

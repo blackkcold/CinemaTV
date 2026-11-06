@@ -90,7 +90,8 @@ INSTRUMENTATION_STATUS=${PIPESTATUS[0]}
 set -e
 test "$INSTRUMENTATION_STATUS" -eq 0
 timeout --signal=TERM --kill-after=5s 30s "$HYBRID_ADB" -s "$HYBRID_SERIAL" pull "$DEVICE_OUTPUT/hybrid-evidence" "$EVIDENCE/" >/dev/null
-python3 scripts/hybrid/artifacts.py device-result --bundle "$BUNDLE" --evidence "$EVIDENCE" --mode "$MODE"
+python3 scripts/hybrid/artifacts.py device-result --bundle "$BUNDLE" --evidence "$EVIDENCE" --mode "$MODE" \
+  --expected-size "$SIZE" --expected-density "$DENSITY"
 # Keep the original per-case screenshot gate intact, then exercise the same APK's
 # system session on every API and additional hybrid flows on capable providers.
 CLASSES=$(python3 scripts/hybrid/tv_regressions.py --classes --evidence "$EVIDENCE")

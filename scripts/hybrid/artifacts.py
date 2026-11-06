@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import struct
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
@@ -214,16 +215,49 @@ def instrumentation_results(log, expected_methods):
     return completed
 
 
-def device_result(root, bundle, evidence, mode):
+def device_display(metadata, expected_size, expected_density):
+    require(expected_size in ("1920x1080", "3840x2160") and
+            type(expected_density) is int and expected_density in (320, 640),
+            "Unsupported requested device display")
+
+    def effective(field, pattern):
+        physical = re.findall(rf"^Physical {field}: ([^\r\n]*)\r?$", metadata, re.MULTILINE)
+        override = re.findall(rf"^Override {field}: ([^\r\n]*)\r?$", metadata, re.MULTILINE)
+        require(len(physical) == 1 and len(override) <= 1,
+                f"Missing or ambiguous device wm {field}")
+        value = override[0] if override else physical[0]
+        require(re.fullmatch(pattern, value), f"Invalid device wm {field}")
+        return value
+
+    size = effective("size", r"[1-9]\d*x[1-9]\d*")
+    density = int(effective("density", r"[1-9]\d*"))
+    require(size == expected_size, "Device wm size differs from requested lane")
+    require(density == expected_density, "Device wm density differs from requested lane")
+    return {"size": size, "density": density}
+
+
+def device_png_size(path):
+    with path.open("rb") as stream:
+        header = stream.read(24)
+    require(path.stat().st_size > 1024 and len(header) == 24 and header[:8] == b"\x89PNG\r\n\x1a\n" and
+            header[8:16] == b"\x00\x00\x00\rIHDR", "Invalid device PNG")
+    return struct.unpack(">II", header[16:24])
+
+
+def device_result(root, bundle, evidence, mode, expected_size, expected_density):
     receipt = verify_device_bundle(root, bundle)
     source = (root / "app/src/androidTest/java/dev/cinematv/HybridHostUiTest.kt").read_text()
     methods = re.findall(r"@Test\s+fun\s+(\w+)", source)
     require(methods, "No declared hybrid device tests")
     completed = instrumentation_results((evidence / "instrumentation.txt").read_text(), methods)
+    device_metadata = (evidence / "device.txt").read_text()
+    display = device_display(device_metadata, expected_size, expected_density)
+    dimensions = tuple(map(int, expected_size.split("x")))
     screenshots = sorted((evidence / "hybrid-evidence").glob("*.png"))
     require(screenshots, "No actual device screenshot was exported")
     for path in screenshots:
-        require(path.stat().st_size > 1024 and path.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n", "Invalid device PNG")
+        require(device_png_size(path) == dimensions,
+                f"Device PNG dimensions differ from requested lane: {path.name}")
     cases = {}
     for method in methods:
         png = evidence / "hybrid-evidence" / f"{method}.png"
@@ -246,7 +280,8 @@ def device_result(root, bundle, evidence, mode):
                 "Device evidence API differs from requested lane")
         cases[method] = {"screenshotSha256": sha256(png), "metadataSha256": sha256(metadata)}
     receipt.update(status="passed-synthetic-device-tests", expectedPresentation=mode,
-                   completedTests=completed, deviceMetadata=(evidence / "device.txt").read_text(),
+                   completedTests=completed, deviceMetadata=device_metadata,
+                   expectedDisplay={"size": expected_size, "density": expected_density}, display=display,
                    testEvidence=cases,
                    screenshots={path.name: sha256(path) for path in screenshots},
                    physicalTvAcceptance=False, signedArtifactAcceptance=False)
@@ -275,6 +310,8 @@ def main():
     result.add_argument("--bundle", type=Path, required=True)
     result.add_argument("--evidence", type=Path, required=True)
     result.add_argument("--mode", choices=("hybrid", "native-fallback", "provider-policy"), required=True)
+    result.add_argument("--expected-size", choices=("1920x1080", "3840x2160"), required=True)
+    result.add_argument("--expected-density", type=int, choices=(320, 640), required=True)
     args = parser.parse_args()
     root = args.root.resolve()
     if args.command == "check-source":
@@ -288,7 +325,7 @@ def main():
     elif args.command == "verify-device-bundle":
         verify_device_bundle(root, args.directory)
     elif args.command == "device-result":
-        device_result(root, args.bundle, args.evidence, args.mode)
+        device_result(root, args.bundle, args.evidence, args.mode, args.expected_size, args.expected_density)
 
 
 if __name__ == "__main__":
