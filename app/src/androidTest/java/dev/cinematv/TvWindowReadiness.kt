@@ -19,12 +19,22 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
+/**
+ * A loaded CI emulator can need more than ten seconds to publish a settled display record, and
+ * can leave WMS in layoutPending while the host window is already landscape. The deadline is
+ * explicit and the same user rotation is re-issued periodically to nudge WindowManager; the
+ * settled-state requirement itself is unchanged.
+ */
+private const val SETTLE_DEADLINE_MS = 20_000L
+private const val SETTLE_KICK_INTERVAL_MS = 3_000L
+
 /** API30 introduced fixed-rotation launching; API26/29 retain their existing preparation. */
 @androidx.annotation.RequiresApi(30)
 internal fun waitForSettledTvWindow(activity: ComponentActivity) {
     val instrumentation = InstrumentationRegistry.getInstrumentation()
     val automation = instrumentation.uiAutomation
-    val deadline = SystemClock.uptimeMillis() + 10_000
+    val deadline = SystemClock.uptimeMillis() + SETTLE_DEADLINE_MS
+    var nextKickAt = SystemClock.uptimeMillis() + SETTLE_KICK_INTERVAL_MS
     fun remaining() = (deadline - SystemClock.uptimeMillis()).coerceAtLeast(0)
     fun <T> main(block: () -> T): T {
         val task = FutureTask(Callable(block))
@@ -85,7 +95,7 @@ internal fun waitForSettledTvWindow(activity: ComponentActivity) {
             }
             when (step) {
                 WindowManagerDisplayBarrier.Step.READY -> {
-                    check(remaining() > 0) { "TV display settled after the 10000 ms deadline" }
+                    check(remaining() > 0) { "TV display settled after the $SETTLE_DEADLINE_MS ms deadline" }
                     return
                 }
                 WindowManagerDisplayBarrier.Step.COMMIT_FRAME -> {
@@ -113,9 +123,13 @@ internal fun waitForSettledTvWindow(activity: ComponentActivity) {
                 }
                 WindowManagerDisplayBarrier.Step.WAIT -> Unit
             }
+            if (SystemClock.uptimeMillis() >= nextKickAt) {
+                runCatching { automation.setRotation(rotation) }
+                nextKickAt = SystemClock.uptimeMillis() + SETTLE_KICK_INTERVAL_MS
+            }
             SystemClock.sleep(minOf(50, remaining()))
         }
-        throw AssertionError("TV display did not settle before the 10000 ms deadline: $lastState")
+        throw AssertionError("TV display did not settle before the $SETTLE_DEADLINE_MS ms deadline: $lastState")
     } catch (failure: Throwable) {
         // Keep the sampled state, before teardown closes the window or restores rotation.
         runCatching {
@@ -132,7 +146,7 @@ internal fun waitForSettledTvWindow(activity: ComponentActivity) {
             }
             try { capture.get(1, TimeUnit.SECONDS) } finally { capture.cancel(true) }
         }
-        throw AssertionError("TV WMS readiness failed within 10000 ms: $lastState", failure)
+        throw AssertionError("TV WMS readiness failed within $SETTLE_DEADLINE_MS ms: $lastState", failure)
     } finally {
         closed.set(true)
         runCatching { descriptor.getAndSet(null)?.close() }
