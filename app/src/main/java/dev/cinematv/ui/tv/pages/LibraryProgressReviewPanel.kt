@@ -1,13 +1,18 @@
 package dev.cinematv.ui.tv.pages
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -23,6 +28,7 @@ import dev.cinematv.ui.tv.components.CinemaGlassSurface
 import dev.cinematv.ui.tv.design.TvColors
 import dev.cinematv.ui.tv.design.LocalTvLayout
 import dev.cinematv.ui.tv.focus.LocalContentFocus
+import dev.cinematv.ui.tv.focus.trackTvContentFocus
 import dev.cinematv.ui.typography.CinemaTvText as Text
 import java.text.DateFormat
 import java.util.Date
@@ -41,7 +47,12 @@ internal fun LazyListScope.libraryProgressReviewItems(reviews: List<LibraryProgr
         Text("当前没有需要核对的观看记录。", color = TvColors.Secondary, fontSize = 15.sp)
     }
     items(reviews, key = { it.id }) { record ->
-        Column(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+        var focused by remember { mutableStateOf(false) }
+        Column(Modifier.fillMaxWidth().testTag("library-review-record:${record.id}")
+            .trackTvContentFocus().onFocusChanged { focused = it.isFocused }.focusable()
+            .background(TvColors.Text.copy(alpha = if (focused) .1f else 0f), RoundedCornerShape(12.dp))
+            .border(1.dp, TvColors.Text.copy(alpha = if (focused) .65f else 0f), RoundedCornerShape(12.dp))
+            .padding(12.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
             Text(record.item?.title?.take(180) ?: "来源记录暂不可用", color = TvColors.Text, fontSize = 18.sp)
             record.item?.source?.name?.takeIf(String::isNotBlank)?.let { Text(it.take(100), color = TvColors.Secondary, fontSize = 12.sp) }
             Text(record.reasonText, color = TvColors.Secondary, fontSize = 13.sp, lineHeight = 21.sp)

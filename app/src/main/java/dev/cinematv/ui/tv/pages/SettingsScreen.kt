@@ -115,7 +115,7 @@ fun SettingsScreen(model: CinemaViewModel, initialSection: Int = 0) {
                                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                             GlassAction("检测", Modifier.width(75.dp).height(35.dp)) { model.probeSource(source) }
                                             GlassAction(if (source.enabled) "停用" else "启用", Modifier.width(75.dp).height(35.dp)) { model.toggleSource(source) }
-                                            if (source.key.startsWith("custom_")) GlassAction("移除", Modifier.width(75.dp).height(35.dp)) { model.removeSource(source.url) }
+                                            if (model.canRemoveManualSource(source.url)) GlassAction(model.sourceRemovalLabel(source.url), Modifier.width(115.dp).height(35.dp)) { model.removeSource(source.url) }
                                         }
                                     }
                                 }
@@ -127,7 +127,7 @@ fun SettingsScreen(model: CinemaViewModel, initialSection: Int = 0) {
                                 items(model.liveSources, key = { "live:${it.url}" }) { source ->
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Text(source.name, color = TvColors.Text, fontSize = 14.sp, modifier = Modifier.weight(1f))
-                                        if (source.key.startsWith("custom_")) GlassAction("移除", Modifier.width(75.dp).height(35.dp)) { model.removeSource(source.url, true) }
+                                        if (model.canRemoveManualSource(source.url, live = true)) GlassAction(model.sourceRemovalLabel(source.url, live = true), Modifier.width(115.dp).height(35.dp)) { model.removeSource(source.url, true) }
                                     }
                                 }
                             }

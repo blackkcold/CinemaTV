@@ -165,6 +165,9 @@ class HybridAuditUiTest {
         rule.onNodeWithTag("library-progress-review").assertExists()
         rule.onNodeWithText("打开当前片单").assertExists()
         rule.onNodeWithText("当时的片单缺少明确的剧集身份", substring = true).assertExists()
+        rule.onNodeWithTag("library-review-record:${before.keys.single()}")
+            .performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.RequestFocus) { it() }
+            .assertIsFocused()
         assertNull(web())
         assertEquals(before, model.repo.library.snapshot.episodeProgress)
         capture("${testName.methodName}-review")
