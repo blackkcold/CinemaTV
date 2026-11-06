@@ -138,6 +138,7 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
     private var browseGeneration = 0L
     fun browseState(series: Boolean) = if (series) seriesBrowse else movieBrowse
     val hasSearchCatalog get() = movieSearchBrowse.pages > 0 || seriesSearchBrowse.pages > 0
+    val searchCatalogRequested get() = completedSearchQuery.isNotBlank()
     val searchCatalogLoading get() = movieSearchBrowse.loading || seriesSearchBrowse.loading
     val canLoadSearchCatalog get() = !searchFilters.doubanTopOnly && completedSearchQuery.isNotBlank() &&
         listOf(false, true).any { (searchFilters.isTv == null || searchFilters.isTv == it) && searchBrowseState(it).canLoadMore }
@@ -182,13 +183,14 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
                 rebuildRecommendations()
             }
         }
-        publish(initial.copy(loading = true, notice = ""))
+        publish(initial.copy(loading = true, notice = "", retryableFailure = false))
         try {
             val response = repo.catalog(if (search) completedSearchQuery else "", series, offset)
             kotlinx.coroutines.currentCoroutineContext().ensureActive()
             if (current()) publish(CatalogBrowsePaging.append(initial, response, offset))
         } catch (cancelled: CancellationException) { throw cancelled }
-        catch (_: Exception) { publish(initial.copy(loading = false, notice = "目录加载失败，已保留结果；可重试。")) }
+        catch (_: Exception) { publish(initial.copy(loading = false, retryableFailure = true,
+            notice = "目录加载失败，已保留结果；可重试。")) }
         finally { if (current() && state().loading) publish(state().copy(loading = false)) }
     }
 
