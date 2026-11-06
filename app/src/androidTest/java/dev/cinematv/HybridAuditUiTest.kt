@@ -109,6 +109,16 @@ class HybridAuditUiTest {
         rule.waitUntil(10_000) { inputReady() && evaluate("document.activeElement?.dataset.focus || ''") == id }
         key(KeyEvent.KEYCODE_DPAD_CENTER)
     }
+
+    private fun awaitNativeTarget(tag: String) {
+        // Injected key completion does not await the asynchronous Web bridge or
+        // the native replacement's layout. Observe the destination of that one
+        // press; never retry the input or move focus to make the assertion pass.
+        rule.waitUntil(10_000) {
+            web() == null && rule.onNodeWithTag(tag, useUnmergedTree = true).isDisplayed()
+        }
+    }
+
     private fun capture(name: String) {
         rule.waitForIdle()
         instrumentation.waitForIdleSync()
@@ -203,23 +213,27 @@ class HybridAuditUiTest {
         val before = model.repo.library.snapshot.episodeProgress.toMap()
         click("nav:SETTINGS"); awaitRoute(Page.SETTINGS)
         click("settings:developer")
+        awaitNativeTarget("developer-options-entry")
         rule.onNodeWithTag("hybrid-native-panel").assertExists()
         rule.onNodeWithTag("developer-options-entry").assertExists()
         capture("${testName.methodName}-developer")
         key(KeyEvent.KEYCODE_BACK); awaitRoute(Page.SETTINGS)
         rule.waitUntil(10_000) { evaluate("document.activeElement?.dataset.focus || ''") == "settings:developer" }
         click("settings:subscriptions")
+        awaitNativeTarget("source-subscriptions-screen")
         rule.onNodeWithTag("source-subscriptions-screen", useUnmergedTree = true).assertIsDisplayed()
         capture("${testName.methodName}-subscriptions")
         key(KeyEvent.KEYCODE_BACK); awaitRoute(Page.SETTINGS)
         rule.waitUntil(10_000) { evaluate("document.activeElement?.dataset.focus || ''") == "settings:subscriptions" }
         click("settings:library")
+        awaitNativeTarget("library-progress-review")
         rule.onNodeWithTag("library-progress-review", useUnmergedTree = true).assertIsDisplayed()
         rule.onNodeWithText("原片单第 4 项", substring = true).assertExists()
         key(KeyEvent.KEYCODE_BACK); awaitRoute(Page.SETTINGS)
         click("nav:LIBRARY"); awaitRoute(Page.LIBRARY)
         click("library:HISTORY")
         click("library:manage")
+        awaitNativeTarget("library-progress-review")
         rule.onNodeWithTag("library-progress-review", useUnmergedTree = true).assertIsDisplayed()
         rule.onNodeWithText("打开当前片单").assertExists()
         rule.onNodeWithText("当时的片单缺少明确的剧集身份", substring = true).assertExists()
