@@ -1,0 +1,40 @@
+name: Hybrid actual-TV visual candidates
+on:
+  push:
+    branches: [fix/hybrid-acceptance-serial-qa]
+permissions:
+  contents: read
+concurrency:
+  group: cinematv-visual-candidates-${{ github.ref }}
+  cancel-in-progress: false
+  queue: max
+jobs:
+  build:
+    if: contains(github.event.head_commit.message, '[android-visual-capture]')
+    uses: ./.github/workflows/acceptance-build.yml
+  hybrid1080:
+    needs: build
+    uses: ./.github/workflows/acceptance-device.yml
+    with:
+      lane: hybrid1080
+  hybrid4k:
+    needs: [build, hybrid1080]
+    if: ${{ !cancelled() && needs.build.result == 'success' }}
+    uses: ./.github/workflows/acceptance-device.yml
+    with:
+      lane: hybrid4k
+  scope:
+    needs: [build, hybrid1080, hybrid4k]
+    if: ${{ always() && needs.build.result != 'skipped' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: State the limited candidate-capture scope
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          results = json.loads(os.environ['RESULTS'])
+          print('Candidate captures only; not the complete device matrix, reviewed visual acceptance, signed-artifact acceptance or publication.')
+          assert all(item['result'] == 'success' for item in results.values()), results
+          PY

@@ -13,7 +13,7 @@ jobs:
   source:
     name: Immutable source provenance and harness tests
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     outputs:
       full: ${{ steps.mode.outputs.full }}
       visual: ${{ steps.mode.outputs.visual }}
@@ -38,7 +38,6 @@ jobs:
                   stream.write(f'{key}={str(value).lower()}\n')
           PY
       - name: Record exact source without credentials or build outputs
-        shell: bash
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/acceptance-source"
@@ -55,11 +54,8 @@ jobs:
                      'scope': 'source-only; not device acceptance or release approval'}
           (root / 'source-receipt.json').write_text(json.dumps(receipt, indent=2) + '\n')
           PY
-      - name: Acceptance harness tests and shell syntax
-        run: |
-          python3 -m pip install --disable-pip-version-check 'PyYAML==6.0.3'
-          python3 -m unittest discover -s scripts/acceptance -v
-          for script in scripts/acceptance/*.sh; do bash -n "$script"; done
+      - name: Current host safety and acceptance tests
+        run: bash scripts/acceptance/host-check.sh
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -77,9 +73,7 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.sha }}
-          persist-credentials: false
+        with: {ref: '${{ github.sha }}', persist-credentials: false}
       - run: python3 -m pip install --disable-pip-version-check 'PyYAML==6.0.3'
       - name: Stage only deterministic policy changes for connector review
         env:
@@ -91,60 +85,11 @@ jobs:
           path: ${{ runner.temp }}/staged-policy/
           if-no-files-found: error
   browser:
-    name: Production browser / candidate capture or reviewed comparison
     needs: source
     if: needs.source.outputs.visual == 'true'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 25
-    env:
-      CINEMA_VISUAL_CAPTURE: ${{ needs.source.outputs.capture == 'true' && '1' || '0' }}
-      EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          persist-credentials: false
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22.23.4'
-          cache: npm
-          cache-dependency-path: frontend/tv-web/package-lock.json
-      - name: Build real production assets and test-side fonts
-        run: |
-          npm --prefix frontend/tv-web ci --ignore-scripts
-          npm --prefix frontend/tv-web run build
-          python3 scripts/acceptance/browser-fonts.py
-          python3 scripts/hybrid/artifacts.py web-receipt --output "$RUNNER_TEMP/web-build-receipt.json"
-      - name: Current development interaction regressions
-        working-directory: frontend/tv-web
-        run: |
-          npx playwright install --with-deps chromium
-          npm test
-      - name: Production-dist visual contracts
-        working-directory: frontend/tv-web
-        run: npx playwright test --config production.config.ts
-      - name: Record scope of visual result
-        if: always()
-        run: |
-          python3 - <<'PY'
-          import json, os, pathlib
-          value = {'sourceCommit': os.environ['EXPECTED_SOURCE_SHA'],
-                   'mode': 'candidate-only-not-approved' if os.environ['CINEMA_VISUAL_CAPTURE'] == '1' else 'reviewed-comparison',
-                   'productionSigned': False, 'publicationAllowed': False}
-          pathlib.Path('frontend/tv-web/visual-scope.json').write_text(json.dumps(value, indent=2) + '\n')
-          PY
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: acceptance-production-browser
-          path: |
-            frontend/tv-web/production-captures/
-            frontend/tv-web/production-results/
-            frontend/tv-web/test-results/
-            frontend/tv-web/visual-scope.json
-            ${{ runner.temp }}/web-build-receipt.json
-          if-no-files-found: error
-          retention-days: 30
+    uses: ./.github/workflows/acceptance-browser.yml
+    with:
+      capture: ${{ needs.source.outputs.capture == 'true' }}
   build:
     needs: source
     if: needs.source.outputs.full == 'true'
@@ -173,86 +118,72 @@ jobs:
     needs: build
     if: ${{ !cancelled() && needs.build.result == 'success' }}
     uses: ./.github/workflows/acceptance-device.yml
-    with:
-      lane: tv26
+    with: {lane: tv26}
   tv29:
     needs: [build, tv26]
     if: ${{ !cancelled() && needs.build.result == 'success' }}
     uses: ./.github/workflows/acceptance-device.yml
-    with:
-      lane: tv29
+    with: {lane: tv29}
   phone35:
     needs: [build, tv29]
     if: ${{ !cancelled() && needs.build.result == 'success' }}
     uses: ./.github/workflows/acceptance-device.yml
-    with:
-      lane: phone35
+    with: {lane: phone35}
   native-phone:
     needs: [build, phone35]
     if: ${{ !cancelled() && needs.build.result == 'success' }}
     uses: ./.github/workflows/acceptance-device.yml
-    with:
-      lane: native-phone
+    with: {lane: native-phone}
   native-compat26:
     needs: [build, native-phone]
     if: ${{ !cancelled() && needs.build.result == 'success' }}
     uses: ./.github/workflows/acceptance-device.yml
-    with:
-      lane: native-compat26
+    with: {lane: native-compat26}
   native1080:
     needs: [build, native-compat26]
     if: ${{ !cancelled() && needs.build.result == 'success' }}
     uses: ./.github/workflows/acceptance-device.yml
-    with:
-      lane: native1080
+    with: {lane: native1080}
   hybrid1080:
     needs: [build, native1080]
     if: ${{ !cancelled() && needs.build.result == 'success' }}
     uses: ./.github/workflows/acceptance-device.yml
-    with:
-      lane: hybrid1080
+    with: {lane: hybrid1080}
   account26:
     needs: [build, hybrid1080]
     if: ${{ !cancelled() && needs.build.result == 'success' }}
     uses: ./.github/workflows/acceptance-device.yml
-    with:
-      lane: account26
+    with: {lane: account26}
   account33:
     needs: [build, account26]
     if: ${{ !cancelled() && needs.build.result == 'success' }}
     uses: ./.github/workflows/acceptance-device.yml
-    with:
-      lane: account33
+    with: {lane: account33}
   recommendation33:
     needs: [build, account33]
     if: ${{ !cancelled() && needs.build.result == 'success' }}
     uses: ./.github/workflows/acceptance-device.yml
-    with:
-      lane: recommendation33
+    with: {lane: recommendation33}
   updates-phone:
     needs: [build, recommendation33]
     if: ${{ !cancelled() && needs.build.result == 'success' }}
     uses: ./.github/workflows/acceptance-device.yml
-    with:
-      lane: updates-phone
+    with: {lane: updates-phone}
   updates-tv:
     needs: [build, updates-phone]
     if: ${{ !cancelled() && needs.build.result == 'success' }}
     uses: ./.github/workflows/acceptance-device.yml
-    with:
-      lane: updates-tv
+    with: {lane: updates-tv}
   native4k:
     needs: [build, updates-tv]
     if: ${{ !cancelled() && needs.build.result == 'success' }}
     uses: ./.github/workflows/acceptance-device.yml
-    with:
-      lane: native4k
+    with: {lane: native4k}
   hybrid4k:
     needs: [build, native4k]
     if: ${{ !cancelled() && needs.build.result == 'success' }}
     uses: ./.github/workflows/acceptance-device.yml
-    with:
-      lane: hybrid4k
+    with: {lane: hybrid4k}
   acceptance:
     name: Complete exact-source acceptance / no publication
     needs: [source, browser, build, protocol, tv26, tv29, phone35, native-phone, native-compat26, native1080, hybrid1080, account26, account33, recommendation33, updates-phone, updates-tv, native4k, hybrid4k]

@@ -108,3 +108,8 @@ set -e
 test "$REGRESSION_STATUS" -eq 0
 timeout --signal=TERM --kill-after=5s 30s "$HYBRID_ADB" -s "$HYBRID_SERIAL" pull "$DEVICE_OUTPUT/audit-evidence" "$EVIDENCE/" >/dev/null 2>&1 || true
 python3 scripts/hybrid/tv_regressions.py --bundle "$BUNDLE" --evidence "$EVIDENCE"
+# Optional current-code visual acceptance, restricted to the unified CI lanes.
+# Existing functional cases and their exported evidence remain unchanged.
+if [ "${CINEMA_ACCEPTANCE_VISUAL:-0}" = 1 ] && [ "$MODE" = hybrid ]; then
+  bash scripts/acceptance/run-android-visual.sh "$BUNDLE" "$EVIDENCE"
+fi

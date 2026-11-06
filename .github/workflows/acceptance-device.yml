@@ -19,6 +19,8 @@ jobs:
     env:
       EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       CINEMA_ACCEPTANCE_LANE: ${{ inputs.lane }}
+      CINEMA_ACCEPTANCE_VISUAL: ${{ (inputs.lane == 'hybrid1080' || inputs.lane == 'hybrid4k') && '1' || '0' }}
+      CINEMA_VISUAL_CAPTURE: ${{ (contains(github.event.head_commit.message, '[acceptance-capture]') || contains(github.event.head_commit.message, '[android-visual-capture]')) && '1' || '0' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -46,7 +48,7 @@ jobs:
         run: sudo chmod 666 /dev/kvm
       - name: Actual Android TV production host
         if: steps.profile.outputs.kind == 'tv'
-        timeout-minutes: 28
+        timeout-minutes: 35
         env:
           TV_API: ${{ steps.profile.outputs.api }}
           TV_ARCH: ${{ steps.profile.outputs.arch }}
