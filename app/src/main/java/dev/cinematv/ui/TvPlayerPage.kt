@@ -30,15 +30,14 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.C
 import androidx.media3.common.Format
-import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
-import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
-import dev.cinematv.playback.PlaybackFactory
+import dev.cinematv.playback.NativePlaybackSession
 import dev.cinematv.playback.ObservePlaybackLifecycle
+import dev.cinematv.playback.togglePlayPause
 import dev.cinematv.ui.tv.components.CinemaGlassSurface
 import dev.cinematv.ui.tv.design.LocalTvLayout
 import dev.cinematv.ui.tv.focus.trackTvContentFocus
@@ -95,20 +94,17 @@ private fun applyChoice(player: Player, type: Int, choice: TrackChoice?) {
 fun TvPlayerPage(model: CinemaViewModel) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val session = model.playbackSession ?: return
-    val uri = session.url
     val episodeAtCreation = session.episodeIndex
-    val player = remember(session) {
-        PlaybackFactory.create(context, cacheVod = session.item != null).apply {
-            setMediaItem(MediaItem.fromUri(uri))
-            prepare()
-            playWhenReady = true
-            if (model.playbackPosition > 0) seekTo(model.playbackPosition)
-        }
+    val playback = remember(session) {
+        NativePlaybackSession(context, mediaId = "playback-${session.generation}", uri = session.url,
+            title = model.playbackTitle, positionMs = model.playbackPosition, cacheVod = session.item != null)
     }
+    val player = playback.player
     var position by remember(session) { mutableLongStateOf(0L) }
     var duration by remember(session) { mutableLongStateOf(0L) }
     var error by remember(session) { mutableStateOf("") }
     var isPlaying by remember(session) { mutableStateOf(true) }
+    var playRequested by remember(session) { mutableStateOf(player.playWhenReady) }
     var controlsVisible by remember(session) { mutableStateOf(true) }
     var panel by remember(session) { mutableStateOf<PlayerPanel?>(null) }
     var tracksVersion by remember(session) { mutableIntStateOf(0) }
@@ -123,7 +119,6 @@ fun TvPlayerPage(model: CinemaViewModel) {
     var returnFocus by remember(session) { mutableStateOf(playFocus) }
     val backPress = remember(session) { RemoteBackPress() }
     val layout = LocalTvLayout.current
-    ObservePlaybackLifecycle(player)
     val handleBack: () -> Unit = {
         when {
             panel != null -> { panel = null; controlsVisible = true; interaction++ }
@@ -151,15 +146,17 @@ fun TvPlayerPage(model: CinemaViewModel) {
                 if (state == Player.STATE_ENDED) model.playerEnded(player.currentPosition, player.duration.coerceAtLeast(0L), episodeAtCreation, session)
             }
             override fun onIsPlayingChanged(playing: Boolean) { isPlaying = playing }
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) { playRequested = playWhenReady }
             override fun onTracksChanged(tracks: Tracks) { tracksVersion++ }
         }
         player.addListener(listener)
         onDispose {
             model.savePlaybackPosition(player.currentPosition.coerceAtLeast(0L), episodeAtCreation, player.duration.coerceAtLeast(0L), session)
             player.removeListener(listener)
-            player.release()
+            playback.close()
         }
     }
+    ObservePlaybackLifecycle(playback)
     LaunchedEffect(player) {
         var ticks = 0
         while (isActive) {
@@ -206,10 +203,12 @@ fun TvPlayerPage(model: CinemaViewModel) {
                     // Consume the entire remote press. Changing routes on key-up
                     // keeps its release out of the newly created browsing view.
                     true
-                } else if (event.type == KeyEventType.KeyDown && event.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE) {
-                    if (player.isPlaying) player.pause() else player.play()
-                    controlsVisible = true; returnFocus = playFocus
-                    interaction++; true
+                } else if (playback.handleMediaKey(event.nativeKeyEvent)) {
+                    if (event.type == KeyEventType.KeyDown) {
+                        controlsVisible = true; returnFocus = playFocus
+                        interaction++
+                    }
+                    true
                 } else if (event.type != KeyEventType.KeyDown || panel != null || controlsVisible) false
                 else when (event.key) {
                     Key.DirectionCenter, Key.Enter -> {
@@ -236,7 +235,8 @@ fun TvPlayerPage(model: CinemaViewModel) {
                     )
                 }
             },
-            update = { it.player = player }
+            update = { it.player = player },
+            onRelease = { it.player = null }
         )
         if (controlsVisible) {
             Box(Modifier.fillMaxSize().background(Brush.verticalGradient(
@@ -279,9 +279,9 @@ fun TvPlayerPage(model: CinemaViewModel) {
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(9.dp), verticalAlignment = Alignment.CenterVertically) {
                         GlassAction("−10s", Modifier.width(62.dp).height(41.dp), onFocus = { interaction++ }) { seek(-10000) }
-                        GlassAction(if (isPlaying) "暂停" else "播放", Modifier.focusRequester(playFocus).width(80.dp).height(41.dp),
-                            prominent = true, icon = if (isPlaying) CinemaSymbol.Pause else CinemaSymbol.Play, onFocus = { interaction++ }) {
-                            if (player.isPlaying) player.pause() else player.play()
+                        GlassAction(if (playRequested) "暂停" else "播放", Modifier.focusRequester(playFocus).width(80.dp).height(41.dp),
+                            prominent = true, icon = if (playRequested) CinemaSymbol.Pause else CinemaSymbol.Play, onFocus = { interaction++ }) {
+                            player.togglePlayPause()
                             interaction++
                         }
                         GlassAction("+10s", Modifier.width(62.dp).height(41.dp), onFocus = { interaction++ }) { seek(10000) }

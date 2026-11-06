@@ -5,18 +5,16 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.media3.common.Player
 
 /** Pause off-screen without resuming a player that the user had paused. */
 @Composable
-fun ObservePlaybackLifecycle(player: Player) {
+fun ObservePlaybackLifecycle(playback: NativePlaybackSession) {
     val owner = LocalLifecycleOwner.current
-    DisposableEffect(owner, player) {
-        var resumeOnStart = false
+    DisposableEffect(owner, playback) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_STOP -> { resumeOnStart = player.playWhenReady; player.pause() }
-                Lifecycle.Event.ON_START -> if (resumeOnStart) { player.play(); resumeOnStart = false }
+                Lifecycle.Event.ON_STOP -> playback.onStop()
+                Lifecycle.Event.ON_START -> playback.onStart()
                 else -> Unit
             }
         }
