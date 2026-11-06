@@ -15,7 +15,8 @@ export default defineConfig({
   snapshotPathTemplate: resolve('../../design/ui/goldens/hybrid-browser/{projectName}/{arg}{ext}'),
   use: {
     baseURL: 'http://127.0.0.1:4174', locale: 'zh-CN', timezoneId: 'UTC',
-    colorScheme: 'dark', reducedMotion: 'reduce', trace: 'retain-on-failure', screenshot: 'only-on-failure',
+    colorScheme: 'dark', contextOptions: { reducedMotion: 'reduce' },
+    trace: 'retain-on-failure', screenshot: 'only-on-failure',
   },
   projects: [
     { name: 'css540-dpr2', use: { viewport: { width: 960, height: 540 }, deviceScaleFactor: 2 } },
