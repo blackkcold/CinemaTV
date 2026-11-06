@@ -3,6 +3,7 @@ import json
 import os
 from pathlib import Path
 import shlex
+import signal
 import subprocess
 import tempfile
 import time
@@ -150,7 +151,68 @@ exit 42
                                  "hybrid", "3840x2160", "640"], capture_output=True, text=True, timeout=3)
         self.assertEqual(result.returncode, 2)
 
+    def run_cleanup_process(self, command, before_exit="", extra_env=None):
+        pidfile = self.root / "emulator.pid"
+        sentinel = subprocess.Popen(["sleep", "60"], stdout=subprocess.DEVNULL,
+                                    stderr=subprocess.DEVNULL, start_new_session=True)
+        def stop_sentinel():
+            sentinel.kill()
+            sentinel.wait(timeout=3)
+        self.addCleanup(stop_sentinel)
+        shell = f'''
+source {shlex.quote(str(LAUNCHER))}
+TV_STARTUP_EVIDENCE={shlex.quote(str(self.evidence))}
+TV_WORKDIR=
+TV_ADB=/bin/false
+TV_SERIAL=emulator-5554
+{command} > /dev/null 2>&1 &
+TV_EMULATOR_PID=$!
+printf '%s' "$TV_EMULATOR_PID" > {shlex.quote(str(pidfile))}
+trap tv_finish EXIT
+{before_exit}
+exit 42
+'''
+        result = subprocess.run(["bash", "-c", shell], text=True, capture_output=True, timeout=8,
+                                env={**os.environ, **(extra_env or {})})
+        self.assertEqual(result.returncode, 42)
+        with self.assertRaises(ProcessLookupError):
+            os.kill(int(pidfile.read_text()), 0)
+        self.assertIsNone(sentinel.poll(), "Cleanup signalled an unrelated process")
+
     def test_cleanup_terminates_owned_emulator_process_group(self):
+        self.run_cleanup_process("setsid sleep 60")
+
+    def test_cleanup_skips_wait_when_process_state_probe_times_out(self):
+        fakebin = self.root / "process-probe-bin"
+        fakebin.mkdir()
+        probe = fakebin / "ps"
+        probe.write_text("#!/usr/bin/env bash\nexec sleep 10\n")
+        probe.chmod(0o755)
+        self.run_cleanup_process("setsid sleep 60", extra_env={
+            "PATH": str(fakebin) + os.pathsep + os.environ["PATH"]})
+        self.assertIn("ps_status=124; skipped blocking wait", (self.evidence / "cleanup.txt").read_text())
+
+    def test_cleanup_terminates_child_before_setsid_establishes_group(self):
+        marker = self.root / "before-setsid"
+        delayed = self.root / "delayed_setsid.py"
+        delayed.write_text(f'''import os, time
+from pathlib import Path
+Path({str(marker)!r}).write_text("ready")
+time.sleep(10)
+os.execlp("setsid", "setsid", "sleep", "60")
+''')
+        # Synchronize with the still-unisolated child, without a timing guess.
+        # The old group-only cleanup deterministically waits for the 60s sleep.
+        before_exit = f'''
+for _ in {{1..40}}; do
+  [ -f {shlex.quote(str(marker))} ] && break
+  sleep 0.05
+done
+[ -f {shlex.quote(str(marker))} ] || exit 3
+'''
+        self.run_cleanup_process("python3 " + shlex.quote(str(delayed)), before_exit)
+
+    def test_cleanup_does_not_wait_forever_when_signals_fail(self):
         pidfile = self.root / "emulator.pid"
         shell = f'''
 source {shlex.quote(str(LAUNCHER))}
@@ -158,16 +220,27 @@ TV_STARTUP_EVIDENCE={shlex.quote(str(self.evidence))}
 TV_WORKDIR=
 TV_ADB=/bin/false
 TV_SERIAL=emulator-5554
-setsid sleep 60 &
+setsid sleep 60 > /dev/null 2>&1 &
 TV_EMULATOR_PID=$!
 printf '%s' "$TV_EMULATOR_PID" > {shlex.quote(str(pidfile))}
+kill() {{
+  if [ "$1" = -0 ]; then builtin kill "$@"; else return 1; fi
+}}
 trap tv_finish EXIT
 exit 42
 '''
-        result = subprocess.run(["bash", "-c", shell], text=True, capture_output=True, timeout=8)
-        self.assertEqual(result.returncode, 42)
-        with self.assertRaises(ProcessLookupError):
-            os.kill(int(pidfile.read_text()), 0)
+        try:
+            result = subprocess.run(["bash", "-c", shell], text=True, capture_output=True, timeout=8)
+            self.assertEqual(result.returncode, 42)
+            self.assertIn("skipped blocking wait", (self.evidence / "cleanup.txt").read_text())
+        finally:
+            if pidfile.exists():
+                pid = int(pidfile.read_text())
+                for target in (-pid, pid):
+                    try:
+                        os.kill(target, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
 
     def run_provisioning(self, build="15004761"):
         """Run the complete launcher with local SDK/archive fixtures and real cleanup."""

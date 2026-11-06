@@ -59,7 +59,7 @@ tv_wait_ready() {
 }
 
 tv_finish() {
-  local status=$?
+  local status=$? process_state probe_status
   trap - EXIT INT TERM
   set +e
   if [ -n "$TV_EMULATOR_PID" ]; then
@@ -67,15 +67,34 @@ tv_finish() {
     tv_adb shell dumpsys window > "$TV_STARTUP_EVIDENCE/final-window.txt" 2>&1
     tv_adb shell dumpsys activity top > "$TV_STARTUP_EVIDENCE/final-activity.txt" 2>&1
     tv_adb logcat -d -t 1500 > "$TV_STARTUP_EVIDENCE/final-logcat.txt" 2>&1
-    # Only the process group created by this invocation belongs to us. Never
-    # kill a pre-existing device just because it occupies the default ADB port.
-    kill -TERM -- "-$TV_EMULATOR_PID" 2>/dev/null
+    # setsid may not have run yet when cancellation arrives. The owned child
+    # PID is valid even before its new process group exists; signal both.
+    # Never signal our inherited group or another device using the ADB port.
+    kill -TERM -- "-$TV_EMULATOR_PID" "$TV_EMULATOR_PID" 2>/dev/null
     for _ in {1..10}; do
-      kill -0 -- "-$TV_EMULATOR_PID" 2>/dev/null || break
+      if ! kill -0 "$TV_EMULATOR_PID" 2>/dev/null &&
+          ! kill -0 -- "-$TV_EMULATOR_PID" 2>/dev/null; then break; fi
       sleep 0.5
     done
-    kill -KILL -- "-$TV_EMULATOR_PID" 2>/dev/null
-    wait "$TV_EMULATOR_PID" 2>/dev/null
+    kill -KILL -- "-$TV_EMULATOR_PID" "$TV_EMULATOR_PID" 2>/dev/null
+    # A failed signal or an uninterruptible process must not turn cleanup into
+    # an unbounded wait. Reap only after ps confirms disappearance or a zombie.
+    if process_state=$(timeout --kill-after=1s 1s ps -o stat= -p "$TV_EMULATOR_PID" 2>/dev/null); then
+      if [[ "$process_state" =~ ^[[:space:]]*Z ]]; then
+        wait "$TV_EMULATOR_PID" 2>/dev/null
+      else
+        printf 'Owned process still present after cleanup: pid=%s state=%s; skipped blocking wait\n' \
+          "$TV_EMULATOR_PID" "$process_state" >> "$TV_STARTUP_EVIDENCE/cleanup.txt"
+      fi
+    else
+      probe_status=$?
+      if [ "$probe_status" -eq 1 ] && ! kill -0 "$TV_EMULATOR_PID" 2>/dev/null; then
+        wait "$TV_EMULATOR_PID" 2>/dev/null
+      else
+        printf 'Unable to confirm process exit: pid=%s ps_status=%s; skipped blocking wait\n' \
+          "$TV_EMULATOR_PID" "$probe_status" >> "$TV_STARTUP_EVIDENCE/cleanup.txt"
+      fi
+    fi
   fi
   printf 'launcher_exit_status=%s\n' "$status" > "$TV_STARTUP_EVIDENCE/status.txt"
   if [ -n "$TV_WORKDIR" ]; then timeout --kill-after=1s 20s rm -rf -- "$TV_WORKDIR"; fi
