@@ -606,7 +606,11 @@ class HybridHostUiTest {
             assertEquals("false", evaluate("Boolean(window.__hybridQaReplies.qa_frame)"))
             evaluate("(() => {document.querySelectorAll('iframe').forEach(x=>x.remove());return true;})()")
         } else {
-            assertTrue(Build.VERSION.SDK_INT < HybridPolicy.MIN_HYBRID_API)
+            val context = instrumentation.targetContext
+            val provider = WebViewCompat.getCurrentWebViewPackage(context)?.versionName
+            val listener = WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)
+            assertFalse("Native fallback must be justified by the observed API/provider capabilities",
+                HybridPolicy.evaluate(Build.VERSION.SDK_INT, provider, listener).enabled)
             assertNull(web())
             rule.runOnIdle { model.navigate(Page.SETTINGS) }
             rule.onNodeWithText("LibreTV 服务器").assertExists()
