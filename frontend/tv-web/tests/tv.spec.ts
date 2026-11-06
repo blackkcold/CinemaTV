@@ -252,7 +252,7 @@ test('glass quality, motion and distinct native setting destinations are effecti
   await expect(page.locator('.tv-app')).toHaveAttribute('data-reduced-motion', 'true');
   await button(page, 'quality:ENHANCED').click();
   await expect(page.locator('.tv-app')).toHaveAttribute('data-quality', 'ENHANCED');
-  for (const section of ['connection', 'sources', 'updates', 'advanced']) {
+  for (const section of ['connection', 'sources', 'updates', 'recommendations', 'library', 'developer']) {
     await button(page, `settings:${section}`).click();
     expect((await lastCall(page, 'native.open'))?.params).toEqual({ target: 'SETTINGS', section });
   }
@@ -481,4 +481,14 @@ test('completed episodes say replay and request a restart for both primary and e
   expect((await lastCall(page, 'playback.open'))?.params.action).toBe('RESTART');
   await button(page, 'episode:fixture_0:episode:0').click();
   expect((await lastCall(page, 'playback.open'))?.params.action).toBe('RESTART');
+});
+
+test('library management opens the retained-record review and leaves the current filter intact', async ({ page }) => {
+  await button(page, 'nav:LIBRARY').click();
+  await button(page, 'library:FAVORITES').click();
+  await button(page, 'library:manage').click();
+  expect((await lastCall(page, 'native.open'))?.params).toEqual({ target: 'LIBRARY' });
+  await expect(button(page, 'library:FAVORITES')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('.poster-grid .poster')).toHaveCount(20);
+  await expect(page.locator('.toast')).toContainText('待核对的观看记录');
 });

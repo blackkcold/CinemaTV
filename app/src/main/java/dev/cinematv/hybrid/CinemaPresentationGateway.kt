@@ -14,6 +14,7 @@ import dev.cinematv.data.TvChannel
 import dev.cinematv.data.LiveSource
 import dev.cinematv.data.usableMetadata
 import dev.cinematv.ui.shared.CatalogFilter
+import dev.cinematv.ui.shared.NativeSettingsSection
 import dev.cinematv.ui.shared.WorkNavigationProjection
 import dev.cinematv.ui.shared.presentationKey
 import dev.cinematv.ui.tv.design.GlassQuality
@@ -364,15 +365,16 @@ class CinemaPresentationGateway(
             }
             "native.open" -> {
                 val target = HybridProtocol.string(p, "target", 16)
-                if (target !in setOf("SETTINGS", "DETAIL") || (target == "DETAIL" && model.page != Page.DETAIL)) throw HybridRequestFailure("BAD_PARAMS")
+                if (target !in setOf("SETTINGS", "DETAIL", "LIBRARY") || (target == "DETAIL" && model.page != Page.DETAIL)) throw HybridRequestFailure("BAD_PARAMS")
                 val section = if (p.has("section")) HybridProtocol.string(p, "section", 16) else "connection"
-                session.nativeSettingsSection = when (section) { "connection" -> 0; "sources" -> 1; "updates", "advanced" -> 3; else -> throw HybridRequestFailure("BAD_PARAMS") }
+                session.nativeSettingsSection = NativeSettingsSection.fromWireName(section)?.index ?: throw HybridRequestFailure("BAD_PARAMS")
                 session.nativeReturnPage = model.page
                 if (target == "SETTINGS") {
                     model.focusCoordinator.remember(Page.SETTINGS.name, "settings-menu", session.nativeSettingsSection.toString())
                     model.navigate(Page.SETTINGS)
                 }
-                session.nativePanel = if (target == "DETAIL") Page.DETAIL else Page.SETTINGS
+                if (target == "LIBRARY") model.navigate(Page.LIBRARY)
+                session.nativePanel = when (target) { "DETAIL" -> Page.DETAIL; "LIBRARY" -> Page.LIBRARY; else -> Page.SETTINGS }
             }
             "message.dismiss" -> model.dismissMessage()
             else -> throw HybridRequestFailure("METHOD_NOT_ALLOWED")
@@ -383,7 +385,7 @@ class CinemaPresentationGateway(
     fun closeNativePanel() {
         val target = session.nativePanel ?: return
         session.nativePanel = null
-        if (target == Page.SETTINGS && session.nativeReturnPage !in setOf(Page.SETTINGS, Page.DETAIL, Page.PLAYER))
+        if (target != Page.DETAIL && session.nativeReturnPage !in setOf(Page.DETAIL, Page.PLAYER))
             model.navigate(session.nativeReturnPage)
     }
 

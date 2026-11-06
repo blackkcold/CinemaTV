@@ -23,7 +23,7 @@ import dev.cinematv.ui.tv.pages.*
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun TvRootApp(model: CinemaViewModel, settingsInitialSection: Int = 0, onSceneDecoded: (String?) -> Unit = {}) {
+fun TvRootApp(model: CinemaViewModel, settingsInitialSection: Int = 0, libraryManagement: Boolean = false, onCloseLibraryManagement: () -> Unit = {}, onSceneDecoded: (String?) -> Unit = {}) {
     CinemaTvTheme(model.reducedMotion, model.glassQuality) {
       PosterMotionProvider(resetKey = model.focusRoute) { posterInput ->
         val keyboard = LocalSoftwareKeyboardController.current
@@ -38,8 +38,8 @@ fun TvRootApp(model: CinemaViewModel, settingsInitialSection: Int = 0, onSceneDe
         val registry = remember { TvFocusRegistry() }
         val navigation = remember { FocusRequester() }
         val content = remember(model.focusRoute) { FocusRequester() }
-        val navigationFocusOwner = remember(model) {
-            TvNavigationFocusOwner { model.page !in listOf(Page.DETAIL, Page.PLAYER, Page.SETTINGS) }
+        val navigationFocusOwner = remember(model, libraryManagement) {
+            TvNavigationFocusOwner { !libraryManagement && model.page !in listOf(Page.DETAIL, Page.PLAYER, Page.SETTINGS) }
         }
         val focusObserver = LocalTvFocusOwnerObserver.current
         SideEffect { focusObserver?.invoke(navigationFocusOwner) }
@@ -72,7 +72,7 @@ fun TvRootApp(model: CinemaViewModel, settingsInitialSection: Int = 0, onSceneDe
                         Page.DETAIL -> DetailScreen(model)
                         Page.PLAYER -> TvPlayerPage(model)
                         Page.LIVE -> LiveScreen(model)
-                        Page.LIBRARY -> LibraryScreen(model)
+                        Page.LIBRARY -> if (libraryManagement) LibraryProgressReviewScreen(model, onCloseLibraryManagement) else LibraryScreen(model)
                         Page.SETTINGS -> SettingsScreen(model, initialSection = settingsInitialSection)
                     }
                 }

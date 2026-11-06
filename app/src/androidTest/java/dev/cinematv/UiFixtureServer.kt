@@ -28,6 +28,7 @@ class UiFixtureServer(private val context: Context) : AutoCloseable {
     @Volatile var catalogPartial = false
     @Volatile var catalogExpired = false
     @Volatile var pagedCatalog = false
+    @Volatile var catalogFilteredPages = false
     @Volatile var homeCatalog = false
     @Volatile var duplicateLiveIds = false
     val requests = CopyOnWriteArrayList<String>()
@@ -60,6 +61,10 @@ class UiFixtureServer(private val context: Context) : AutoCloseable {
                 JSONObject().put("id", "${if (tv) "tv" else "movie"}-$i")
                     .put("title", "Paging fixture ${if (tv) "series" else "movie"} $i")
                     .put("type", if (tv) "tv" else "movie").put("poster", poster).put("backdrop", backdrop(i))
+                    .apply { if (catalogFilteredPages) {
+                        put("year", if (i == 0) "2025" else "2026")
+                        put("category", if (i == 1) "纪录" else "剧情")
+                    } }
             })).toString()
     }
 

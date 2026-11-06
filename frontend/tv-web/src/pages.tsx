@@ -45,7 +45,7 @@ export function Catalog({ state, act }: { state: Snapshot; act: Action }) {
   const library = state.route === 'LIBRARY';
   const series = state.route === 'SERIES';
   return <><div className="page-heading heading-with-action"><div><span className="eyebrow">{library ? '收藏故事，继续旅程' : series ? '好故事，慢慢看' : '为大屏而生'}</span><h1>{library ? '资料库' : series ? '剧集' : '电影'}</h1></div>
-    {library && <Button id="library:manage" group="library-tools" onClick={() => act('native.open', { target: 'SETTINGS', section: 'advanced' })}>管理资料<Icon name="arrow" /></Button>}
+    {library && <Button id="library:manage" group="library-tools" onClick={() => act('native.open', { target: 'LIBRARY' })}>管理资料<Icon name="arrow" /></Button>}
     {!library && <span className="content-count">{state.total} 部作品</span>}
   </div>
     {library ? <div className="chips library-tabs" data-scroll="library-tabs" data-focus-layout="row" aria-label="资料库分类">
@@ -180,6 +180,6 @@ export function Settings({ state, act }: { state: Snapshot; act: Action }) {
       <Button id="settings:motion" group="settings-motion" className="setting-row" selected={state.reducedMotion} onClick={() => act('settings.motion', { reduced: !state.reducedMotion })}><span><strong>减少动态效果</strong><small>简化转场与卡片动效，保留清晰的焦点提示</small></span><span className={`switch ${state.reducedMotion ? 'on' : ''}`} aria-hidden="true" /></Button>
     </section>
     <section className="glass settings-panel"><span className="eyebrow">服务与资料</span><h2>连接你的内容</h2><p className="connection-status"><span className={state.connected && state.authorized ? 'connected' : ''} />{state.connected ? state.authorized ? '影视服务已连接' : '服务已配置，请完成验证' : '尚未配置影视服务'}</p>
-      {[['connection', '连接与账号', '影视服务、账号与元数据目录'], ['sources', '片源与直播', '管理影视来源与直播订阅'], ['updates', '版本与更新', `${state.version} · ${state.channel}`], ['advanced', '高级与开发者选项', '资料管理、推荐偏好与实验功能']].map(([id, title, note]) => <Button key={id} id={`settings:${id}`} group="settings-links" className="setting-row" onClick={() => act('native.open', { target: 'SETTINGS', section: id })}><span><strong>{title}</strong><small>{note}</small></span><Icon name="arrow" /></Button>)}
+      {[['connection', '连接与账号', '影视服务、账号与元数据目录'], ['sources', '片源与直播', '管理影视来源与直播订阅'], ['updates', '版本与更新', `${state.version} · ${state.channel}`], ['recommendations', '本地推荐', '查看推荐信号与偏好'], ['library', '资料管理', '核对已保留的旧观看记录'], ['developer', '开发者选项', 'Dev 实验功能与本机账号设置']].map(([id, title, note]) => <Button key={id} id={`settings:${id}`} group="settings-links" className="setting-row" onClick={() => act('native.open', { target: 'SETTINGS', section: id })}><span><strong>{title}</strong><small>{note}</small></span><Icon name="arrow" /></Button>)}
     </section></div><p className="footnote">观看记录保存在此设备。外观与动态效果可随时调整。</p></>;
 }

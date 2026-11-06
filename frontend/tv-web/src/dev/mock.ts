@@ -194,7 +194,7 @@ export function createMockPlatform(): Platform {
       }
       else if (method === 'settings.motion') reduced = Boolean(params.reduced);
       else if (method === 'settings.quality') quality = String(params.quality);
-      else if (method === 'native.open') message = params.target === 'DETAIL' ? 'Android 版本会打开分季与作品整理。' : `Android 版本会打开${({ connection: '连接与账号', sources: '片源与直播', updates: '版本与更新', advanced: '高级与开发者选项' } as Record<string, string>)[String(params.section)] || '设置'}。`;
+      else if (method === 'native.open') message = params.target === 'DETAIL' ? 'Android 版本会打开分季与作品整理。' : params.target === 'LIBRARY' ? 'Android 版本会打开待核对的观看记录。' : `Android 版本会打开${({ connection: '连接与账号', sources: '片源与直播', updates: '版本与更新', developer: '开发者选项', recommendations: '本地推荐', library: '资料管理', subscriptions: '源列表订阅' } as Record<string, string>)[String(params.section)] || '设置'}。`;
       else if (method === 'playback.open' || method === 'live.play') message = '开发预览不播放真实媒体；Android 版本使用原生 Media3。';
       else if (method === 'message.dismiss') message = '';
       else if (method !== 'app.ready' && method !== 'live.source') throw new Error('UNKNOWN_METHOD');

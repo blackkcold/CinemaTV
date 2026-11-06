@@ -108,7 +108,8 @@ fun HybridTvRootApp(model: CinemaViewModel, session: HybridPresentationState = v
                     }
                 }
             }
-            Box(Modifier.weight(1f)) { TvRootApp(model, settingsInitialSection = session.nativeSettingsSection) }
+            Box(Modifier.weight(1f)) { TvRootApp(model, settingsInitialSection = session.nativeSettingsSection,
+                libraryManagement = session.nativePanel == Page.LIBRARY, onCloseLibraryManagement = gateway::closeNativePanel) }
         }
         return
     }
