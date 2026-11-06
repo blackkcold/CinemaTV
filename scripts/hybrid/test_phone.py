@@ -1,5 +1,8 @@
 import unittest
-from phone import verify_results
+import struct
+import tempfile
+from pathlib import Path
+from phone import expected_cases, verify_phone_captures, verify_results
 
 
 class PhoneResultTests(unittest.TestCase):
@@ -22,6 +25,34 @@ class PhoneResultTests(unittest.TestCase):
         for text in ['', 'OK (1 test)\nINSTRUMENTATION_CODE: -1\n']:
             with self.assertRaises(ValueError):
                 verify_results(text, {'Class#case'})
+
+    def test_method_selection_requires_a_declared_case(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / 'app/src/androidTest/java/dev/cinematv/Fixture.kt'
+            source.parent.mkdir(parents=True)
+            source.write_text('@Test fun phone() {}\n@Test fun television() {}\n')
+            self.assertEqual(expected_cases(root, {'Fixture#phone': 'Fixture.kt'}), {'Fixture#phone'})
+            with self.assertRaisesRegex(ValueError, 'Unknown declared'):
+                expected_cases(root, {'Fixture#removed': 'Fixture.kt'})
+
+    def test_both_named_phone_orientations_are_required(self):
+        with tempfile.TemporaryDirectory() as directory:
+            evidence = Path(directory)
+            folder = evidence / 'ui-evidence'
+            folder.mkdir()
+            def write(name, width, height):
+                # Synthetic header fixture; not a device acceptance screenshot.
+                (folder / name).write_bytes(b'\x89PNG\r\n\x1a\n' + struct.pack('>I', 13) + b'IHDR' +
+                                           struct.pack('>II', width, height) + bytes(1100))
+            write('mobile-player-portrait.png', 1080, 1920)
+            with self.assertRaisesRegex(ValueError, 'capture missing'):
+                verify_phone_captures(evidence)
+            write('mobile-player-landscape.png', 1920, 1080)
+            self.assertEqual(len(verify_phone_captures(evidence)), 2)
+            write('mobile-player-landscape.png', 1080, 1920)
+            with self.assertRaisesRegex(ValueError, 'orientation'):
+                verify_phone_captures(evidence)
 
 
 if __name__ == '__main__':

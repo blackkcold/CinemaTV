@@ -4,23 +4,31 @@ import argparse
 import json
 from pathlib import Path
 import re
+import struct
 import sys
 from artifacts import require, sha256, verify_device_bundle, write_json
 
 SUITES = {
     'dev.cinematv.MobileNavigationSmokeTest': 'MobileNavigationSmokeTest.kt',
     'dev.cinematv.MobilePlaybackSmokeTest': 'MobilePlaybackSmokeTest.kt',
+    'dev.cinematv.MobileChannelIdentityTest': 'MobileChannelIdentityTest.kt',
+    'dev.cinematv.MobilePlaybackIntentTest': 'MobilePlaybackIntentTest.kt',
+    'dev.cinematv.SourceSubscriptionsUiTest#phoneCanPreviewImportRefreshAndStopWithoutLosingDisabledSources': 'SourceSubscriptionsUiTest.kt',
     'dev.cinematv.data.LibreTvProtocolTest': 'data/LibreTvProtocolTest.kt',
     'dev.cinematv.playback.NativePlaybackSessionTest': 'playback/NativePlaybackSessionTest.kt',
 }
 
 
-def expected_cases(root):
+def expected_cases(root, selected=None):
     result = set()
-    for name, filename in SUITES.items():
+    for selector, filename in (SUITES if selected is None else selected).items():
+        name, _, method = selector.partition('#')
         source = (root / 'app/src/androidTest/java/dev/cinematv' / filename).read_text()
         methods = re.findall(r'@Test(?:\([^)]*\))?\s+fun\s+(\w+)', source)
         require(methods, f'No declared regression methods in {name}')
+        if method:
+            require(method in methods, f'Unknown declared regression {selector}')
+            methods = [method]
         result.update(f'{name}#{method}' for method in methods)
     return result
 
@@ -48,15 +56,27 @@ def verify_results(log, expected):
     return completed
 
 
+def verify_phone_captures(evidence):
+    screenshots = sorted((evidence / 'ui-evidence').glob('*.png'))
+    required = {'mobile-player-portrait.png', 'mobile-player-landscape.png'}
+    require(required <= {path.name for path in screenshots}, 'Phone portrait or landscape playback capture missing')
+    for path in screenshots:
+        content = path.read_bytes()
+        require(len(content) > 1024 and content[:8] == b'\x89PNG\r\n\x1a\n' and content[12:16] == b'IHDR', 'Invalid phone screenshot')
+        width, height = struct.unpack('>II', content[16:24])
+        require(width > 0 and height > 0, 'Empty phone screenshot')
+        if path.name in required:
+            portrait = path.name == 'mobile-player-portrait.png'
+            require((height > width) if portrait else (width > height), 'Phone capture orientation does not match its case')
+    return {path.name: sha256(path) for path in screenshots}
+
+
 def result(root, bundle, evidence):
     receipt = verify_device_bundle(root, bundle)
     completed = verify_results((evidence / 'instrumentation.txt').read_text(), expected_cases(root))
-    screenshots = sorted((evidence / 'ui-evidence').glob('*.png'))
-    require(screenshots, 'Phone playback screenshots missing')
-    for path in screenshots:
-        require(path.stat().st_size > 1024 and path.read_bytes()[:8] == b'\x89PNG\r\n\x1a\n', 'Invalid phone screenshot')
+    screenshots = verify_phone_captures(evidence)
     receipt.update(status='passed-synthetic-phone-tests', completedTests=completed,
-                   screenshots={path.name: sha256(path) for path in screenshots},
+                   screenshots=screenshots,
                    deviceMetadata=(evidence / 'device.txt').read_text(),
                    physicalTvAcceptance=False, signedArtifactAcceptance=False)
     write_json(evidence / 'phone-receipt.json', receipt)

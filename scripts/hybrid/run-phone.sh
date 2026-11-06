@@ -9,6 +9,10 @@ BUNDLE=$1
 EVIDENCE=$2
 DEVICE_OUTPUT=/sdcard/Android/media/dev.cinematv/phone-output
 python3 scripts/hybrid/artifacts.py verify-device-bundle --directory "$BUNDLE"
+if [ -d "$EVIDENCE" ] && [ -n "$(find "$EVIDENCE" -mindepth 1 -print -quit)" ]; then
+  echo 'Evidence directory is not empty; use a new directory for this run' >&2
+  exit 1
+fi
 mkdir -p "$EVIDENCE"
 PHONE_ADB="${ANDROID_HOME:?}/platform-tools/adb"
 PHONE_SERIAL=${ANDROID_SERIAL:-emulator-5554}
@@ -43,6 +47,7 @@ phone_adb shell settings put secure immersive_mode_confirmations confirmed
 phone_adb install -r "$BUNDLE/app-debug.apk"
 phone_adb install -r "$BUNDLE/app-debug-androidTest.apk"
 phone_adb shell mkdir -p "$DEVICE_OUTPUT"
+phone_adb shell rm -rf "$DEVICE_OUTPUT/ui-evidence"
 CLASSES=$(python3 scripts/hybrid/phone.py --classes)
 set +e
 timeout --signal=TERM --kill-after=15s 12m "$PHONE_ADB" -s "$PHONE_SERIAL" shell am instrument -w -r \

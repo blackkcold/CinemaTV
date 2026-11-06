@@ -115,7 +115,7 @@ jobs:
     name: Android TV / ${{ matrix.name }}
     needs: build
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -156,7 +156,7 @@ jobs:
       - name: Enable KVM
         run: sudo chmod 666 /dev/kvm
       - uses: reactivecircus/android-emulator-runner@v2
-        timeout-minutes: 16
+        timeout-minutes: 26
         with:
           api-level: ${{ matrix.api }}
           target: android-tv

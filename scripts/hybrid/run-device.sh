@@ -13,6 +13,10 @@ DENSITY=${5:-320}
 [[ "$SIZE" =~ ^(1920x1080|3840x2160)$ ]] && [[ "$DENSITY" =~ ^(320|640)$ ]]
 DEVICE_OUTPUT=/sdcard/Android/media/dev.cinematv/hybrid-output
 python3 scripts/hybrid/artifacts.py verify-device-bundle --directory "$BUNDLE"
+if [ -d "$EVIDENCE" ] && [ -n "$(find "$EVIDENCE" -mindepth 1 -print -quit)" ]; then
+  echo 'Evidence directory is not empty; use a new directory for this run' >&2
+  exit 1
+fi
 mkdir -p "$EVIDENCE"
 HYBRID_ADB="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}/platform-tools/adb"
 if [ ! -x "$HYBRID_ADB" ]; then HYBRID_ADB=$(command -v adb); fi
@@ -37,6 +41,7 @@ finish() {
   adb_bounded shell dumpsys activity top > "$EVIDENCE/activity.txt" 2>&1
   adb_bounded logcat -d -s AndroidRuntime:E > "$EVIDENCE/crashes.txt" 2>&1
   timeout --signal=TERM --kill-after=5s 30s "$HYBRID_ADB" -s "$HYBRID_SERIAL" pull "$DEVICE_OUTPUT/hybrid-evidence" "$EVIDENCE/" >/dev/null 2>&1
+  timeout --signal=TERM --kill-after=5s 30s "$HYBRID_ADB" -s "$HYBRID_SERIAL" pull "$DEVICE_OUTPUT/audit-evidence" "$EVIDENCE/" >/dev/null 2>&1
   printf 'harness_exit_status=%s\n' "$status" > "$EVIDENCE/status.txt"
   exit "$status"
 }
@@ -70,7 +75,8 @@ esac
 timeout --signal=TERM --kill-after=5s 60s "$HYBRID_ADB" -s "$HYBRID_SERIAL" install -r "$BUNDLE/app-debug.apk"
 timeout --signal=TERM --kill-after=5s 60s "$HYBRID_ADB" -s "$HYBRID_SERIAL" install -r "$BUNDLE/app-debug-androidTest.apk"
 adb_bounded shell mkdir -p "$DEVICE_OUTPUT"
-timeout --signal=TERM --kill-after=5s 10m "$HYBRID_ADB" -s "$HYBRID_SERIAL" logcat -v threadtime \
+adb_bounded shell rm -rf "$DEVICE_OUTPUT/hybrid-evidence" "$DEVICE_OUTPUT/audit-evidence"
+timeout --signal=TERM --kill-after=5s 18m "$HYBRID_ADB" -s "$HYBRID_SERIAL" logcat -v threadtime \
   'TestRunner:I' 'CinemaTVQa:I' 'CinemaTVRailVisibility:D' 'CinemaTVCardRelocation:D' \
   'AndroidRuntime:E' '*:S' > "$EVIDENCE/live-test.log" 2>&1 &
 LOG_PID=$!
@@ -85,3 +91,15 @@ set -e
 test "$INSTRUMENTATION_STATUS" -eq 0
 timeout --signal=TERM --kill-after=5s 30s "$HYBRID_ADB" -s "$HYBRID_SERIAL" pull "$DEVICE_OUTPUT/hybrid-evidence" "$EVIDENCE/" >/dev/null
 python3 scripts/hybrid/artifacts.py device-result --bundle "$BUNDLE" --evidence "$EVIDENCE" --mode "$MODE"
+# Keep the original per-case screenshot gate intact, then exercise the same APK's
+# system session on every API and additional hybrid flows on capable providers.
+CLASSES=$(python3 scripts/hybrid/tv_regressions.py --classes --evidence "$EVIDENCE")
+set +e
+timeout --signal=TERM --kill-after=15s 8m "$HYBRID_ADB" -s "$HYBRID_SERIAL" shell am instrument -w -r \
+  -e class "$CLASSES" -e additionalTestOutputDir "$DEVICE_OUTPUT" \
+  dev.cinematv.test/androidx.test.runner.AndroidJUnitRunner | tee "$EVIDENCE/regressions.txt"
+REGRESSION_STATUS=${PIPESTATUS[0]}
+set -e
+test "$REGRESSION_STATUS" -eq 0
+timeout --signal=TERM --kill-after=5s 30s "$HYBRID_ADB" -s "$HYBRID_SERIAL" pull "$DEVICE_OUTPUT/audit-evidence" "$EVIDENCE/" >/dev/null 2>&1 || true
+python3 scripts/hybrid/tv_regressions.py --bundle "$BUNDLE" --evidence "$EVIDENCE"
