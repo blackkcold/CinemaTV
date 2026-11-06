@@ -6,8 +6,9 @@ on:
 permissions:
   contents: read
 concurrency:
+  queue: max
   group: glass-visual-review-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 jobs:
   build:
     runs-on: ubuntu-24.04
@@ -94,12 +95,17 @@ jobs:
   visual-review:
     # Only the explicit native-only branch omits canonical screenshots. Manual
     # dispatches on any other ref retain both canonical viewports.
+    concurrency:
+      group: cinematv-emulator-exclusive
+      cancel-in-progress: false
+      queue: max
     if: ${{ github.ref != 'refs/heads/feature/glass-native-review' }}
     name: Capture / ${{ matrix.viewport }} (review only)
     needs: build
     runs-on: ubuntu-24.04
     timeout-minutes: 32
     strategy:
+      max-parallel: 1
       fail-fast: false
       matrix:
         include:
@@ -144,11 +150,16 @@ jobs:
           if-no-files-found: error
           retention-days: 14
   native-glass:
+    concurrency:
+      group: cinematv-emulator-exclusive
+      cancel-in-progress: false
+      queue: max
     name: Native glass / API${{ matrix.api }} (focused QA)
     needs: build
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
+      max-parallel: 1
       fail-fast: false
       matrix:
         include:

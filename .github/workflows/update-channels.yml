@@ -20,8 +20,9 @@ on:
 permissions:
   contents: read
 concurrency:
+  queue: max
   group: update-channels-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 jobs:
   scope:
     runs-on: ubuntu-latest
@@ -113,10 +114,15 @@ jobs:
             stable-account-rejection.txt
           if-no-files-found: error
   settings-ui:
+    concurrency:
+      group: cinematv-emulator-exclusive
+      cancel-in-progress: false
+      queue: max
     needs: safety
     runs-on: ubuntu-latest
     timeout-minutes: 25
     strategy:
+      max-parallel: 1
       fail-fast: false
       matrix:
         include:
@@ -219,10 +225,15 @@ jobs:
           retention-days: 1
           if-no-files-found: error
   installer-upgrades:
+    concurrency:
+      group: cinematv-emulator-exclusive
+      cancel-in-progress: false
+      queue: max
     needs: installer-fixtures
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
+      max-parallel: 1
       fail-fast: false
       matrix:
         api: [26, 35]
@@ -255,10 +266,15 @@ jobs:
           if-no-files-found: error
 
   repository-acceptance:
+    concurrency:
+      group: cinematv-emulator-exclusive
+      cancel-in-progress: false
+      queue: max
     needs: installer-fixtures
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
+      max-parallel: 1
       fail-fast: false
       matrix:
         api: [26, 35]

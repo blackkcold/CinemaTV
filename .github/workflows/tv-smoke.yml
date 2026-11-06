@@ -19,8 +19,9 @@ permissions:
   contents: read
 concurrency:
   # A reusable workflow must never share its caller's concurrency group.
+  queue: max
   group: cinematv-device-ui-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 jobs:
   select-devices:
     runs-on: ubuntu-latest
@@ -40,6 +41,10 @@ jobs:
           MATRIX=$(python3 scripts/qa-device-matrix.py "$QA_TARGET")
           printf 'matrix=%s\n' "$MATRIX" >> "$GITHUB_OUTPUT"
   instrumented:
+    concurrency:
+      group: cinematv-emulator-exclusive
+      cancel-in-progress: false
+      queue: max
     name: UI / ${{ matrix.name }}
     needs: select-devices
     # Keep the emulator off the moving ubuntu-latest OS release; Ubuntu 26.04
@@ -47,6 +52,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     strategy:
+      max-parallel: 1
       fail-fast: false
       matrix: ${{ fromJSON(needs.select-devices.outputs.matrix) }}
     steps:

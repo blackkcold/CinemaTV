@@ -14,6 +14,7 @@ on:
 permissions:
   contents: read
 concurrency:
+  queue: max
   group: production-glass-performance-${{ github.ref }}
   cancel-in-progress: false
 jobs:
@@ -67,6 +68,10 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
   benchmark:
+    concurrency:
+      group: cinematv-emulator-exclusive
+      cancel-in-progress: false
+      queue: max
     env:
       BENCHMARK_PROFILE: ${{ inputs.profile || (contains(github.event.head_commit.message, '[poster-performance]') && 'poster-motion' || 'glass-controls') }}
     needs: build

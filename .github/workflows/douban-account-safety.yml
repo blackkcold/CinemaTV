@@ -15,13 +15,19 @@ on:
 permissions:
   contents: read
 concurrency:
+  queue: max
   group: douban-account-safety-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 jobs:
   synthetic:
+    concurrency:
+      group: cinematv-emulator-exclusive
+      cancel-in-progress: false
+      queue: max
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
+      max-parallel: 1
       fail-fast: false
       matrix:
         include:

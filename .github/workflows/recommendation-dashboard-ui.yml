@@ -13,13 +13,19 @@ on:
 permissions:
   contents: read
 concurrency:
+  queue: max
   group: recommendation-dashboard-ui-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 jobs:
   dashboard:
+    concurrency:
+      group: cinematv-emulator-exclusive
+      cancel-in-progress: false
+      queue: max
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     strategy:
+      max-parallel: 1
       fail-fast: false
       matrix:
         include:

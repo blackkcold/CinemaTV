@@ -8,8 +8,9 @@ on:
 permissions:
   contents: read
 concurrency:
+  queue: max
   group: cinematv-apk-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 jobs:
   apk:
     runs-on: ubuntu-latest

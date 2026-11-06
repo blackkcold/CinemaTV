@@ -4,10 +4,12 @@ import argparse
 import difflib
 import json
 from pathlib import Path
+import re
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 LOCK = {'group': 'cinematv-emulator-exclusive', 'cancel-in-progress': False, 'queue': 'max'}
+LAUNCH = re.compile(r'(?m)^[ \t]*(?:exec[ \t]+)?bash[ \t]+scripts/hybrid/run-tv-emulator\.sh(?:[ \t]|$)')
 
 
 def mapping(node):
@@ -15,8 +17,9 @@ def mapping(node):
 
 
 def device_job(job):
+    # A `bash -n ... run-tv-emulator.sh` compilation preflight is not a launch.
     return any('reactivecircus/android-emulator-runner@' in str(step.get('uses', '')) or
-               'scripts/hybrid/run-tv-emulator.sh' in str(step.get('run', ''))
+               LAUNCH.search(str(step.get('run', ''))) is not None
                for step in job.get('steps', []))
 
 

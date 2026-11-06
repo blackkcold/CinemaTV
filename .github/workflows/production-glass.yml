@@ -12,8 +12,9 @@ on:
 permissions:
   contents: read
 concurrency:
+  queue: max
   group: production-glass-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 jobs:
   build:
     runs-on: ubuntu-24.04
@@ -89,10 +90,15 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
   native-ui:
+    concurrency:
+      group: cinematv-emulator-exclusive
+      cancel-in-progress: false
+      queue: max
     needs: build
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
+      max-parallel: 1
       fail-fast: false
       matrix:
         include:
