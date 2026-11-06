@@ -296,15 +296,17 @@ class LibreTvRepository(context: Context, val library: LocalMediaLibrary = Local
     }
 
     private fun sourceFrom(j: JSONObject): TvSource? {
-        val url = j.optString("url")
-        if (!url.startsWith("https://") && !url.startsWith("http://")) return null
-        return TvSource(j.optString("key", url), j.optString("name", "未命名"), url, j.optString("detail"))
+        val url = j.optString("url").trim()
+        if (!SourceResolutionPolicy.usableUrl(url)) return null
+        return TvSource(j.optString("key", url), j.optString("name", "未命名"), url,
+            j.optString("detail").trim().takeIf(SourceResolutionPolicy::usableUrl).orEmpty())
     }
 
     private fun liveSourceFrom(j: JSONObject): LiveSource? {
-        val url = j.optString("url")
-        if (!url.startsWith("https://") && !url.startsWith("http://")) return null
-        return LiveSource(j.optString("key", url), j.optString("name", "直播订阅"), url, j.optString("epg"))
+        val url = j.optString("url").trim()
+        if (!SourceResolutionPolicy.usableUrl(url)) return null
+        return LiveSource(j.optString("key", url), j.optString("name", "直播订阅"), url,
+            j.optString("epg").trim().takeIf(SourceResolutionPolicy::usableUrl).orEmpty())
     }
 
     private fun <T> parseArray(array: JSONArray?, parse: (JSONObject) -> T?): List<T> = buildList {
@@ -325,11 +327,12 @@ class LibreTvRepository(context: Context, val library: LocalMediaLibrary = Local
     private fun disabledSourceUrls(): Set<String> =
         prefs.getStringSet("disabled_sources", emptySet()) ?: emptySet()
 
-    fun sources(): List<TvSource> = (storedSources() + importedSubscriptions.flatMap { it.snapshot.sources } + defaultSources)
-        .distinctBy { it.url }
-        .map { it.copy(enabled = it.url !in disabledSourceUrls()) }
+    fun sources(): List<TvSource> = synchronized(subscriptionLock) {
+        (storedSources() + importedSubscriptions.flatMap { it.snapshot.sources } + defaultSources)
+            .distinctBy { it.url }.map { it.copy(enabled = it.url !in disabledSourceUrls()) }
+    }
 
-    fun setSourceEnabled(url: String, enabled: Boolean) {
+    fun setSourceEnabled(url: String, enabled: Boolean) = synchronized(subscriptionLock) {
         val updated = disabledSourceUrls().toMutableSet()
         if (enabled) updated.remove(url) else updated.add(url)
         prefs.edit().putStringSet("disabled_sources", updated).apply()
@@ -354,7 +357,18 @@ class LibreTvRepository(context: Context, val library: LocalMediaLibrary = Local
                 else "HTTP $status / 非 JSON 接口")
         } finally { conn.disconnect() }
     }
-    fun liveSources(): List<LiveSource> = (storedLiveSources() + importedSubscriptions.flatMap { it.snapshot.liveSources } + defaultLiveSources).distinctBy { it.url }
+    fun liveSources(): List<LiveSource> = synchronized(subscriptionLock) {
+        (storedLiveSources() + importedSubscriptions.flatMap { it.snapshot.liveSources } + defaultLiveSources).distinctBy { it.url }
+    }
+
+    fun isManualSource(url: String, live: Boolean = false): Boolean = synchronized(subscriptionLock) {
+        if (live) storedLiveSources().any { it.url == url } else storedSources().any { it.url == url }
+    }
+
+    fun hasSourceFallback(url: String, live: Boolean = false): Boolean = synchronized(subscriptionLock) {
+        if (live) defaultLiveSources.any { it.url == url } || importedSubscriptions.any { record -> record.snapshot.liveSources.any { it.url == url } }
+        else defaultSources.any { it.url == url } || importedSubscriptions.any { record -> record.snapshot.sources.any { it.url == url } }
+    }
 
     fun sourceSubscriptions(): List<SourceSubscriptionRecord> = importedSubscriptions
 
@@ -384,7 +398,10 @@ class LibreTvRepository(context: Context, val library: LocalMediaLibrary = Local
                 require(previous != null || importedSubscriptions.size < SourceSubscriptionContract.MAX_SUBSCRIPTIONS) { "最多保存 20 个片源列表订阅" }
                 val record = SourceSubscriptionRecord(preview.subscription, preview.snapshot, preview.fetchedAt,
                     java.util.UUID.randomUUID().toString())
-                val next = importedSubscriptions.filterNot { it.subscription.url == record.subscription.url } + record
+                // Refresh is an in-place replacement: subscription order determines overlap precedence.
+                val next = if (previous == null) importedSubscriptions + record else importedSubscriptions.map {
+                    if (it.subscription.url == record.subscription.url) record else it
+                }
                 check(prefs.edit().putString("source_subscriptions_v1", SourceSubscriptionContract.encodeRecords(next)).commit()) {
                     "订阅保存失败，原有片源未改变"
                 }
@@ -400,10 +417,15 @@ class LibreTvRepository(context: Context, val library: LocalMediaLibrary = Local
             check(subscriptionStorageError.isBlank()) { subscriptionStorageError }
             val record = importedSubscriptions.firstOrNull { it.subscription.url == url } ?: return@synchronized
             val next = importedSubscriptions.filterNot { it.subscription.url == url }
-            val vod = (storedSources() + record.snapshot.sources.map {
+            val vodOwners = importedSubscriptions.flatMap { owner -> owner.snapshot.sources.map { it.url to owner.subscription.url } }
+                .distinctBy { it.first }.toMap()
+            val liveOwners = importedSubscriptions.flatMap { owner -> owner.snapshot.liveSources.map { it.url to owner.subscription.url } }
+                .distinctBy { it.first }.toMap()
+            // A shadowed source from this record must never become a new manual override of an active subscription.
+            val vod = (storedSources() + record.snapshot.sources.filter { vodOwners[it.url] == url }.map {
                 it.copy(key = SourceSubscriptionContract.id("custom", it.url))
             }).distinctBy { it.url }
-            val live = (storedLiveSources() + record.snapshot.liveSources.map {
+            val live = (storedLiveSources() + record.snapshot.liveSources.filter { liveOwners[it.url] == url }.map {
                 it.copy(key = SourceSubscriptionContract.id("custom_live", it.url))
             }).distinctBy { it.url }
             check(prefs.edit().putString("source_subscriptions_v1", SourceSubscriptionContract.encodeRecords(next))
@@ -415,23 +437,24 @@ class LibreTvRepository(context: Context, val library: LocalMediaLibrary = Local
         }
     }
 
-    fun addSource(name: String, url: String) {
-        val item = TvSource("custom_${System.currentTimeMillis()}", name.trim(), url.trim())
-        require(item.url.startsWith("http://") || item.url.startsWith("https://"))
+    fun addSource(name: String, url: String) = synchronized(subscriptionLock) {
+        val item = TvSource(SourceSubscriptionContract.id("custom", url.trim()), name.trim(), url.trim())
+        require(SourceResolutionPolicy.usableUrl(item.url)) { "点播源地址必须为有效的 HTTP(S) URL，且不能包含账户密码" }
         val stored = storedSources().filterNot { it.url == item.url } + item
         prefs.edit().putString("sources", JSONArray(stored.map { sourceJson(it) }).toString()).apply()
     }
 
-    fun addLiveSource(name: String, url: String, epg: String = "") {
-        val item = LiveSource("custom_${System.currentTimeMillis()}", name.trim(), url.trim(), epg.trim())
-        require(item.url.startsWith("http://") || item.url.startsWith("https://"))
+    fun addLiveSource(name: String, url: String, epg: String = "") = synchronized(subscriptionLock) {
+        val item = LiveSource(SourceSubscriptionContract.id("custom_live", url.trim()), name.trim(), url.trim(), epg.trim())
+        require(SourceResolutionPolicy.usableUrl(item.url)) { "直播源地址必须为有效的 HTTP(S) URL，且不能包含账户密码" }
+        require(item.epg.isBlank() || SourceResolutionPolicy.usableUrl(item.epg)) { "节目单地址必须为有效的 HTTP(S) URL，且不能包含账户密码" }
         val stored = storedLiveSources().filterNot { it.url == item.url } + item
         prefs.edit().putString("live_sources", JSONArray(stored.map {
             JSONObject().put("key", it.key).put("name", it.name).put("url", it.url).put("epg", it.epg)
         }).toString()).apply()
     }
 
-    fun removeSource(url: String, live: Boolean = false) {
+    fun removeSource(url: String, live: Boolean = false) = synchronized(subscriptionLock) {
         if (live) {
             val arr = JSONArray(storedLiveSources().filterNot { it.url == url }.map {
                 JSONObject().put("key", it.key).put("name", it.name).put("url", it.url).put("epg", it.epg)

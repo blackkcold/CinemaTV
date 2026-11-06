@@ -75,11 +75,11 @@ internal object SourceSubscriptionContract {
         .digest(url.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it.toInt() and 0xff) }
 
     fun normalize(value: SourceSubscription): SourceSubscription {
-        val url = value.url.trim().trimEnd('?', '#').toHttpUrlOrNull()
+        val url = value.url.trim().toHttpUrlOrNull()
             ?: throw IllegalArgumentException("订阅地址必须为有效的 HTTP(S) URL")
         require(value.url.length <= 2_048) { "订阅地址过长" }
         require(url.username.isBlank() && url.password.isBlank()) { "订阅地址不能包含账户密码" }
-        val cleaned = url.newBuilder().fragment(null).build().toString().let { if (url.query == null) it.trimEnd('/') else it }
+        val cleaned = url.newBuilder().fragment(null).build().toString()
         return SourceSubscription(cleaned, value.name.trim().take(120), value.refreshDays.coerceIn(1, 365))
     }
 
@@ -177,7 +177,11 @@ internal object SourceSubscriptionContract {
             val subscription = normalize(SourceSubscription(row.getString("url"), row.text("name"), row.optInt("refreshDays", 1)))
             require(seen.add(subscription.url)) { "订阅资料存在重复地址" }
             val revision = row.getString("revision").takeIf { it.isNotBlank() } ?: error("订阅资料缺少版本")
-            SourceSubscriptionRecord(subscription, decode(row.getJSONObject("snapshot")), row.getLong("updatedAt").coerceAtLeast(0), revision)
+            val rawSnapshot = row.getJSONObject("snapshot")
+            val snapshot = decode(rawSnapshot)
+            require(rawSnapshot.getJSONArray("sources").length() == snapshot.sources.size &&
+                rawSnapshot.getJSONArray("liveSources").length() == snapshot.liveSources.size) { "已保存订阅包含损坏的片源记录" }
+            SourceSubscriptionRecord(subscription, snapshot, row.getLong("updatedAt").coerceAtLeast(0), revision)
         }
     }
 

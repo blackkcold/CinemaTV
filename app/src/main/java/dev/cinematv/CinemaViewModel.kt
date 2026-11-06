@@ -461,10 +461,17 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
     }
 
     fun removeSource(url: String, live: Boolean = false) {
+        if (!repo.isManualSource(url, live)) { message = "此来源由订阅或服务器提供，请在相应设置中管理。"; return }
+        val fallbackRemains = repo.hasSourceFallback(url, live)
         repo.removeSource(url, live)
         sources = repo.sources()
         liveSources = repo.liveSources()
+        message = if (fallbackRemains) "已移除手动来源；同地址仍由订阅或服务器提供。" else "已移除手动来源；收藏与观看进度已保留。"
     }
+
+    fun canRemoveManualSource(url: String, live: Boolean = false): Boolean = repo.isManualSource(url, live)
+    fun sourceRemovalLabel(url: String, live: Boolean = false): String =
+        if (repo.hasSourceFallback(url, live)) "移除手动源" else "移除"
 
     fun previewSourceSubscription(subscription: SourceSubscription? = null) {
         if (!authorized) { sourceSubscriptionNotice = "请先连接 LibreTV 并登录，再读取片源列表订阅。"; return }

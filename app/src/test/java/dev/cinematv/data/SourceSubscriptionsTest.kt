@@ -13,7 +13,7 @@ class SourceSubscriptionsTest {
 
     @Test fun advertisedSubscriptionsWorkWithoutAnyDefaultMediaSources() {
         val found = SourceSubscriptionContract.advertised(JSONArray("""[
-          {"url":"https://lists.example.test/list.json/","name":"Default","refreshDays":"10"},
+          {"url":"https://lists.example.test/list.json","name":"Default","refreshDays":"10"},
           "https://lists.example.test/list.json",
           {"url":"file:///no","name":"Invalid"},
           {"url":"https://user:secret@lists.example.test/private"}
@@ -76,6 +76,10 @@ class SourceSubscriptionsTest {
     @Test fun urlNormalizationDoesNotTrimMeaningfulQueryTokens() {
         val subscription = SourceSubscriptionContract.normalize(SourceSubscription("https://lists.example.test/data?token=abc/"))
         assertEquals("https://lists.example.test/data?token=abc/", subscription.url)
+        assertEquals("https://lists.example.test/feed/", SourceSubscriptionContract.normalize(SourceSubscription("https://lists.example.test/feed/")).url)
+        assertEquals("https://lists.example.test/feed?token=abc?", SourceSubscriptionContract.normalize(SourceSubscription("https://lists.example.test/feed?token=abc?")).url)
+        assertNotEquals(SourceSubscriptionContract.normalize(SourceSubscription("https://lists.example.test/feed")),
+            SourceSubscriptionContract.normalize(SourceSubscription("https://lists.example.test/feed/")))
     }
 
     @Test fun invalidOrEmptyOutputFailsInsteadOfBecomingAnEmptyRefresh() {

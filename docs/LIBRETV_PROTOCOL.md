@@ -15,6 +15,15 @@ not embedded/copied upstream implementation:
 
 No speculative alternate endpoints, embedded source feeds, credentials, or automatic direct-provider bypasses are added.
 
+The November 6 audit additionally checked **v2.21.2**, commit
+`722e86fce102aa6701e73a83dd0a14eb5ba707c9`. Status, search and detail response
+contracts remain compatible. The source-list implementation uses the normalized
+[`source-list` route](https://github.com/LibreSpark/LibreTV/blob/722e86fce102aa6701e73a83dd0a14eb5ba707c9/src/app/api/source-list/route.ts),
+[`status` defaults](https://github.com/LibreSpark/LibreTV/blob/722e86fce102aa6701e73a83dd0a14eb5ba707c9/src/app/api/status/route.ts)
+and [public response types](https://github.com/LibreSpark/LibreTV/blob/722e86fce102aa6701e73a83dd0a14eb5ba707c9/src/lib/types.ts).
+These links document the wire schema; no upstream parser or application code is
+bundled into the Android app. CI executes the separately supplied pinned releases.
+
 ## Authentication
 
 `GET /api/status` is public. `passwordRequired` means the operator configured
@@ -22,6 +31,16 @@ PASSWORD; it does **not** mean authentication is optional when false. Official
 false/false means missing configuration; protected routes return 503. Only a
 verified session permits protected operations. 401 clears the session cookie for
 ordinary JSON and streaming search. Redirect following is disabled.
+
+Each request captures an immutable server/generation context and a private
+in-memory cookie revision. Switching servers or submitting a new login replaces
+that ownership. Late authentication, status, detail, stream and 401 responses
+cannot write into a new server or a newly authenticated session on the same
+server. Status and HTTP-error receipts contain only the generation and revision;
+the ViewModel checks them again after dispatch before publishing state. Cancelling
+old network work does not delete the local library. A search 401 exposes login
+while retaining the query, local matches and already received successful results;
+429, timeout and protocol errors have separate messages.
 
 ## Search
 
@@ -57,6 +76,69 @@ from attaching to reused listings with identical episode labels. An explicit val
 array marks an authoritative playlist; missing/malformed arrays are protocol
 errors, not empty playlists. Direct-source authoritative empty detail can update
 the local record while preserving quarantined checkpoints, but cannot play.
+
+LibreTV's detail cache is scoped by provider URL/root/item ID rather than the
+client's local source key. When `sourceUrl` is supplied it must match the requested
+URL; an old cached `sourceKey` from another client is then rebound to the current
+source. Without a URL, a supplied key must still match. An explicit different URL
+never falls back to a matching key. Search uses the same URL-first source policy.
+
+## SourceList subscriptions
+
+Settings on both native TV and phone expose **片源列表订阅**. The local hybrid
+frontend opens the native section; raw subscription/source URLs and credentials
+never enter the WebView bridge DTOs.
+
+- `defaultSubscriptions` is discovered independently of default VOD/live sources,
+  including deployments which advertise only SourceLists. Users may also supply
+  their own HTTP(S) subscription URL. Canonicalization preserves meaningful path
+  slashes and query bytes; URL credentials and invalid ports are rejected.
+- An authenticated `GET /api/source-list?url=...` returns normalized `sources`,
+  `liveSources` and optional `stats`. LibreTV owns fetching, URL access policy,
+  SourceList/TVBOX/source-catalog parsing, and unsupported-entry filtering. Android
+  does not execute Spider, XML, scripts or alternative direct-provider parsers.
+- The native preview shows VOD/live counts, added/changed/removed memberships,
+  individual source names/addresses, upstream skipped reasons/samples, and local
+  invalid/duplicate/truncation counts. All TV rows are native focus targets in a
+  lazy list. No saved source changes until the user confirms the reviewed preview.
+- A subscription stores its URL/name/refresh interval, last accepted snapshot,
+  update time and revision. A refresh replaces that record **in place**, preserving
+  precedence when multiple subscriptions share a source URL. The preview's prior
+  revision and connection/session receipt must still match at confirmation.
+- Manual sources take precedence over subscription records, then server defaults.
+  Refresh never changes the URL-based disabled-source preference, a manual source,
+  another subscription, or library/progress records. Failure, malformed/empty output
+  and stale previews preserve the last accepted record. Corrupt persisted data is
+  retained and blocks overwrite rather than becoming an empty writable store.
+- **停止订阅，保留片源** materializes only this subscription's currently effective
+  sources as manual entries before removing its refresh relationship. A shadowed
+  entry cannot become an override of an active subscription. Shared preference
+  read/modify/write operations for subscriptions and manual sources are serialized.
+  Removing a manual entry explicitly reports if a subscribed/default source remains.
+- Limits are 20 saved/advertised subscriptions, 100 VOD and 50 live entries per
+  snapshot, a 2,048-character URL, and bounded response/scan sizes. Search retains
+  its existing 50-enabled-source budget, stated in the native subscription UI.
+  Refresh is explicit; the server-provided interval is shown as a recommendation,
+  without background fetching or importing unreviewed changes.
+
+`SourceSubscriptionsTest` exercises normalized decoding, limits, URL preservation,
+storage round trips, diffs and invalid output. `LibreTvProtocolTest` adds real
+loopback default-only discovery, authenticated import, refresh/overlap precedence,
+disable/manual/library preservation, restart, stale/error protection and a gated
+storage/manual-add race. `SourceSubscriptionsUiTest` exercises the production
+phone controls and native D-pad traversal of long previews. Device execution
+evidence belongs to the exact candidate's Actions run, not this source description.
+
+## Native replay and guide identity
+
+Episode playback has explicit RESUME/RESTART intent. Selecting a completed
+checkpoint (the existing 95% duration criterion) starts at zero; incomplete RESUME
+uses only that source/episode's saved position. Explicit RESTART and automatic next
+episode start at zero without erasing saved history. Live channel selection uses
+source identity, channel ID and full stream URL; EPG/tvg IDs can therefore be shared
+by legitimate HD/SD alternatives. The visible guide may refresh its selected
+channel at most once per 15 minutes, without parallel requests; source/session
+and channel ownership still gate response publication.
 
 JSON and NDJSON use the app's explicit OkHttp 4.12.0 dependency (Apache-2.0;
 [Maven Central published POM](https://repo.maven.apache.org/maven2/com/squareup/okhttp3/okhttp/4.12.0/okhttp-4.12.0.pom)).
