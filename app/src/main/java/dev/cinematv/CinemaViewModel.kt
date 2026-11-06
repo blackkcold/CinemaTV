@@ -63,6 +63,9 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
         private set
     var tvShows by mutableStateOf<List<MediaItem>>(emptyList())
         private set
+    /** One bounded LibreTV search; a LibreTV-only install has no other browse source. */
+    var discovery by mutableStateOf(DiscoveryState())
+        private set
     var results by mutableStateOf<List<MediaItem>>(emptyList())
         private set
     var focused by mutableStateOf<MediaItem?>(null)
@@ -150,6 +153,9 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
         private set
     private var channelsJob: Job? = null
     private var homeJob: Job? = null
+    private var discoveryJob: Job? = null
+    private var discoveryRotation = 0
+    private val discoveryStore by lazy { HomeDiscoveryStore(application) }
     private var catalogMovies by mutableStateOf<List<MediaItem>>(emptyList())
     private var catalogSeries by mutableStateOf<List<MediaItem>>(emptyList())
     val browseMovies get() = catalogMovies.ifEmpty { featured }.mapNotNull { it.usableMetadata() }
@@ -358,6 +364,8 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
         if (ConnectionErrors.classify(error) == ConnectionFailure.AUTHENTICATION) {
             authorized = false
             passwordRequired = true
+            discoveryJob?.cancel()
+            discovery = DiscoveryState()
             if (page != Page.PLAYER) page = Page.SETTINGS
         }
     }
@@ -393,7 +401,7 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
         sourceSubscriptions = repo.sourceSubscriptions()
         message = if (authorized) "" else if (status.passwordRequired) "此服务器要求密码，请在设置中登录。"
             else "服务器未配置访问密码（PASSWORD），请联系管理员完成配置。"
-        if (authorized) { loadHome(); return }
+        if (authorized) { loadHome(); loadDiscovery(); return }
         // A personal local build may carry the endpoint password. Try it once per connection
         // attempt; never loop, and never override an explicit user login or a rejected password.
         val defaultPassword = BuildConfig.LIBRETV_DEFAULT_PASSWORD
@@ -418,7 +426,8 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
         connectionJob?.cancel()
         searchGeneration++; detailGeneration++; browseGeneration++; chartGeneration++; sourceSubscriptionGeneration++
         listOf(searchJob, searchMoreJob, detailJob, alternativesJob, channelsJob, epgJob, backdropJob,
-            homeJob, chartJob, recommendationJob, sourceSubscriptionJob).forEach { it?.cancel() }
+            homeJob, chartJob, recommendationJob, sourceSubscriptionJob, discoveryJob).forEach { it?.cancel() }
+        discovery = DiscoveryState()
         browseJobs.values.forEach { it.cancel() }
         browseJobs.clear()
         busy = false
@@ -682,6 +691,48 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
                 .map { it.catalogAttribution }.filter(String::isNotBlank).distinct().joinToString("\n")
         }
     }
+
+    /**
+     * Discovery is one explicit search, never a background crawl: the previous job is
+     * cancelled, a fresh cache short-circuits the network, and a failure only affects this rail.
+     */
+    fun loadDiscovery(rotating: Boolean = false) {
+        discoveryJob?.cancel()
+        if (!authorized) return
+        if (rotating) discoveryRotation++
+        val connection = repo.connectionContext()
+        val enabled = repo.sources().filter { it.enabled }
+        if (enabled.isEmpty()) {
+            discovery = DiscoveryState(message = "没有启用的片源")
+            return
+        }
+        val query = HomeDiscoveryStore.queryAt(connection.server.hashCode(), discoveryRotation)
+        val key = HomeDiscoveryStore.keyFor(connection.server, connection.generation, query, enabled)
+        discoveryJob = viewModelScope.launch {
+            discoveryStore.read(key)?.let { cached ->
+                discovery = DiscoveryState(cached.query, cached.items, fromCache = true)
+                return@launch
+            }
+            discovery = discovery.copy(loading = true, message = "")
+            try {
+                repo.searchSnapshots(query, connection).collect { snapshot ->
+                    discovery = discovery.copy(query = query, items = snapshot.items, loading = !snapshot.complete, fromCache = false)
+                    if (snapshot.complete) {
+                        discoveryStore.write(query, System.currentTimeMillis(), snapshot.items, key)
+                        discovery = discovery.copy(loading = false)
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                // Discovery never blanks the page and never rewrites the connection state.
+                discovery = discovery.copy(loading = false,
+                    message = if (discovery.items.isEmpty()) ConnectionErrors.message(error) else "")
+            }
+        }
+    }
+
+    fun rotateDiscovery() = loadDiscovery(rotating = true)
 
     private fun loadHome() {
         homeJob?.cancel()
@@ -1382,3 +1433,12 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
         }
     }
 }
+
+/** Home discovery is deliberately small: one query, one list, one message. */
+data class DiscoveryState(
+    val query: String = "",
+    val items: List<MediaItem> = emptyList(),
+    val loading: Boolean = false,
+    val message: String = "",
+    val fromCache: Boolean = false
+)

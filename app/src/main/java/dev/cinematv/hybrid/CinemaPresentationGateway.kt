@@ -187,6 +187,9 @@ class CinemaPresentationGateway(
             shelf("continue", "继续观看", model.history(), 40)
             shelf("movies", "为你精选", model.featured, 24)
             shelf("series", "值得追的故事", model.tvShows, 24)
+            if (model.discovery.items.isNotEmpty()) {
+                shelf("discover", "发现 · 搜索「${model.discovery.query}」", model.discovery.items, 24)
+            }
         }
         result.put("shelves", shelves)
         val episodeTotal = selected?.episodes?.size ?: 0
