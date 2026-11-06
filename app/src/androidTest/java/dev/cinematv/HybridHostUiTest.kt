@@ -13,6 +13,9 @@ import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModelProvider
 import androidx.test.core.app.ActivityScenario
 import androidx.test.espresso.Espresso
@@ -24,6 +27,7 @@ import dev.cinematv.data.MediaItem
 import dev.cinematv.ui.shared.metadataLine
 import dev.cinematv.ui.shared.presentationKey
 import kotlinx.coroutines.runBlocking
+import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.*
 import org.junit.Assert.*
@@ -44,6 +48,8 @@ class HybridHostUiTest {
     private lateinit var activity: MainActivity
     private lateinit var model: CinemaViewModel
     private lateinit var server: UiFixtureServer
+    private var inputTraceEnabled = false
+    private val inputTrace = ArrayDeque<JSONObject>()
     private val expectedMode get() = InstrumentationRegistry.getArguments().getString("hybridExpectedMode")
         ?: if (Build.VERSION.SDK_INT >= 29) "hybrid" else "native-fallback"
     private val hybrid get() = expectedMode == "hybrid"
@@ -81,6 +87,7 @@ class HybridHostUiTest {
     @After fun recordAndClose() {
         try {
             if (::activity.isInitialized) {
+                if (inputTraceEnabled) recordInputTrace("after-test")
                 runCatching { screenshot(name.methodName) }.onFailure {
                     File(output, "${name.methodName}-capture-error.txt").writeText(it.stackTraceToString())
                     throw it
@@ -93,9 +100,17 @@ class HybridHostUiTest {
                     .put("webGeometry", runCatching { webGeometry() }.getOrNull()).toString(2))
             }
         } finally {
-            if (::scenario.isInitialized) scenario.close()
-            if (::server.isInitialized) server.close()
-            instrumentation.targetContext.getSharedPreferences("cinema_settings", 0).edit().clear().commit()
+            try {
+                if (inputTraceEnabled) {
+                    try {
+                        File(output, "${name.methodName}-input-trace.json").writeText(JSONArray(inputTrace.toList()).toString(2))
+                    } finally { runCatching { evaluate("window.__hybridQaInputTrace?.dispose(); true") } }
+                }
+            } finally {
+                if (::scenario.isInitialized) scenario.close()
+                if (::server.isInitialized) server.close()
+                instrumentation.targetContext.getSharedPreferences("cinema_settings", 0).edit().clear().commit()
+            }
         }
     }
 
@@ -135,8 +150,105 @@ class HybridHostUiTest {
         val encoded = JSONObject.quote(id)
         assertEquals("true", evaluate("(() => {const n = Array.from(document.querySelectorAll('[data-focus]')).find(x => x.dataset.focus === $encoded); if (!n || n.disabled) return false; n.focus({preventScroll:true}); n.scrollIntoView({block:'nearest',inline:'nearest'}); return document.activeElement === n})()"))
     }
-    private fun click(id: String) { focus(id); key(KeyEvent.KEYCODE_DPAD_CENTER) }
+    private fun click(id: String) {
+        // A dismissed Dialog and completed search do not imply that Android has
+        // returned input ownership. Observe it; never request native focus or hide IME here.
+        awaitHybridInputReady(id, requireTarget = false)
+        focus(id)
+        awaitHybridInputReady(id, requireTarget = true)
+        try { key(KeyEvent.KEYCODE_DPAD_CENTER) }
+        finally { if (inputTraceEnabled) recordInputTrace("after-key", id) }
+    }
     private fun focused() = evaluate("document.activeElement?.dataset.focus || ''")
+
+    private fun nativeInputState(): JSONObject {
+        var state = JSONObject()
+        instrumentation.runOnMainSync {
+            val decor = activity.window.decorView
+            val current = HybridDom.find(decor)
+            val insets = ViewCompat.getRootWindowInsets(decor)
+            val imeVisible = insets?.isVisible(WindowInsetsCompat.Type.ime())
+            val ready = activity.lifecycle.currentState == Lifecycle.State.RESUMED && activity.hasWindowFocus() &&
+                decor.isAttachedToWindow && decor.isShown && decor.hasWindowFocus() && decor.hasFocus() &&
+                current != null && current.isAttachedToWindow && current.isShown && current.isFocused && current.hasFocus() &&
+                current.hasWindowFocus() && (Build.VERSION.SDK_INT < 30 || imeVisible == false)
+            state = JSONObject().put("uptimeMs", SystemClock.uptimeMillis()).put("route", model.page.name)
+                .put("lifecycle", activity.lifecycle.currentState.name).put("activityWindowFocus", activity.hasWindowFocus())
+                .put("decorAttached", decor.isAttachedToWindow).put("decorShown", decor.isShown).put("decorWindowFocus", decor.hasWindowFocus())
+                .put("decorHasFocus", decor.hasFocus()).put("webPresent", current != null)
+                .put("webAttached", current?.isAttachedToWindow == true).put("webShown", current?.isShown == true).put("webFocused", current?.isFocused == true)
+                .put("webHasFocus", current?.hasFocus() == true).put("webWindowFocus", current?.hasWindowFocus() == true)
+                .put("imeKnown", insets != null).put("imeVisible", imeVisible ?: JSONObject.NULL).put("nativeReady", ready)
+        }
+        return state
+    }
+
+    private fun awaitHybridInputReady(target: String, requireTarget: Boolean) {
+        val started = SystemClock.uptimeMillis()
+        var observation = nativeInputState()
+        if (inputTraceEnabled) recordInputTrace(if (requireTarget) "before-key-wait" else "before-focus-wait", target, observation)
+        try {
+            rule.waitUntil(10_000) {
+                observation = nativeInputState()
+                if (!observation.getBoolean("nativeReady")) false
+                else {
+                    val dom = JSONObject(evaluate("JSON.stringify({focused:document.hasFocus(),active:document.activeElement?.dataset.focus || ''})"))
+                    observation.put("document", dom)
+                    dom.getBoolean("focused") && (!requireTarget || dom.getString("active") == target)
+                }
+            }
+        } finally {
+            if (inputTraceEnabled) recordInputTrace(if (requireTarget) "pre-key" else "before-focus", target,
+                observation.put("waitMs", SystemClock.uptimeMillis() - started))
+        }
+    }
+
+    /** Passive, bounded metadata only. Wrappers preserve the transport's receiver, result and exceptions. */
+    private fun installInputTrace() {
+        inputTraceEnabled = true
+        assertEquals("true", evaluate("""(() => {
+            if (window.__hybridQaInputTrace) return true;
+            const events = [], transport = window.CinemaNative;
+            const note = value => { try { if (events.length === 128) events.shift(); events.push({t:performance.now(),...value}); } catch {} };
+            const focusId = node => { const id=node?.closest?.('[data-focus]')?.dataset.focus || ''; return /^(nav:[A-Z]+|search:input|settings:[a-z]+)$/.test(id) ? id : ''; };
+            const remote = new Set(['Enter','Escape','ArrowUp','ArrowDown','ArrowLeft','ArrowRight']);
+            const listener = event => {
+                if ((event.type === 'keydown' || event.type === 'keyup') && !remote.has(event.key)) return;
+                note({kind:event.type,key:remote.has(event.key) ? event.key : undefined,target:focusId(event.target),
+                    active:focusId(document.activeElement),documentFocus:document.hasFocus(),trusted:event.isTrusted,prevented:event.defaultPrevented});
+            };
+            const types = ['keydown','keyup','click','focusin','focusout'];
+            types.forEach(type => document.addEventListener(type, listener, true));
+            const wire = (kind, raw) => { try {
+                const value = JSON.parse(raw);
+                const safe = (text, pattern) => typeof text === 'string' && pattern.test(text) ? text : undefined;
+                note({kind,id:safe(value.id,/^[A-Za-z0-9_-]{1,96}$/),method:safe(value.method,/^[a-z]+(?:\.[a-z]+)*$/),
+                    event:safe(value.event,/^[a-z]+(?:\.[a-z]+)*$/),error:safe(value.error?.code,/^[A-Z_]{1,64}$/)});
+            } catch {} };
+            const post = transport.postMessage, receive = transport.onmessage;
+            const wrappedPost = function() { wire('post', arguments[0]); return Reflect.apply(post, this, arguments); };
+            const wrappedReceive = function() { wire('reply', arguments[0]?.data); if (receive) return Reflect.apply(receive, this, arguments); };
+            transport.postMessage = wrappedPost;
+            transport.onmessage = wrappedReceive;
+            window.__hybridQaInputTrace = {events,dispose() {
+                types.forEach(type => document.removeEventListener(type, listener, true));
+                if (transport.postMessage === wrappedPost) transport.postMessage = post;
+                if (transport.onmessage === wrappedReceive) transport.onmessage = receive;
+                delete window.__hybridQaInputTrace;
+            }};
+            return transport.postMessage === wrappedPost && transport.onmessage === wrappedReceive;
+        })()"""))
+    }
+
+    private fun recordInputTrace(stage: String, target: String = "", state: JSONObject = nativeInputState()) {
+        val entry = JSONObject().put("stage", stage).put("target", target).put("native", state)
+        runCatching { JSONArray(evaluate("JSON.stringify(window.__hybridQaInputTrace?.events.splice(0) || [])")) }
+            .onSuccess { entry.put("domEvents", it) }
+            .onFailure { entry.put("domReadError", it.javaClass.simpleName) }
+        if (inputTrace.size == 32) inputTrace.removeFirst()
+        inputTrace.addLast(entry)
+    }
+
     private fun webGeometry(): JSONObject? {
         val current = web() ?: return null
         var native = JSONObject()
@@ -404,6 +516,7 @@ class HybridHostUiTest {
 
     @Test fun searchInputAndNativeSettingsReturnToTheirWebControls() {
         if (hybrid) {
+            installInputTrace()
             click("nav:SEARCH"); awaitRoute(Page.SEARCH)
             click("search:input")
             rule.onNodeWithTag("hybrid-search-input").assertExists()
