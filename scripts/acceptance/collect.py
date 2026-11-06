@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import sys
 from manifest import ROOT, digest, environment, now, read, require, source, validate_receipts, verify_inventory, write
+from visual_receipts import BROWSER_STATES, png_dimensions, validate_android
 
 
 def one(directory, filename):
@@ -28,14 +29,16 @@ def validate_browser(folder, identity, builds, capture):
     require(receipt['sourceCommit'] == identity['commit'] and receipt['sourceTree'] == identity['tree'], 'Browser production build source mismatch')
     require(all(item['webAssets'] == receipt['webAssets'] for item in builds), 'Browser and Android packaged Web assets differ')
     metadata = [path for path in folder.rglob('*.json') if 'production-captures' in path.parts]
-    require(len(metadata) == 52, 'Missing production visual captures')
-    environments = set()
+    expected = {(project, state) for project in ('css540-dpr2', 'tv720', 'tv1080', 'tv4k') for state in BROWSER_STATES}
+    require(len(metadata) == len(expected) and {(path.parent.name, path.stem) for path in metadata} == expected, 'Missing or duplicate production visual captures')
     for path in metadata:
         item = read(path)
         require(item['sourceCommit'] == identity['commit'], 'Stale visual capture')
         require(item['sha256'] == digest(path.with_suffix('.png')), 'Visual capture bytes differ')
-        environments.add(path.parent.name)
-    require(environments == {'css540-dpr2', 'tv720', 'tv1080', 'tv4k'}, 'Missing visual viewport family')
+        env = item['environment']
+        require(env['family'] == 'hybrid-browser-production', 'Browser capture has the wrong presentation family')
+        dimensions = (round(env['viewport']['width'] * env['dpr']), round(env['viewport']['height'] * env['dpr']))
+        require(png_dimensions(path.with_suffix('.png')) == dimensions, 'Browser capture was rescaled')
     return {'status': mode, 'executedCases': 56, 'captures': 52, 'source': identity}
 
 
@@ -67,19 +70,23 @@ def collect(directory, capture=False):
     require(not unsuccessful, f'Workflow jobs were not successful: {unsuccessful}')
     builds = [read(path) for path in directory.rglob('acceptance-build.json')]
     build_hashes = {read(path)['configuration']: digest(path) for path in directory.rglob('acceptance-build.json')}
-    receipts = []
+    receipts, roots = [], {}
     for path in directory.rglob('lane-receipt.json'):
         item = read(path)
         verify_inventory(path.parent, item['evidence'])
         require(item['buildReceiptSha256'] == build_hashes.get(item['configuration']), 'Build receipt identity differs')
         require(item['workflow']['runId'] == os.environ['GITHUB_RUN_ID'], 'Evidence imported from another workflow run')
+        require(item['lane'] not in roots, 'Duplicate device evidence')
+        roots[item['lane']] = path.parent
         receipts.append(item)
     value = validate_receipts(identity, plan, builds, receipts)
     value['browser'] = validate_browser(directory / 'browser', identity, builds, capture)
+    dev_build = next(build for build in builds if build['configuration'] == 'dev-debug')
+    value['actualTvVisuals'] = [validate_android(roots[lane], lane, identity, dev_build, capture) for lane in ('hybrid1080', 'hybrid4k')]
     value['officialLibreTV'] = validate_upstream(directory / 'upstreams', identity)
     value['workflow'] = environment()
     value['finishedAt'] = now()
-    value['status'] = 'source-device-passed-visual-review-pending' if capture else 'passed-source-debug-device-and-reviewed-browser-gates'
+    value['status'] = 'source-device-passed-visual-review-pending' if capture else 'passed-source-debug-device-and-reviewed-visual-gates'
     value['signedArtifactAcceptance'] = False
     value['branchOnly'] = True
     return value
