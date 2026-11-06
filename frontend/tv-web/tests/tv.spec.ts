@@ -252,9 +252,12 @@ test('glass quality, motion and distinct native setting destinations are effecti
   await expect(page.locator('.tv-app')).toHaveAttribute('data-reduced-motion', 'true');
   await button(page, 'quality:ENHANCED').click();
   await expect(page.locator('.tv-app')).toHaveAttribute('data-quality', 'ENHANCED');
-  for (const section of ['connection', 'sources', 'updates', 'recommendations', 'library', 'developer']) {
-    await button(page, `settings:${section}`).click();
+  await button(page, 'settings:connection').focus();
+  for (const section of ['connection', 'sources', 'subscriptions', 'updates', 'recommendations', 'library', 'developer']) {
+    await expect(button(page, `settings:${section}`)).toBeFocused();
+    await page.keyboard.press('Enter');
     expect((await lastCall(page, 'native.open'))?.params).toEqual({ target: 'SETTINGS', section });
+    if (section !== 'developer') await page.keyboard.press('ArrowDown');
   }
   await page.screenshot({ path: info.outputPath('settings.png') });
   await button(page, 'nav:HOME').click();

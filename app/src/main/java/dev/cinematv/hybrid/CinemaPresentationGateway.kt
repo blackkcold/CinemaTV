@@ -217,7 +217,14 @@ class CinemaPresentationGateway(
         return result
     }
 
-    fun refreshProgramWindow() { if (model.page == Page.LIVE) session.changed() }
+    fun refreshProgramWindow() {
+        if (model.page == Page.LIVE) {
+            model.refreshEpgIfStale()
+            // Re-project the complete cached guide before applying the bounded DTO window.
+            // This advances past ended programs even between provider refresh attempts.
+            session.changed()
+        }
+    }
 
     fun snapshot(): JSONObject = stamp(payload())
 

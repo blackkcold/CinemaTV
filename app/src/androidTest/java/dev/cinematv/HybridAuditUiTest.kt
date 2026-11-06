@@ -150,6 +150,11 @@ class HybridAuditUiTest {
         capture("${testName.methodName}-developer")
         key(KeyEvent.KEYCODE_BACK); awaitRoute(Page.SETTINGS)
         rule.waitUntil(10_000) { evaluate("document.activeElement?.dataset.focus || ''") == "settings:developer" }
+        click("settings:subscriptions")
+        rule.onNodeWithTag("source-subscriptions-screen").assertExists()
+        capture("${testName.methodName}-subscriptions")
+        key(KeyEvent.KEYCODE_BACK); awaitRoute(Page.SETTINGS)
+        rule.waitUntil(10_000) { evaluate("document.activeElement?.dataset.focus || ''") == "settings:subscriptions" }
         click("settings:library")
         rule.onNodeWithTag("library-progress-review").assertExists()
         rule.onNodeWithText("原片单第 4 项", substring = true).assertExists()

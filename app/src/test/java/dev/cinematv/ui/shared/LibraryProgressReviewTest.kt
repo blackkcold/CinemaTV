@@ -44,6 +44,7 @@ class LibraryProgressReviewTest {
         assertEquals(4, NativeSettingsSection.fromWireName("developer")?.index)
         assertEquals(NativeSettingsSection.DEVELOPER, NativeSettingsSection.fromWireName("advanced"))
         assertEquals(6, NativeSettingsSection.fromWireName("library")?.index)
+        assertEquals(7, NativeSettingsSection.fromWireName("subscriptions")?.index)
         assertEquals(NativeSettingsSection.entries.size, NativeSettingsSection.entries.map { it.index }.toSet().size)
         assertNull(NativeSettingsSection.fromWireName("arbitrary-page"))
     }

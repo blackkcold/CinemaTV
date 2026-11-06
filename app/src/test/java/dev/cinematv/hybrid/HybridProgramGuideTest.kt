@@ -22,4 +22,16 @@ class HybridProgramGuideTest {
         assertEquals(listOf(next), HybridProgramGuide.window(listOf(next, current, next,
             TvProgram("Invalid", 400, 350)), 200))
     }
+
+    @Test fun aVisibleClockAdvancesBeyondTheFirstBoundWithoutReplacingTheCachedGuide() {
+        val cached = (0 until 120).map { TvProgram("Short program $it", it * 10_000L, (it + 1) * 10_000L) }
+        val initial = HybridProgramGuide.window(cached, 0)
+        val afterTenMinutes = HybridProgramGuide.window(cached, 600_000)
+        assertEquals(48, initial.size)
+        assertEquals(cached[47], initial.last())
+        assertEquals(48, afterTenMinutes.size)
+        assertEquals(cached[60], afterTenMinutes.first())
+        assertEquals(cached[107], afterTenMinutes.last())
+        assertTrue(initial.intersect(afterTenMinutes.toSet()).isEmpty())
+    }
 }

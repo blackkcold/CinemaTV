@@ -8,7 +8,8 @@ enum class NativeSettingsSection(val index: Int, val wireName: String, val title
     UPDATES(3, "updates", "关于 CinemaTV"),
     DEVELOPER(4, "developer", "开发者选项"),
     RECOMMENDATIONS(5, "recommendations", "本地推荐"),
-    LIBRARY(6, "library", "资料管理");
+    LIBRARY(6, "library", "资料管理"),
+    SUBSCRIPTIONS(7, "subscriptions", "源列表订阅");
 
     companion object {
         fun fromWireName(name: String): NativeSettingsSection? =

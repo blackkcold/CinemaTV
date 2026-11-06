@@ -50,6 +50,37 @@ allowlists, payload/concurrency limits and explicit failures. Timed-out writes a
 not automatically retried. Artwork is resolved by native code, not arbitrary
 JavaScript fetches.
 
+### Browse, guide and native tools
+
+Movie, series, discovery and search pages keep the remote page action available
+when local filters hide every currently loaded item. Loading, retry, exhausted and
+snapshot-restart states are explicit. The remote action retains its focus key while
+its state changes, and the server cursor is not discarded after a retryable error.
+Search rating filters preserve their TMDB or Douban provenance; Top 250 remains a
+separate licensed Douban restriction. Live channel groups and recommendation reasons
+use bounded presentation fields rather than provider responses.
+
+The live guide recalculates time every 30 seconds while the screen is visible and
+immediately on foreground return. Native code filters and sorts the complete cached
+guide before sending at most 48 current/upcoming programs; each visible tick also
+checks the native 15-minute provider refresh window. Background screens do not poll.
+Program keys survive clock updates, and the Web UI recovers the next guide item or
+channel when the focused program ends.
+
+Native settings destinations are named explicitly: connection, sources, display,
+updates, developer options, recommendations, retained-progress review and source-list
+subscriptions. The legacy `advanced` bridge destination maps to developer options.
+Source-list URLs, preview/import calls and credentials stay in the native screen.
+Subscriptions show preview/diff information before import or refresh; unsubscribing
+retains already imported sources. Returning from these panels restores the Web route
+and its focus bookmark.
+
+The library's management action opens a native review of unresolved episode progress.
+It shows the preserved source, original playlist position, measured time and reason
+the record cannot be attached safely. Opening the current playlist does not transfer
+or delete the old checkpoint. Details distinguish resume from restart, including an
+explicit restart action for incomplete episodes; completed episodes restart from zero.
+
 Official API references:
 [local WebView content](https://developer.android.com/develop/ui/views/layout/webapps/load-local-content),
 [native bridge risks](https://developer.android.com/privacy-and-security/risks/insecure-webview-native-bridges),

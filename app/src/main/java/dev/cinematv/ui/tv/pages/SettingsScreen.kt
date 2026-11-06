@@ -46,6 +46,20 @@ fun SettingsScreen(model: CinemaViewModel, initialSection: Int = 0) {
         onDismiss = { recommendationOpen = false }, onOpenItem = { recommendationOpen = false; model.open(it) })
     val reviews = remember(model.libraryVersion) { LibraryProgressReviews.project(model.repo.library.snapshot) }
     var section by rememberSaveable(initialSection) { mutableIntStateOf(NativeSettingsSection.fromIndex(initialSection).index) }
+    var pendingSectionFocus by remember { mutableStateOf<Int?>(null) }
+    fun openSection(destination: NativeSettingsSection) {
+        section = destination.index
+        model.focusCoordinator.remember(model.focusRoute, "settings-menu", section.toString())
+        pendingSectionFocus = section
+    }
+    LaunchedEffect(pendingSectionFocus) {
+        val requested = pendingSectionFocus ?: return@LaunchedEffect
+        withFrameNanos { }
+        val bookmark = model.focusCoordinator.last(model.focusRoute)
+        if (model.page == Page.SETTINGS && section == requested && bookmark?.region == "settings-menu" && bookmark.itemKey == requested.toString())
+            runCatching { entry.requestFocus() }
+        pendingSectionFocus = null
+    }
     RestorePageFocus(model)
     Column(Modifier.fillMaxSize().padding(horizontal = layout.gutter, vertical = 28.dp), verticalArrangement = Arrangement.spacedBy(22.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -67,7 +81,10 @@ fun SettingsScreen(model: CinemaViewModel, initialSection: Int = 0) {
             CinemaGlassSurface(Modifier.weight(.76f).fillMaxHeight(), radius = 22.dp) {
                 key(section) {
                     val state = rememberTvListState(model, "settings:$section")
-                    LazyColumn(state = state, contentPadding = PaddingValues(25.dp), verticalArrangement = Arrangement.spacedBy(15.dp), modifier = Modifier.fillMaxSize()) {
+                    if (section == NativeSettingsSection.SUBSCRIPTIONS.index) {
+                        dev.cinematv.ui.shared.SourceSubscriptionsScreen(model, tv = true, modifier = Modifier.fillMaxSize(),
+                            onOpenConnection = { openSection(NativeSettingsSection.CONNECTION) })
+                    } else LazyColumn(state = state, contentPadding = PaddingValues(25.dp), verticalArrangement = Arrangement.spacedBy(15.dp), modifier = Modifier.fillMaxSize()) {
                         when (section) {
                             0 -> {
                                 item { dev.cinematv.ui.douban.DoubanDeveloperOptionsEntry(model, tv = true) }
@@ -85,6 +102,7 @@ fun SettingsScreen(model: CinemaViewModel, initialSection: Int = 0) {
                                 item { GlassAction("保存元数据连接", Modifier.width(170.dp).height(43.dp)) { model.configureMetadata() } }
                             }
                             1 -> {
+                                item { GlassAction("管理源列表订阅", Modifier.width(185.dp).height(43.dp)) { openSection(NativeSettingsSection.SUBSCRIPTIONS) } }
                                 item { SettingTitle("添加点播源", "Apple CMS JSON API") }
                                 item { TvInput(model.sourceName, { model.sourceName = it }, "来源名称", Modifier.fillMaxWidth().height(49.dp)) }
                                 item { TvInput(model.sourceAddress, { model.sourceAddress = it }, "https://…/api.php/provide/vod", Modifier.fillMaxWidth().height(49.dp)) }

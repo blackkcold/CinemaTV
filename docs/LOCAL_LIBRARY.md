@@ -20,6 +20,24 @@ unknown; switching episodes never borrows the previous episode's duration.
 Completion saves before auto-next. Unknown-to-known season enrichment migrates
 only unambiguous source checkpoints; different known seasons remain separate.
 
+## Reviewing retained progress
+
+TV library management and Settings → 资料管理 show unresolved checkpoints without
+changing them. The review distinguishes legacy numeric positions, absent/ambiguous
+episode identity, and episodes missing from the current playlist. Each row keeps the
+original episode position, measured time and update date. The displayed work is joined
+by its exact source mapping, never by a similar title or a shared provider item number.
+
+When that exact source-backed record is available, `打开当前片单` opens its current
+detail page. The old checkpoint remains retained and is not attached automatically to
+the same numeric position in a changed playlist. A missing original source mapping
+has no open action. Merely viewing or leaving the review does not clear history or
+progress; existing history removal remains a separate action.
+
+Playback intent is explicit: a valid incomplete checkpoint can resume, `从头播放`
+starts that episode at zero, and a completed checkpoint uses `重新播放` from zero.
+Restarting playback does not erase unrelated library records or other episodes.
+
 Database/preferences are excluded from Android backup and device transfer.
 This app has no cloud profile or recommendation-history upload. Source URLs
 and playback links remain private local data and are not sent to TMDB.
