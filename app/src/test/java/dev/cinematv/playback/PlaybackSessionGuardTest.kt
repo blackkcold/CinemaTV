@@ -119,6 +119,38 @@ class PlaybackSessionGuardTest {
         assertFalse(guard.canRecover(session))
     }
 
+    @Test fun pauseDuringAsyncRecoveryDoesNotAutoplayTheReplacement() {
+        val guard = PlaybackSessionGuard()
+        val item = media()
+        val old = guard.start(item, item.episodes[0])
+        assertTrue(guard.tryRefresh(old))
+        // The user pauses after refresh started, before its response is published.
+        old.recordPlayIntent(playWhenReady = false, outputSuppressed = false)
+        val replacement = guard.switchSource(old, item, "https://refreshed-stream")!!
+        assertFalse(replacement.autoPlay)
+        old.recordPlayIntent(playWhenReady = true, outputSuppressed = false)
+        assertFalse("A late old-player event cannot change new playback intent", replacement.resumeOnReplacement)
+    }
+
+    @Test fun systemSuppressionCarriesAcrossRecoveryButExplicitPlaybackCanStartAgain() {
+        val guard = PlaybackSessionGuard()
+        val item = media()
+        val interrupted = guard.start(item, item.episodes[0])
+        interrupted.recordPlayIntent(playWhenReady = true, outputSuppressed = true)
+        val replacement = guard.switchSource(interrupted, item, "https://refreshed-stream")!!
+        assertFalse(replacement.autoPlay)
+        val explicit = guard.start(item, item.episodes[0])
+        assertTrue(explicit.autoPlay)
+    }
+
+    @Test fun activePlaybackStillAutoplaysVerifiedRecovery() {
+        val guard = PlaybackSessionGuard()
+        val item = media()
+        val active = guard.start(item, item.episodes[0])
+        active.recordPlayIntent(playWhenReady = true, outputSuppressed = false)
+        assertTrue(guard.switchSource(active, item, "https://refreshed-stream")!!.autoPlay)
+    }
+
     @Test fun sourcelessVodStillHasOnlyTwoAlternativeAttempts() {
         val guard = PlaybackSessionGuard()
         val session = guard.start(media().copy(source = null), "https://stream")

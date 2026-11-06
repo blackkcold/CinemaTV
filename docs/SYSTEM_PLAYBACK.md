@@ -22,6 +22,9 @@ VOD cache and source-recovery ownership remain in the repository/ViewModel.
 - Screen disposal releases the system session before the Player, unregisters the
   output receiver, and preserves the final checkpoint. Per-instance session IDs
   allow Compose to create a replacement while disposing its predecessor.
+- A verified refreshed playback URL inherits the latest pause/output-suppression
+  intent at the point of replacement. Pausing during link recovery cannot start
+  the replacement automatically; an explicit episode selection can start again.
 
 ## Verification
 

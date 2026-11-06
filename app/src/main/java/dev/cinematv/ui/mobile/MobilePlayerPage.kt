@@ -46,7 +46,8 @@ fun MobilePlayerPage(model: CinemaViewModel) {
     val episodeAtCreation = session.episodeIndex
     val playback = remember(session) {
         NativePlaybackSession(context, mediaId = "playback-${session.generation}", uri = session.url,
-            title = model.playbackTitle, positionMs = model.playbackPosition, cacheVod = session.item != null)
+            title = model.playbackTitle, positionMs = model.playbackPosition, cacheVod = session.item != null,
+            autoPlay = session.autoPlay)
     }
     val player = playback.player
     var error by remember(session) { mutableStateOf("") }
@@ -61,7 +62,13 @@ fun MobilePlayerPage(model: CinemaViewModel) {
             override fun onPlaybackStateChanged(state: Int) {
                 if (state == Player.STATE_ENDED) model.playerEnded(player.currentPosition, player.duration.coerceAtLeast(0L), episodeAtCreation, session)
             }
-            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) { playRequested = playWhenReady }
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                playRequested = playWhenReady
+                session.recordPlayIntent(playWhenReady, player.playbackSuppressionReason != Player.PLAYBACK_SUPPRESSION_REASON_NONE)
+            }
+            override fun onPlaybackSuppressionReasonChanged(playbackSuppressionReason: Int) {
+                session.recordPlayIntent(player.playWhenReady, playbackSuppressionReason != Player.PLAYBACK_SUPPRESSION_REASON_NONE)
+            }
         }
         player.addListener(listener)
         onDispose {
