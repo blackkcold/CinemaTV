@@ -14,6 +14,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.cinematv.ui.typography.CinemaTvText as Text
 import dev.cinematv.CinemaViewModel
+import dev.cinematv.ConnectionCopy
 import dev.cinematv.ui.GlassAction
 import dev.cinematv.ui.shared.*
 import dev.cinematv.ui.tv.components.*
@@ -58,7 +59,8 @@ fun CatalogScreen(model: CinemaViewModel, series: Boolean) {
             contentPadding = PaddingValues(start = layout.gutter, end = layout.gutter, top = 14.dp, bottom = 45.dp),
             horizontalArrangement = Arrangement.spacedBy(20.dp), verticalArrangement = Arrangement.spacedBy(28.dp)) {
             if (filtered.isEmpty()) item(key = "catalog-empty", span = { GridItemSpan(maxLineSpan) }) {
-                Text(if (all.isEmpty()) "暂无推荐，连接服务器后刷新。" else "没有符合筛选条件的作品。",
+                Text(if (all.isEmpty()) ConnectionCopy.summary(model.connectionState) + " · 搜索以发现内容"
+                    else "没有符合筛选条件的作品。",
                     color = TvColors.Secondary, modifier = Modifier.padding(vertical = 16.dp))
             }
             items(filtered, key = { it.presentationKey }) { item ->

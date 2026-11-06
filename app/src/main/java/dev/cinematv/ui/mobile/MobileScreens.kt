@@ -55,6 +55,7 @@ import coil3.compose.AsyncImage
 import dev.cinematv.ui.icons.CinemaIcon
 import dev.cinematv.ui.icons.CinemaSymbol
 import dev.cinematv.CinemaViewModel
+import dev.cinematv.ConnectionCopy
 import dev.cinematv.Page
 import dev.cinematv.data.LibraryStatus
 import dev.cinematv.data.ChannelIdentity
@@ -615,7 +616,7 @@ private fun MobileSettings(model: CinemaViewModel) {
             MobileField("服务器密码", model.password, { model.password = it }, secret = true)
             MobileGlassButton(onClick = { model.login() }) { Text("登录 LibreTV") }
         }
-        Text(if (model.authorized) "连接正常" else "未认证或未连接", color = Accent)
+        Text(ConnectionCopy.summary(model.connectionState), color = Accent)
         HorizontalDivider(color = stroke)
         MobileGlassOutlinedButton(onClick = { subscriptionsOpen = true },
             modifier = Modifier.testTag("source-subscriptions-open")) { Text("片源列表订阅") }

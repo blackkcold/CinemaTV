@@ -88,6 +88,11 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
         private set
     var authorized by mutableStateOf(false)
         private set
+    /** Single connection truth for every surface; see [ConnectionState]. */
+    var connectionState by mutableStateOf<ConnectionState>(
+        if (repo.isConnected) ConnectionState.Connecting else ConnectionState.Unconfigured
+    )
+        private set
     var busy by mutableStateOf(false)
         private set
     var message by mutableStateOf("")
@@ -349,6 +354,7 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
     private fun connectionError(error: Throwable, connection: LibreTvConnection = repo.connectionContext()) {
         if (error is CancellationException || !repo.isCurrentConnectionError(error, connection)) return
         message = ConnectionErrors.message(error)
+        connectionState = connectionStateForFailure(repo.server, error)
         if (ConnectionErrors.classify(error) == ConnectionFailure.AUTHENTICATION) {
             authorized = false
             passwordRequired = true
@@ -360,6 +366,7 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
         connectionJob?.cancel()
         val attempt = ++connectionAttempt
         val connection = repo.connectionContext()
+        if (!connectionState.isUsable) connectionState = ConnectionState.Connecting
         connectionJob = viewModelScope.launch {
             busy = true
             try { readConnection(connection, attempt) }
@@ -379,6 +386,7 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
         if (attempt != connectionAttempt || !repo.isCurrentStatus(status, connection)) return
         passwordRequired = status.passwordRequired
         authorized = status.verified
+        connectionState = connectionStateFor(repo.server, status)
         sources = status.sources
         liveSources = status.liveSources
         defaultSourceSubscriptions = status.defaultSubscriptions
@@ -391,11 +399,16 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
         val defaultPassword = BuildConfig.LIBRETV_DEFAULT_PASSWORD
         if (status.passwordRequired && !defaultLoginAttempted && defaultPassword.isNotBlank()) {
             defaultLoginAttempted = true
+            connectionState = ConnectionState.Authenticating
             val verified = repo.login(defaultPassword, connection)
             kotlinx.coroutines.currentCoroutineContext().ensureActive()
             if (attempt != connectionAttempt || !repo.isCurrentConnection(connection)) return
             if (verified) readConnection(connection, attempt)
-            else { authorized = false; passwordRequired = true; message = "默认密码未通过，请在设置中登录。" }
+            else {
+                authorized = false; passwordRequired = true
+                connectionState = ConnectionState.AuthRejected
+                message = "默认密码未通过，请在设置中登录。"
+            }
         }
     }
 
@@ -412,6 +425,7 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
         chartLoading = false
         authorized = false
         passwordRequired = false
+        connectionState = if (repo.isConnected) ConnectionState.Connecting else ConnectionState.Unconfigured
         password = ""
         selected = null
         focused = null
@@ -475,6 +489,7 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
         sourceSubscriptionBusy = false
         val attempt = ++connectionAttempt
         val connection = repo.beginAuthentication()
+        connectionState = ConnectionState.Authenticating
         val submittedPassword = password
         password = ""
         connectionJob = viewModelScope.launch {
@@ -484,7 +499,11 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
                 ensureActive()
                 if (attempt != connectionAttempt || !repo.isCurrentConnection(connection)) return@launch
                 if (verified) readConnection(connection, attempt)
-                else { authorized = false; passwordRequired = true; message = "密码错误" }
+                else {
+                    authorized = false; passwordRequired = true
+                    connectionState = ConnectionState.AuthRejected
+                    message = "密码错误"
+                }
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (error: Exception) {
                 if (attempt == connectionAttempt) connectionError(error, connection)
