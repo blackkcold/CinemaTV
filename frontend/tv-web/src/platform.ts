@@ -13,7 +13,7 @@ export function createNativePlatform(transport: NativeTransport): Platform {
     if (closed || typeof event.data !== 'string' || event.data.length > 512 * 1024) return;
     let value: Record<string, unknown>;
     try { value = JSON.parse(event.data) as Record<string, unknown>; } catch { return; }
-    if (!value || value.v !== 1) return;
+    if (!value || typeof value !== 'object' || Array.isArray(value) || value.v !== 1) return;
     if (typeof value.event === 'string') {
       for (const listener of listeners) listener(value.event, value.payload);
       return;
@@ -25,6 +25,8 @@ export function createNativePlatform(transport: NativeTransport): Platform {
     if (value.error) {
       const code = (value.error as { code?: unknown }).code;
       task.reject(new Error(typeof code === 'string' ? code : 'BRIDGE_ERROR'));
+    } else if (value.result !== undefined && (!value.result || typeof value.result !== 'object' || Array.isArray(value.result))) {
+      task.reject(new Error('BAD_RESPONSE'));
     } else task.resolve((value.result ?? {}) as Reply);
   };
   transport.onmessage = receive;

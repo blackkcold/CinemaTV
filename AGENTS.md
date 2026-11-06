@@ -14,7 +14,7 @@ by this explicit user decision. This is not a remote LibreTV website wrapper.
 5. Apple TV-like fullscreen cinematic hero, restrained liquid glass, floating navigation and focus-driven poster motion are the visual target. Optical sampling is restricted to the app's still scene; never imply sampling a separate video Surface. Provide reduced-motion and bounded rendering modes.
 6. Every interactive component must work with D-pad, OK and Back. One route owner, stable focus keys, list virtualization and playback-return restoration are mandatory. Browser success alone is not TV acceptance.
 7. MIT licensing applies. Do not copy GPL DpadTV/FongMi implementation code or redistribute third-party proprietary fonts/assets.
-8. Push coherent incremental commits; never overwrite working history. Work on `feature/hybrid-tv-liquid-glass`, based on `dev`; do not merge unaccepted personal-account code into `main`.
+8. Push coherent incremental commits; never overwrite working history. Work on `feature/hybrid-tv-liquid-glass-complete`, based on `dev`; the original PR #36 and branch were closed/deleted separately and stay closed. Do not merge unaccepted personal-account code into `main`.
 9. Compile and test the exact candidate with GitHub Actions before claiming success. A source commit is not a tested APK; emulator results are not physical TV certification.
 10. Keep the existing public package and fixed signing identity for installable Dev releases. All private signing material stays outside GitHub, Actions, artifacts and logs. Do not bypass signing gates, publish a differently signed same-package APK as an upgrade, or fabricate performance results.
 

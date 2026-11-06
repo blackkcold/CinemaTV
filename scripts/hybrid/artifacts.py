@@ -224,8 +224,23 @@ def device_result(root, bundle, evidence, mode):
     require(screenshots, "No actual device screenshot was exported")
     for path in screenshots:
         require(path.stat().st_size > 1024 and path.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n", "Invalid device PNG")
+    cases = {}
+    for method in methods:
+        png = evidence / "hybrid-evidence" / f"{method}.png"
+        metadata = evidence / "hybrid-evidence" / f"{method}.json"
+        require(png.is_file() and metadata.is_file(), "Missing per-case device evidence")
+        case = json.loads(metadata.read_text())
+        require(case.get("method") == method and case.get("expectedMode") == mode,
+                "Device evidence method or presentation differs from requested lane")
+        require(case.get("activity") == "dev.cinematv.MainActivity" and case.get("syntheticContent") is True,
+                "Device evidence did not exercise the declared production host")
+        api = case.get("api")
+        require(isinstance(api, int) and (api >= 29 if mode == "hybrid" else api == 26),
+                "Device evidence API differs from requested lane")
+        cases[method] = {"screenshotSha256": sha256(png), "metadataSha256": sha256(metadata)}
     receipt.update(status="passed-synthetic-device-tests", expectedPresentation=mode,
                    completedTests=completed, deviceMetadata=(evidence / "device.txt").read_text(),
+                   testEvidence=cases,
                    screenshots={path.name: sha256(path) for path in screenshots},
                    physicalTvAcceptance=False, signedArtifactAcceptance=False)
     write_json(evidence / "device-receipt.json", receipt)

@@ -5,7 +5,9 @@ application services + native Media3 playback**. The project keeps API26 install
 support, the existing `dev.cinematv` package, Room data, sources and signing identity.
 The phone UI and native compatibility screens remain available.
 
-The implementation branch is `feature/hybrid-tv-liquid-glass`, based on
+The implementation branch is `feature/hybrid-tv-liquid-glass-complete`, continuing
+the preserved commits after the original PR #36 and branch were closed/deleted.
+It is based on
 `dev@553d37076ba0f9989ad5d24942f82638cf722478`. It preserves that branch's default-off
 personal-account experiment. Its source must not be merged into the stable branch
 until that separate experiment satisfies the existing source-isolation policy.
@@ -78,8 +80,12 @@ npm --prefix frontend/tv-web test
 Vite explicitly targets Chromium111. Production verification rejects development
 fixtures, source maps and external scripts and enforces the initial bundle budget
 (1MiB JavaScript / 2MiB total assets). These are build budgets, not measured device
-memory or frame-rate claims. Native offline fonts are shared rather than copied into
-the frontend bundle.
+memory or frame-rate claims. In the native host, the Web UI loads the existing Latin
+Noto regular/bold TTF assets without packaging another copy. Web CJK text uses the
+device's locale-aware system fallback; the existing native Compose screens continue
+to use the packaged regional Noto CJK collection. Naming a CSS font family alone
+does not expose a Compose font to WebView, and browser screenshots do not certify
+OEM CJK glyph selection.
 
 ## Exact-source CI evidence
 
@@ -98,9 +104,11 @@ The workflow records the runtime system fingerprint and provider; it does not si
 substitute a phone image or make unsupported WebView admission a passing skip.
 
 `scripts/hybrid/run-device.sh` installs the prebuilt APKs, checks their hashes against
-the exact checkout and runs `dev.cinematv.HybridHostUiTest`. The harness rejects missing,
-failed, assumed or skipped test cases even when `adb` itself exits zero. Screenshots,
-test output, provider information and a final memory snapshot are exported. The final
+the exact checkout and runs all five cases in `dev.cinematv.HybridHostUiTest`. The
+harness rejects missing, failed, assumed or skipped test cases even when `adb` itself
+exits zero. Each case must export its screenshot and matching production-host,
+presentation-mode and API metadata; their hashes are retained in the device receipt.
+Test output, provider information and a final memory snapshot are also exported. The final
 memory snapshot is diagnostic only; it is not an A/B resource benchmark and does not
 measure the entire browser renderer lifetime.
 

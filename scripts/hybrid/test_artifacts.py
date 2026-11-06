@@ -181,6 +181,39 @@ class HybridArtifactTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 artifacts.instrumentation_results(bad, ["requiredCase"])
 
+    def test_each_device_case_requires_matching_host_lane_and_exported_evidence(self):
+        methods = ["firstCase", "secondCase"]
+        self.write("app/src/androidTest/java/dev/cinematv/HybridHostUiTest.kt",
+                   "\n".join(f"@Test fun {name}() {{}}" for name in methods))
+        self.commit()
+        bundle = Path(self.temp.name) / "device"
+        artifacts.device_bundle(self.root, self.apk, self.apk, bundle)
+        evidence = Path(self.temp.name) / "evidence"
+        captures = evidence / "hybrid-evidence"
+        captures.mkdir(parents=True)
+        (evidence / "device.txt").write_text("Synthetic host fixture, not actual device evidence")
+        log = "".join("INSTRUMENTATION_STATUS: class=dev.cinematv.HybridHostUiTest\n"
+                      f"INSTRUMENTATION_STATUS: test={name}\nINSTRUMENTATION_STATUS_CODE: 0\n"
+                      for name in methods) + "OK (2 tests)\nINSTRUMENTATION_CODE: -1\n"
+        (evidence / "instrumentation.txt").write_text(log)
+        for name in methods:
+            (captures / f"{name}.png").write_bytes(b"\x89PNG\r\n\x1a\n" + b"synthetic" * 160)
+            (captures / f"{name}.json").write_text(json.dumps(dict(method=name, expectedMode="hybrid",
+                api=36, activity="dev.cinematv.MainActivity", syntheticContent=True)))
+        result = artifacts.device_result(self.root, bundle, evidence, "hybrid")
+        self.assertEqual(set(result["testEvidence"]), set(methods))
+        case_path = captures / "secondCase.json"
+        original = json.loads(case_path.read_text())
+        for changed in (dict(expectedMode="native-fallback"), dict(api=26),
+                        dict(activity="dev.cinematv.TvTestActivity"), dict(method="otherCase")):
+            case_path.write_text(json.dumps({**original, **changed}))
+            with self.assertRaises(ValueError):
+                artifacts.device_result(self.root, bundle, evidence, "hybrid")
+        case_path.write_text(json.dumps(original))
+        (captures / "secondCase.png").unlink()
+        with self.assertRaisesRegex(ValueError, "Missing per-case"):
+            artifacts.device_result(self.root, bundle, evidence, "hybrid")
+
     def test_candidate_script_rejects_any_signing_variable_before_build(self):
         script = Path(__file__).with_name("build-dev-candidate.sh")
         for name in ("CINEMATV_KEYSTORE_PATH", "CINEMATV_KEYSTORE_PASSWORD", "CINEMATV_KEY_ALIAS", "CINEMATV_KEY_PASSWORD"):

@@ -52,6 +52,17 @@ private fun <R : TestRule, A : ComponentActivity> AndroidComposeTestRule<R, A>.w
     if (activity !is TvTestActivity && tag in setOf("developer-options-entry", "douban-account-entry")) {
         onNodeWithTag(tag).performScrollTo()
     }
+    // A dialog can enter the semantics tree before its separate Android window is
+    // laid out. Wait for the same visibility assertion; persistent clipping still
+    // fails, and the test does not scroll or choose focus on behalf of the TV UI.
+    waitUntil(10_000) {
+        try {
+            onNodeWithTag(tag).assertIsDisplayed()
+            true
+        } catch (_: AssertionError) {
+            false
+        }
+    }
     onNodeWithTag(tag).assertIsDisplayed()
 }
 

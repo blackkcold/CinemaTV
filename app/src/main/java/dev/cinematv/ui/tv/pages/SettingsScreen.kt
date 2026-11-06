@@ -128,7 +128,7 @@ fun SettingsScreen(model: CinemaViewModel, initialSection: Int = 0) {
                                 if (model.metadataAddress.isNotBlank()) item { TmdbLogo() }
                                 item { GlassAction("TMDB 官网", Modifier.width(140.dp).height(36.dp)) { uriHandler.openUri("https://www.themoviedb.org") } }
                                 item { Text("元数据与图像：TMDB（配置高清剧照服务后）。\nThis product uses the TMDB API but is not endorsed or certified by TMDB.\nhttps://www.themoviedb.org", color = TvColors.Secondary, fontSize = 13.sp, lineHeight = 22.sp) }
-                                item { Text("开源组件：Kotlin、AndroidX Compose、Media3、Coil、Kyant Backdrop（Apache-2.0）。CinemaTV 原创代码采用 MIT 许可；第三方许可与修改说明随 APK 提供。\n仅添加你有权访问的服务器和内容源。", color = TvColors.Secondary, fontSize = 13.sp, lineHeight = 22.sp) }
+                                item { Text("开源组件：Kotlin、AndroidX Compose、WebKit、Media3、Coil、Kyant Backdrop（Apache-2.0），React、React DOM 与 Scheduler（MIT）。CinemaTV 原创代码采用 MIT 许可；第三方许可与修改说明随 APK 提供。\n仅添加你有权访问的服务器和内容源。", color = TvColors.Secondary, fontSize = 13.sp, lineHeight = 22.sp) }
                             }
                         }
                     }
