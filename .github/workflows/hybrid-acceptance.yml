@@ -1,0 +1,45 @@
+name: Hybrid acceptance
+on:
+  push:
+    branches: [fix/hybrid-acceptance-serial-qa]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: cinematv-acceptance-source-${{ github.ref }}
+  cancel-in-progress: false
+  queue: max
+jobs:
+  source:
+    name: Immutable source provenance
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Record exact source without credentials or build outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/acceptance-source"
+          git archive --format=tar HEAD | gzip -n > "$RUNNER_TEMP/acceptance-source/source.tar.gz"
+          python3 - "$RUNNER_TEMP/acceptance-source" <<'PY'
+          import hashlib, json, os, pathlib, subprocess, sys
+          root = pathlib.Path(sys.argv[1])
+          git = lambda *args: subprocess.check_output(['git', *args], text=True).strip()
+          receipt = {'schema': 1, 'sourceSha': git('rev-parse', 'HEAD'),
+                     'sourceTree': git('rev-parse', 'HEAD^{tree}'),
+                     'baseDevSha': '7d3ec0055cf8cf48edb18b8ea91763114633123a',
+                     'workflowRun': os.environ['GITHUB_RUN_ID'],
+                     'archiveSha256': hashlib.sha256((root / 'source.tar.gz').read_bytes()).hexdigest(),
+                     'scope': 'source-only; not device acceptance or release approval'}
+          (root / 'source-receipt.json').write_text(json.dumps(receipt, indent=2) + '\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: acceptance-source
+          path: ${{ runner.temp }}/acceptance-source/
+          if-no-files-found: error
+          retention-days: 7
