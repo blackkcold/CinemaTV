@@ -137,7 +137,8 @@ class CinemaPresentationGateway(
         val selected = model.selected?.takeIf { model.page in setOf(Page.DETAIL, Page.PLAYER) }?.usableMetadata()
             ?.let(model.repo.library.snapshot::applyProgress)
         val scene = if (model.page == Page.DETAIL) selected else model.focused?.usableMetadata()
-            ?: (sliced.firstOrNull() ?: model.featured.firstOrNull()?.usableMetadata())
+            ?: (sliced.firstOrNull() ?: model.featured.firstOrNull()?.usableMetadata()
+                ?: model.discovery.items.firstOrNull()?.usableMetadata())
         val result = JSONObject().put("protocol", 1).put("route", model.page.name).put("routeKey", routeKey())
             .put("section", model.section.name).put("busy", model.busy || (model.page == Page.SEARCH && (model.chartLoading || model.searchCatalogLoading)) ||
                 (model.page == Page.MOVIES && model.movieBrowse.loading) || (model.page == Page.SERIES && model.seriesBrowse.loading) ||
