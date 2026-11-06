@@ -276,7 +276,7 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
     fun dismissMessage() { message = "" }
 
     private fun connectionError(error: Throwable, connection: LibreTvConnection = repo.connectionContext()) {
-        if (error is CancellationException || !repo.isCurrentConnection(connection)) return
+        if (error is CancellationException || !repo.isCurrentConnectionError(error, connection)) return
         message = ConnectionErrors.message(error)
         if (ConnectionErrors.classify(error) == ConnectionFailure.AUTHENTICATION) {
             authorized = false
@@ -294,7 +294,7 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
             try { readConnection(connection, attempt) }
             catch (cancelled: CancellationException) { throw cancelled }
             catch (error: Exception) {
-                if (attempt == connectionAttempt && repo.isCurrentConnection(connection)) {
+                if (attempt == connectionAttempt && repo.isCurrentConnectionError(error, connection)) {
                     authorized = false
                     connectionError(error, connection)
                 }
@@ -305,7 +305,7 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
     private suspend fun readConnection(connection: LibreTvConnection, attempt: Long) {
         val status = repo.status(connection)
         kotlinx.coroutines.currentCoroutineContext().ensureActive()
-        if (attempt != connectionAttempt || !repo.isCurrentConnection(connection)) return
+        if (attempt != connectionAttempt || !repo.isCurrentStatus(status, connection)) return
         passwordRequired = status.passwordRequired
         authorized = status.verified
         sources = status.sources
@@ -379,8 +379,9 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
 
     fun login() {
         connectionJob?.cancel()
+        listOf(searchJob, detailJob, alternativesJob, channelsJob, epgJob).forEach { it?.cancel() }
         val attempt = ++connectionAttempt
-        val connection = repo.connectionContext()
+        val connection = repo.beginAuthentication()
         val submittedPassword = password
         password = ""
         connectionJob = viewModelScope.launch {
@@ -640,7 +641,7 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
                 throw cancelled
             } catch (error: Exception) {
                 if (detailGeneration == generation) connectionError(error, connection)
-            } finally { if (detailGeneration == generation) busy = false }
+            } finally { if (detailGeneration == generation && repo.isCurrentConnection(connection)) busy = false }
         }
     }
 
@@ -846,7 +847,7 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
                             }
                         } catch (cancelled: CancellationException) { throw cancelled }
                         catch (error: Exception) {
-                            if (generation == searchGeneration && repo.isCurrentConnection(connection)) {
+                            if (generation == searchGeneration && repo.isCurrentConnectionError(error, connection)) {
                                 searchStage = ConnectionErrors.message(error) + " · 已保留本地与成功读取的结果"
                                 if (ConnectionErrors.classify(error) == ConnectionFailure.AUTHENTICATION)
                                     connectionError(error, connection)
@@ -858,7 +859,7 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
                     message = "没有符合当前关键词和筛选条件的作品"
             } finally {
                 // A cancelled older search must not reset the newer search's loading state.
-                if (searchGeneration == generation) busy = false
+                if (searchGeneration == generation && repo.isCurrentConnection(connection)) busy = false
             }
         }
         if (searchFilters.doubanTopOnly) loadLicensedChart()

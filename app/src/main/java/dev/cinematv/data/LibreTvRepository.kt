@@ -52,6 +52,14 @@ class LibreTvRepository(context: Context, val library: LocalMediaLibrary = Local
     val server: String get() = connections.context().server
     fun connectionContext(): LibreTvConnection = connections.context()
     fun isCurrentConnection(context: LibreTvConnection): Boolean = connections.isCurrent(context)
+    fun beginAuthentication(): LibreTvConnection = connections.replace(server, clearSession = true)
+    fun isCurrentStatus(status: ServerStatus, context: LibreTvConnection): Boolean =
+        status.connection == context && status.sessionRevision?.let { connections.isCurrent(context, it) } == true
+    fun isCurrentConnectionError(error: Throwable, context: LibreTvConnection): Boolean {
+        if (!isCurrentConnection(context)) return false
+        if (error !is LibreTvHttpException || error.connection == null || error.sessionRevision == null) return true
+        return error.connection == context && connections.isCurrent(context, error.sessionRevision)
+    }
 
     val opticalGlassEnabled get() = prefs.getBoolean("optical_glass", false)
     val reducedMotion get() = prefs.getBoolean("reduced_motion", false)
@@ -238,19 +246,22 @@ class LibreTvRepository(context: Context, val library: LocalMediaLibrary = Local
 
     private fun encode(raw: String) = URLEncoder.encode(raw, "UTF-8")
 
+    private data class JsonResponse(val body: JSONObject, val session: LibreTvRequestSession)
+
     private suspend fun request(path: String, method: String = "GET", body: JSONObject? = null,
-        connection: LibreTvConnection = connectionContext()): JSONObject {
+        connection: LibreTvConnection = connectionContext()): JsonResponse {
         connections.check(connection)
         if (connection.server.isBlank()) throw IOException("请先配置 LibreTV 服务器")
+        val requestSession = connections.snapshot(connection)
         val request = Request.Builder().url(connection.server + path)
             .header("Accept", "application/json")
             .method(method, body?.toString()?.toRequestBody("application/json; charset=utf-8".toMediaType()))
-            .apply { connections.cookie(connection)?.let { header("Cookie", it) } }
+            .apply { requestSession.cookie?.let { header("Cookie", it) } }
             .build()
         return withCancellableCall(jsonClient.newCall(request)) { response ->
             val status = response.code
             currentCoroutineContext().ensureActive()
-            connections.receive(connection, status, response.header("Set-Cookie"))
+            val responseSession = connections.receive(requestSession, status, response.header("Set-Cookie"))
             val text = response.body?.byteStream()
                 ?.bufferedReader(Charsets.UTF_8)?.use { reader ->
                     val output = StringBuilder()
@@ -265,12 +276,12 @@ class LibreTvRepository(context: Context, val library: LocalMediaLibrary = Local
                     output.toString()
                 }.orEmpty()
             if (status !in 200..299) {
-                connections.check(connection)
+                connections.check(responseSession)
                 val message = runCatching { JSONObject(text).optString("error") }.getOrDefault("")
-                throw LibreTvHttpException(status, message)
+                throw LibreTvHttpException(status, message, connection, responseSession.revision)
             }
-            connections.check(connection)
-            JSONObject(text)
+            connections.check(responseSession)
+            JsonResponse(JSONObject(text), responseSession)
         }
     }
 
@@ -366,19 +377,20 @@ class LibreTvRepository(context: Context, val library: LocalMediaLibrary = Local
         .put("key", it.key).put("name", it.name).put("url", it.url).put("detail", it.detail)
 
     suspend fun status(connection: LibreTvConnection = connectionContext()): ServerStatus = withContext(Dispatchers.IO) {
-        val root = request("/api/status", connection = connection)
+        val response = request("/api/status", connection = connection)
+        val root = response.body
         val vod = parseArray(root.optJSONArray("defaultSources"), ::sourceFrom)
         val live = parseArray(root.optJSONArray("defaultLiveSources"), ::liveSourceFrom)
-        connections.withCurrent(connection) {
+        connections.withCurrent(response.session) {
             defaultSources = vod
             defaultLiveSources = live
             ServerStatus(root.optBoolean("passwordRequired"), root.optBoolean("verified"),
-                sources(), liveSources(), root.optString("version"))
+                sources(), liveSources(), root.optString("version"), connection, response.session.revision)
         }
     }
 
-    suspend fun login(password: String, connection: LibreTvConnection = connectionContext()): Boolean = withContext(Dispatchers.IO) {
-        request("/api/auth", "POST", JSONObject().put("password", password), connection).optBoolean("success")
+    suspend fun login(password: String, connection: LibreTvConnection = beginAuthentication()): Boolean = withContext(Dispatchers.IO) {
+        request("/api/auth", "POST", JSONObject().put("password", password), connection).body.optBoolean("success")
     }
 
     /**
@@ -448,7 +460,7 @@ class LibreTvRepository(context: Context, val library: LocalMediaLibrary = Local
         connections.check(connection)
         val active = sources().filter { it.enabled }.take(50)
         require(active.isNotEmpty()) { "请先在设置中添加点播源" }
-        val response = request("/api/search", "POST", searchPayload(keyword, active), connection)
+        val response = request("/api/search", "POST", searchPayload(keyword, active), connection).body
         if (response.optJSONArray("list") == null) throw LibreTvProtocolException("LibreTV 搜索响应缺少列表")
         SearchSnapshot(decodeSearchList(response.optJSONArray("list"), active),
             outcomes(response.optJSONArray("failures")), complete = true)
@@ -476,12 +488,13 @@ class LibreTvRepository(context: Context, val library: LocalMediaLibrary = Local
 
     fun searchSnapshots(keyword: String, connection: LibreTvConnection = connectionContext()): Flow<SearchSnapshot> = callbackFlow {
         connections.check(connection)
+        val requestSession = connections.snapshot(connection)
         val active = sources().filter { it.enabled }.take(50)
         require(active.isNotEmpty()) { "请先在设置中添加点播源" }
         val call = jsonClient.newBuilder().readTimeout(30, TimeUnit.SECONDS).build().newCall(
             Request.Builder().url(connection.server + "/api/search?stream=1")
                 .header("Accept", "application/x-ndjson")
-                .apply { connections.cookie(connection)?.let { header("Cookie", it) } }
+                .apply { requestSession.cookie?.let { header("Cookie", it) } }
                 .post(searchPayload(keyword, active).toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
                 .build()
         )
@@ -490,7 +503,7 @@ class LibreTvRepository(context: Context, val library: LocalMediaLibrary = Local
             call.execute().use { response ->
                 val status = response.code
                 ensureActive()
-                connections.receive(connection, status, response.header("Set-Cookie"))
+                val responseSession = connections.receive(requestSession, status, response.header("Set-Cookie"))
                 if (status !in 200..299) {
                     val message = response.body?.byteStream()?.bufferedReader()?.use { reader ->
                         val output = StringBuilder()
@@ -503,8 +516,8 @@ class LibreTvRepository(context: Context, val library: LocalMediaLibrary = Local
                         output.toString()
                     }
                         ?.let { runCatching { JSONObject(it).optString("error") }.getOrDefault("") }.orEmpty()
-                    connections.check(connection)
-                    throw LibreTvHttpException(status, message)
+                    connections.check(responseSession)
+                    throw LibreTvHttpException(status, message, connection, responseSession.revision)
                 }
                 var accumulated = emptyList<MediaItem>()
                 var completed = false
@@ -513,7 +526,7 @@ class LibreTvRepository(context: Context, val library: LocalMediaLibrary = Local
                 requireNotNull(response.body) { "LibreTV 搜索响应为空" }.byteStream().bufferedReader(Charsets.UTF_8).use { reader ->
                     while (true) {
                         ensureActive()
-                        connections.check(connection)
+                        connections.check(responseSession)
                         val line = readBoundedLine(reader, 4_194_304 - receivedChars) ?: break
                         receivedChars += line.length + 1
                         if (receivedChars > 4_194_304) throw IOException("LibreTV 搜索响应过大")
@@ -528,7 +541,7 @@ class LibreTvRepository(context: Context, val library: LocalMediaLibrary = Local
                                 }
                                 val outcome = outcomes(JSONArray().put(event)).single()
                                 observed = observed.filterNot { it.sourceKey == outcome.sourceKey } + outcome
-                                connections.check(connection)
+                                connections.check(responseSession)
                                 send(SearchSnapshot(accumulated, observed))
                             }
                             "done" -> {
@@ -536,7 +549,7 @@ class LibreTvRepository(context: Context, val library: LocalMediaLibrary = Local
                                 val failures = outcomes(event.optJSONArray("failures"))
                                 observed = observed.filterNot { old -> failures.any { it.sourceKey == old.sourceKey } } +
                                     failures.map { failure -> failure.copy(ms = observed.firstOrNull { it.sourceKey == failure.sourceKey }?.ms) }
-                                connections.check(connection)
+                                connections.check(responseSession)
                                 send(SearchSnapshot(batch, observed, complete = true))
                                 break
                             }
@@ -544,7 +557,7 @@ class LibreTvRepository(context: Context, val library: LocalMediaLibrary = Local
                                 // Older proxies returned one ordinary JSON search response.
                                 if (event.optString("type").isBlank() && event.has("list")) {
                                     completed = true
-                                    connections.check(connection)
+                                    connections.check(responseSession)
                                     send(SearchSnapshot(batch, outcomes(event.optJSONArray("failures")), complete = true))
                                     break
                                 } else throw IOException("LibreTV 搜索事件类型无效")
@@ -592,7 +605,7 @@ class LibreTvRepository(context: Context, val library: LocalMediaLibrary = Local
     private suspend fun fetchDetail(entry: MediaItem, item: MediaItem, connection: LibreTvConnection): MediaItem {
         val src = requireNotNull(entry.source)
         val path = "/api/detail?id=${encode(entry.id)}&source=${encode(sourceJson(src).toString())}"
-        val j = request(path, connection = connection)
+        val j = request(path, connection = connection).body
         val info = j.optJSONObject("videoInfo") ?: JSONObject()
         val reportedKey = info.optString("sourceKey").takeUnless { it.isBlank() || it == "null" }
         val reportedUrl = info.optString("sourceUrl").takeUnless { it.isBlank() || it == "null" }
@@ -638,7 +651,7 @@ class LibreTvRepository(context: Context, val library: LocalMediaLibrary = Local
     }
 
     suspend fun channels(source: LiveSource, connection: LibreTvConnection = connectionContext()): List<TvChannel> = withContext(Dispatchers.IO) {
-        val j = request("/api/live/playlist?url=${encode(source.url)}", connection = connection)
+        val j = request("/api/live/playlist?url=${encode(source.url)}", connection = connection).body
         parseArray(j.optJSONArray("channels")) { c ->
             val url = c.optString("url")
             if (url.isBlank()) null else TvChannel(
@@ -650,7 +663,7 @@ class LibreTvRepository(context: Context, val library: LocalMediaLibrary = Local
 
     suspend fun epg(source: LiveSource, channel: TvChannel, connection: LibreTvConnection = connectionContext()): List<TvProgram> = withContext(Dispatchers.IO) {
         if (source.epg.isBlank()) return@withContext emptyList()
-        val j = request("/api/live/epg?url=${encode(source.epg)}&channel=${encode(channel.tvgId.ifBlank { channel.id })}", connection = connection)
+        val j = request("/api/live/epg?url=${encode(source.epg)}&channel=${encode(channel.tvgId.ifBlank { channel.id })}", connection = connection).body
         parseArray(j.optJSONArray("programs")) { p ->
             TvProgram(p.optString("title"), p.optLong("start"), p.optLong("stop"))
         }

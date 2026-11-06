@@ -36,7 +36,8 @@ data class ResolutionProgress(
     val maxAttempts: Int = 6,
     val sourceName: String = ""
 )
-class LibreTvHttpException(val status: Int, val serverMessage: String) :
+class LibreTvHttpException(val status: Int, val serverMessage: String,
+    val connection: LibreTvConnection? = null, val sessionRevision: Long? = null) :
     IOException("HTTP $status: ${serverMessage.ifBlank { "服务暂不可用" }}")
 class LibreTvProtocolException(message: String) : IOException(message)
 class SourceResolutionException(message: String) : IOException(message)

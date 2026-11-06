@@ -411,6 +411,51 @@ class LibreTvProtocolTest {
         } finally { onMain { store.clear() } }
     }
 
+    @Test fun delayedSameServerUnauthorizedCannotClearASuccessfulRelogin() = runBlocking {
+        server.enqueue("{\"success\":true}", headers = "Set-Cookie: synthetic=old; HttpOnly\r\n")
+        assertTrue(repo.login("synthetic-password"))
+        val gate = CountDownLatch(1)
+        server.enqueue("{\"error\":\"expired\"}", 401, gate = gate)
+        val oldSearch = async { repo.searchSnapshots("Fixture").toList() }
+        withContext(Dispatchers.IO) { assertTrue(server.delayed.poll(4, TimeUnit.SECONDS) == true) }
+        try {
+            server.enqueue("{\"success\":true}", headers = "Set-Cookie: synthetic=new; HttpOnly\r\n")
+            assertTrue(repo.login("synthetic-password"))
+            gate.countDown()
+            withTimeout(4_000) {
+                try { oldSearch.await(); fail("Pre-login response must be discarded") }
+                catch (_: CancellationException) { }
+            }
+            server.enqueue("{\"passwordRequired\":true,\"verified\":true}")
+            assertTrue(repo.status().verified)
+            assertEquals("synthetic=new", server.requests.last().headers["cookie"])
+        } finally { gate.countDown() }
+    }
+
+    @Test fun unauthorizedIssuedDuringLoginCannotClearTheAuthenticatedCookie() = runBlocking {
+        val connection = repo.beginAuthentication()
+        val authGate = CountDownLatch(1)
+        val errorGate = CountDownLatch(1)
+        server.enqueue("{\"success\":true}", headers = "Set-Cookie: synthetic=current; HttpOnly\r\n", gate = authGate)
+        val login = async { repo.login("synthetic-password", connection) }
+        withContext(Dispatchers.IO) { assertTrue(server.delayed.poll(4, TimeUnit.SECONDS) == true) }
+        server.enqueue("{\"error\":\"not yet logged in\"}", 401, gate = errorGate)
+        val unauthenticatedSearch = async { repo.searchSnapshots("Fixture", connection).toList() }
+        withContext(Dispatchers.IO) { assertTrue(server.delayed.poll(4, TimeUnit.SECONDS) == true) }
+        try {
+            authGate.countDown()
+            assertTrue(withTimeout(4_000) { login.await() })
+            errorGate.countDown()
+            withTimeout(4_000) {
+                try { unauthenticatedSearch.await(); fail("Old session revision must be discarded") }
+                catch (_: CancellationException) { }
+            }
+            server.enqueue("{\"passwordRequired\":true,\"verified\":true}")
+            assertTrue(repo.status().verified)
+            assertEquals("synthetic=current", server.requests.last().headers["cookie"])
+        } finally { authGate.countDown(); errorGate.countDown() }
+    }
+
     private fun <T> onMain(block: () -> T): T {
         var result: Result<T>? = null
         InstrumentationRegistry.getInstrumentation().runOnMainSync { result = runCatching(block) }
@@ -464,12 +509,18 @@ class LibreTvProtocolTest {
         val delayed = LinkedBlockingQueue<Boolean>()
         val closedByClient = LinkedBlockingQueue<Boolean>()
         private val clients = CopyOnWriteArrayList<Socket>()
+        private val clientWorkers = CopyOnWriteArrayList<Thread>()
         @Volatile private var running = true
         @Volatile private var failure: Throwable? = null
         val base = "http://127.0.0.1:${listener.localPort}"
         private val worker = Thread({
             while (running) try {
-                listener.accept().use { client -> clients += client; handle(client) }
+                val client = listener.accept()
+                clients += client
+                Thread({
+                    try { client.use { handle(it) } }
+                    catch (error: Exception) { if (running) failure = error }
+                }, "libretv-protocol-client").apply { isDaemon = true; clientWorkers += this; start() }
             } catch (error: Exception) { if (running) failure = error }
         }, "libretv-protocol-loopback").apply { isDaemon = true; start() }
         fun enqueue(body: String, code: Int = 200, headers: String = "", stall: Boolean = false,
@@ -514,10 +565,15 @@ class LibreTvProtocolTest {
                 return
             }
             val bytes = reply.body.toByteArray(Charsets.UTF_8)
-            client.getOutputStream().apply {
-                write(("HTTP/1.1 ${reply.code} Fixture\r\nContent-Type: application/json; charset=utf-8\r\n" +
-                    "Content-Length: ${bytes.size}\r\n${reply.headers}Connection: close\r\n\r\n").toByteArray(Charsets.US_ASCII))
-                write(bytes); flush()
+            try {
+                client.getOutputStream().apply {
+                    write(("HTTP/1.1 ${reply.code} Fixture\r\nContent-Type: application/json; charset=utf-8\r\n" +
+                        "Content-Length: ${bytes.size}\r\n${reply.headers}Connection: close\r\n\r\n").toByteArray(Charsets.US_ASCII))
+                    write(bytes); flush()
+                }
+            } catch (closed: java.net.SocketException) {
+                // A response intentionally released after replacement may be rejected at its headers.
+                if (reply.gate == null) throw closed
             }
         }
         override fun close() {
@@ -525,7 +581,9 @@ class LibreTvProtocolTest {
             listener.close()
             clients.forEach { it.close() }
             worker.join(6000)
+            clientWorkers.forEach { it.join(6000) }
             assertFalse("Fixture failed to stop", worker.isAlive)
+            assertTrue("Fixture client failed to stop", clientWorkers.none { it.isAlive })
             assertNull("Fixture server failed", failure)
         }
     }
