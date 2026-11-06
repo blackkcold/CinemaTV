@@ -59,6 +59,9 @@ private fun workNavigationScenario(rule: ComposeContentTestRule, activity: Compo
         assertFalse(initial.seasons.flatMap { it.sources }.any { it.item.source?.key == "d" })
         fun revealPanel() { rule.onNodeWithText("季与片源").performScrollTo(); rule.waitForIdle() }
         fun choose(tag: String) {
+            // A startup connection notice from the previously closed fixture can still
+            // cover the bottom of the phone viewport. Let the real notice dismiss first.
+            if (!tv) rule.waitUntil(10000) { model.message.isBlank() }
             revealPanel()
             // performScrollTo only moves the closest scrollable ancestor. Revealing the
             // heading can leave both rails below the phone viewport; scrolling a child
