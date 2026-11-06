@@ -326,6 +326,81 @@ class HybridArtifactTest(unittest.TestCase):
                 self.assertEqual(result.returncode, 2)
                 self.assertIn("required", result.stderr)
 
+    def run_device_display(self, actual_size, actual_density):
+        """Exercise the real pre-install harness with a source-bound fixture bundle."""
+        for filename in ("run-device.sh", "wait-device.sh", "artifacts.py"):
+            self.write("scripts/hybrid/" + filename, Path(__file__).with_name(filename).read_text())
+        self.commit()
+        folder = Path(self.temp.name)
+        bundle = folder / "device"
+        artifacts.device_bundle(self.root, self.apk, self.apk, bundle)
+        evidence = folder / "preinstall-evidence"
+        sdk = folder / "sdk"
+        adb = sdk / "platform-tools/adb"
+        adb.parent.mkdir(parents=True)
+        calls = folder / "device-calls.jsonl"
+        adb.write_text(r'''#!/usr/bin/env python3
+import json, os, pathlib, sys
+args = sys.argv[1:]
+if args == ["version"]:
+    print("Synthetic ADB for display gate test")
+    sys.exit(0)
+assert args[:2] == ["-s", "emulator-5554"]
+args = args[2:]
+with pathlib.Path(os.environ["FAKE_ADB_CALLS"]).open("a") as log:
+    log.write(json.dumps(args) + "\n")
+if args == ["get-state"]:
+    print("device")
+elif args == ["shell", "getprop", "sys.boot_completed"]:
+    print("1")
+elif args == ["shell", "getprop", "ro.build.version.sdk"]:
+    print("36")
+elif args[:2] == ["shell", "getprop"]:
+    print("synthetic-display-fixture")
+elif args == ["shell", "wm", "size"]:
+    print("Physical size: " + os.environ["FAKE_ACTUAL_SIZE"])
+elif args == ["shell", "wm", "density"]:
+    print("Physical density: 320")
+    print("Override density: " + os.environ["FAKE_ACTUAL_DENSITY"])
+elif args[0] == "install":
+    sys.exit(42)  # Stop a valid fixture immediately after it passes the gate.
+# wm size/density setters deliberately return zero without changing anything.
+''')
+        adb.chmod(0o755)
+        fakebin = folder / "bin"
+        fakebin.mkdir()
+        sudo = fakebin / "sudo"
+        sudo.write_text("#!/usr/bin/env bash\nexit 0\n")
+        sudo.chmod(0o755)
+        result = subprocess.run(["bash", "scripts/hybrid/run-device.sh", str(bundle), str(evidence),
+                                 "hybrid", "3840x2160", "640"], cwd=self.root,
+            env={**os.environ, "ANDROID_HOME": str(sdk), "ANDROID_SERIAL": "emulator-5554",
+                 "FAKE_ADB_CALLS": str(calls), "FAKE_ACTUAL_SIZE": actual_size,
+                 "FAKE_ACTUAL_DENSITY": str(actual_density),
+                 "PATH": str(fakebin) + os.pathsep + os.environ["PATH"]},
+            capture_output=True, text=True, timeout=15)
+        return result, evidence, [json.loads(line) for line in calls.read_text().splitlines()]
+
+    def test_preinstall_gate_rejects_ignored_wm_size_even_when_command_succeeds(self):
+        result, evidence, calls = self.run_device_display("1920x1080", 640)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Device wm size differs from requested lane", result.stderr)
+        self.assertIn(["shell", "wm", "size", "3840x2160"], calls)
+        self.assertIn("Physical size: 1920x1080", (evidence / "device.txt").read_text())
+        self.assertFalse(any(call[0] == "install" or call[:3] == ["shell", "am", "instrument"]
+                             for call in calls))
+
+    def test_preinstall_gate_rejects_wrong_effective_density(self):
+        result, _, calls = self.run_device_display("3840x2160", 320)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Device wm density differs from requested lane", result.stderr)
+        self.assertFalse(any(call[0] == "install" for call in calls))
+
+    def test_preinstall_gate_allows_matching_4k_display(self):
+        result, _, calls = self.run_device_display("3840x2160", 640)
+        self.assertEqual(result.returncode, 42, result.stderr)
+        self.assertEqual(sum(call[0] == "install" for call in calls), 1)
+
     def test_candidate_script_rejects_any_signing_variable_before_build(self):
         script = Path(__file__).with_name("build-dev-candidate.sh")
         for name in ("CINEMATV_KEYSTORE_PATH", "CINEMATV_KEYSTORE_PASSWORD", "CINEMATV_KEY_ALIAS", "CINEMATV_KEY_PASSWORD"):

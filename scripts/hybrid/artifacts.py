@@ -306,6 +306,10 @@ def main():
     device.add_argument("--output", type=Path, required=True)
     verify = sub.add_parser("verify-device-bundle")
     verify.add_argument("--directory", type=Path, required=True)
+    display = sub.add_parser("verify-device-display")
+    display.add_argument("--metadata", type=Path, required=True)
+    display.add_argument("--expected-size", choices=("1920x1080", "3840x2160"), required=True)
+    display.add_argument("--expected-density", type=int, choices=(320, 640), required=True)
     result = sub.add_parser("device-result")
     result.add_argument("--bundle", type=Path, required=True)
     result.add_argument("--evidence", type=Path, required=True)
@@ -324,6 +328,8 @@ def main():
         device_bundle(root, args.apk, args.test_apk, args.output)
     elif args.command == "verify-device-bundle":
         verify_device_bundle(root, args.directory)
+    elif args.command == "verify-device-display":
+        device_display(args.metadata.read_text(), args.expected_size, args.expected_density)
     elif args.command == "device-result":
         device_result(root, args.bundle, args.evidence, args.mode, args.expected_size, args.expected_density)
 

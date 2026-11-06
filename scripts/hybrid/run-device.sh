@@ -66,6 +66,10 @@ adb_bounded shell settings put secure immersive_mode_confirmations confirmed
   adb_bounded shell wm density
   adb_bounded shell dumpsys webviewupdate
 } > "$EVIDENCE/device.txt"
+# A successful wm command can still be clamped by Android TV's UI-width cap.
+# Reject an incorrectly provisioned lane before installing or exercising APKs.
+python3 scripts/hybrid/artifacts.py verify-device-display --metadata "$EVIDENCE/device.txt" \
+  --expected-size "$SIZE" --expected-density "$DENSITY"
 API=$(adb_bounded shell getprop ro.build.version.sdk | tr -d '\r')
 case "$MODE" in
   hybrid) test "$API" -ge 29 ;;

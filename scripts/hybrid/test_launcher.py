@@ -242,7 +242,7 @@ exit 42
                     except ProcessLookupError:
                         pass
 
-    def run_provisioning(self, build="15004761"):
+    def run_provisioning(self, build="15004761", size="3840x2160", density=640):
         """Run the complete launcher with local SDK/archive fixtures and real cleanup."""
         sdk = self.root / "sdk"
         sdkbin = sdk / "cmdline-tools/latest/bin"
@@ -261,7 +261,10 @@ with (root / "provisioning.jsonl").open("a") as log:
         (sdkbin / "avdmanager").write_text(common + '''
 avd = pathlib.Path(os.environ["ANDROID_AVD_HOME"]) / "cinematv-ci.avd"
 avd.mkdir()
-(avd / "config.ini").write_text("hw.device.name=tv_1080p\\n")
+(avd / "config.ini").write_text("hw.device.name=tv_1080p\\nhw.lcd.width=1920\\n"
+    "hw.lcd.height=1080\\nhw.lcd.density=320\\nhw.lcd.width = 1280\\n"
+    "hw.lcd.height = 720\\nhw.lcd.density = 240\\nhw.cpu.ncore=1\\n"
+    "hw.ramSize=1536M\\nhw.ramSize=1024\\nhw.initialOrientation=portrait\\n")
 ''')
         for executable in sdkbin.iterdir():
             executable.chmod(0o755)
@@ -294,7 +297,7 @@ shutil.copyfile(root / "emulator.zip", sys.argv[sys.argv.index("--output") + 1])
                        "ANDROID_HOME": str(sdk), "RUNNER_TEMP": str(self.root),
                        "PATH": str(fakebin) + os.pathsep + os.environ["PATH"]}
         result = subprocess.run(["bash", str(LAUNCHER), "36", "x86_64", "bundle",
-                                 str(self.root / "device-evidence"), "hybrid", "3840x2160", "640"],
+                                 str(self.root / "device-evidence"), "hybrid", size, str(density)],
                                 cwd=self.root, env=environment, text=True, capture_output=True, timeout=15)
         return result, [json.loads(line) for line in calls.read_text().splitlines()]
 
@@ -317,6 +320,28 @@ shutil.copyfile(root / "emulator.zip", sys.argv[sys.argv.index("--output") + 1])
         self.assertNotEqual(result.returncode, 0)
         self.assertNotIn("harness-started", result.stdout)
         self.assertFalse(any(call["tool"] == "avdmanager" for call in calls))
+
+    def assert_boot_display(self, size, density):
+        result, calls = self.run_provisioning(size=size, density=density)
+        self.assertEqual(result.returncode, 42, result.stderr)
+        boot = next(call for call in calls if call["tool"] == "emulator" and "-avd" in call["args"])
+        self.assertEqual(boot["args"][boot["args"].index("-skin") + 1], size)
+        config = self.root / "device-evidence-emulator/avd-config.ini"
+        entries = [tuple(part.strip() for part in line.split("=", 1))
+                   for line in config.read_text().splitlines() if "=" in line]
+        width, height = size.split("x")
+        expected = {"hw.lcd.width": width, "hw.lcd.height": height, "hw.lcd.density": str(density),
+                    "hw.cpu.ncore": "2", "hw.ramSize": "2048"}
+        for key, value in expected.items():
+            self.assertEqual([item for item in entries if item[0] == key], [(key, value)])
+        self.assertIn(("hw.device.name", "tv_1080p"), entries)
+        self.assertIn(("hw.initialOrientation", "portrait"), entries)
+
+    def test_1080_boot_uses_physical_lcd_and_density_320(self):
+        self.assert_boot_display("1920x1080", 320)
+
+    def test_4k_boot_uses_physical_lcd_and_density_640(self):
+        self.assert_boot_display("3840x2160", 640)
 
 
 if __name__ == "__main__":

@@ -164,7 +164,21 @@ tv_main() {
   timeout --kill-after=5s 120s "$avdmanager" create avd --name cinematv-ci \
     --package "system-images;android-$api;android-tv;$arch" --device tv_1080p \
     > "$TV_STARTUP_EVIDENCE/avd-create.txt" 2>&1 <<< no
-  printf '\nhw.cpu.ncore=2\nhw.ramSize=2048\n' >> "$ANDROID_AVD_HOME/cinematv-ci.avd/config.ini"
+  # Android TV resolves config_maxUiWidth at system-server startup using the
+  # boot density. A later `wm density` cannot raise that cached UI-width cap.
+  # Keep the TV hardware profile, but boot with the actual requested LCD/skin.
+  python3 - "$ANDROID_AVD_HOME/cinematv-ci.avd/config.ini" "$size" "$density" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+width, height = sys.argv[2].split("x")
+owned = {"hw.cpu.ncore": "2", "hw.ramSize": "2048", "hw.lcd.width": width,
+         "hw.lcd.height": height, "hw.lcd.density": sys.argv[3]}
+lines = [line for line in path.read_text().splitlines()
+         if line.partition("=")[0].strip() not in owned]
+path.write_text("\n".join(lines + [f"{key}={value}" for key, value in owned.items()]) + "\n")
+PY
   cp "$ANDROID_AVD_HOME/cinematv-ci.avd/config.ini" "$TV_STARTUP_EVIDENCE/avd-config.ini"
   # Refuse to use another invocation's device. This port is reserved for this
   # fresh CI guest; all shutdown operations remain scoped to our process group.
@@ -176,9 +190,12 @@ tv_main() {
   fi
   setsid "$emulator" -port 5554 -avd cinematv-ci -no-window -no-audio \
     -gpu lavapipe -feature -Vulkan -no-snapshot -no-boot-anim -memory 2048 \
-    -skin 1920x1080 > "$TV_STARTUP_EVIDENCE/emulator.log" 2>&1 &
+    -skin "$size" > "$TV_STARTUP_EVIDENCE/emulator.log" 2>&1 &
   TV_EMULATOR_PID=$!
   tv_wait_ready 240
+  # Diagnostic only: older images may not expose this overlay lookup command.
+  tv_adb shell cmd overlay lookup android android:integer/config_maxUiWidth \
+    > "$TV_STARTUP_EVIDENCE/max-ui-width-at-boot.txt" 2>&1 || true
   export ANDROID_SERIAL="$TV_SERIAL" EMULATOR_PORT=5554
   # run-device.sh owns this separate, still-empty evidence directory. It
   # configures/validates the requested 4K size before installing either APK.
