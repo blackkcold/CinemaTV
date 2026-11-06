@@ -1,12 +1,19 @@
 package dev.cinematv.data
 
 import android.content.Context
+import android.app.Application
 import android.content.ContextWrapper
 import android.content.SharedPreferences
 import android.net.Uri
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.ViewModel
+import dev.cinematv.CinemaViewModel
+import dev.cinematv.Page
 import dev.cinematv.data.library.CinemaLibraryDatabase
 import dev.cinematv.data.library.LegacyLibraryImport
 import dev.cinematv.data.library.LocalMediaLibrary
@@ -16,14 +23,18 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.util.UUID
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -314,6 +325,98 @@ class LibreTvProtocolTest {
         assertNull(server.requests[2].headers["cookie"])
     }
 
+    @Test fun delayedAuthenticationCannotLeakItsCookieToAReplacementServer() = runBlocking {
+        val gate = CountDownLatch(1)
+        server.enqueue("{\"success\":true}", headers = "Set-Cookie: synthetic=old-a; HttpOnly\r\n", gate = gate)
+        val login = async { repo.login("synthetic-password") }
+        withContext(Dispatchers.IO) { assertTrue(server.delayed.poll(4, TimeUnit.SECONDS) == true) }
+        FixtureServer().use { next ->
+            repo.configureServer(next.base)
+            next.enqueue("{\"passwordRequired\":true,\"verified\":false}")
+            assertFalse(repo.status().verified)
+            gate.countDown()
+            withTimeout(4_000) {
+                try { login.await(); fail("Old login must be discarded") }
+                catch (_: CancellationException) { }
+            }
+            next.enqueue("{\"passwordRequired\":true,\"verified\":false}")
+            repo.status()
+            assertTrue(next.requests.all { it.headers["cookie"] == null })
+        }
+    }
+
+    @Test fun delayedStatusCannotOverwriteTheReplacementServersSources() = runBlocking {
+        val gate = CountDownLatch(1)
+        server.enqueue("""{"passwordRequired":true,"verified":true,"defaultSources":[{"key":"a","name":"Old","url":"https://a.example.test/provider"}]}""", gate = gate)
+        val status = async { repo.status() }
+        withContext(Dispatchers.IO) { assertTrue(server.delayed.poll(4, TimeUnit.SECONDS) == true) }
+        FixtureServer().use { next ->
+            repo.configureServer(next.base)
+            next.enqueue("""{"passwordRequired":true,"verified":true,"defaultSources":[{"key":"b","name":"Current","url":"https://b.example.test/provider"}]}""")
+            assertEquals("b", repo.status().sources.last().key)
+            gate.countDown()
+            withTimeout(4_000) {
+                try { status.await(); fail("Old status must be discarded") }
+                catch (_: CancellationException) { }
+            }
+            assertEquals(listOf("b"), repo.defaultSources.map { it.key })
+        }
+    }
+
+    @Test fun delayedUnauthorizedCannotClearANewServersSession() = runBlocking {
+        val gate = CountDownLatch(1)
+        server.enqueue("{\"error\":\"expired\"}", 401, gate = gate)
+        val oldSearch = async { repo.searchSnapshots("Fixture").toList() }
+        withContext(Dispatchers.IO) { assertTrue(server.delayed.poll(4, TimeUnit.SECONDS) == true) }
+        FixtureServer().use { next ->
+            repo.configureServer(next.base)
+            next.enqueue("{\"success\":true}", headers = "Set-Cookie: synthetic=current-b; HttpOnly\r\n")
+            assertTrue(repo.login("synthetic-password"))
+            gate.countDown()
+            withTimeout(4_000) {
+                try { oldSearch.await(); fail("Old 401 must be discarded") }
+                catch (_: CancellationException) { }
+            }
+            next.enqueue("{\"passwordRequired\":true,\"verified\":true}")
+            assertTrue(repo.status().verified)
+            assertEquals("synthetic=current-b", next.requests.last().headers["cookie"])
+        }
+    }
+
+    @Test fun expiredSearchSessionShowsLoginAndPreservesQueryAndLocalResults() = runBlocking {
+        repo.library.initialize()
+        repo.library.cacheItem(work)
+        server.enqueue("{\"passwordRequired\":true,\"verified\":true}")
+        val store = ViewModelStore()
+        val model = onMain {
+            ViewModelProvider(store, object : ViewModelProvider.Factory {
+                @Suppress("UNCHECKED_CAST")
+                override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                    require(modelClass == CinemaViewModel::class.java)
+                    return CinemaViewModel(context.applicationContext as Application, repo) as T
+                }
+            })[CinemaViewModel::class.java]
+        }
+        try {
+            withTimeout(5_000) { while (!onMain { model.authorized && !model.busy }) delay(20) }
+            server.enqueue("{\"error\":\"未登录\"}", 401)
+            onMain { model.query = work.title; model.search() }
+            withTimeout(5_000) { while (!onMain { model.passwordRequired && !model.authorized && !model.busy }) delay(20) }
+            onMain {
+                assertEquals(Page.SETTINGS, model.page)
+                assertEquals(work.title, model.query)
+                assertTrue(model.results.any { it.title == work.title })
+                assertTrue(model.message.contains("重新登录"))
+            }
+        } finally { onMain { store.clear() } }
+    }
+
+    private fun <T> onMain(block: () -> T): T {
+        var result: Result<T>? = null
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { result = runCatching(block) }
+        return requireNotNull(result).getOrThrow()
+    }
+
     @Test fun cancellingBlockedDetailDoesNotRequestAnotherCandidate() = runBlocking {
         server.enqueue(search(row("blocked"), row("other")).toString())
         server.enqueue("", stall = true, stallBody = true)
@@ -351,12 +454,14 @@ class LibreTvProtocolTest {
     }
 
     private data class Captured(val uri: Uri, val headers: Map<String, String>, val body: String)
-    private data class Reply(val body: String, val code: Int, val headers: String, val stall: Boolean, val stallBody: Boolean)
+    private data class Reply(val body: String, val code: Int, val headers: String, val stall: Boolean,
+        val stallBody: Boolean, val gate: CountDownLatch?)
     private class FixtureServer : AutoCloseable {
         private val listener = ServerSocket(0, 8, InetAddress.getByName("127.0.0.1"))
         private val replies = LinkedBlockingQueue<Reply>()
         val requests = CopyOnWriteArrayList<Captured>()
         val stalled = LinkedBlockingQueue<Boolean>()
+        val delayed = LinkedBlockingQueue<Boolean>()
         val closedByClient = LinkedBlockingQueue<Boolean>()
         private val clients = CopyOnWriteArrayList<Socket>()
         @Volatile private var running = true
@@ -367,8 +472,9 @@ class LibreTvProtocolTest {
                 listener.accept().use { client -> clients += client; handle(client) }
             } catch (error: Exception) { if (running) failure = error }
         }, "libretv-protocol-loopback").apply { isDaemon = true; start() }
-        fun enqueue(body: String, code: Int = 200, headers: String = "", stall: Boolean = false, stallBody: Boolean = false) {
-            replies.put(Reply(body, code, headers, stall, stallBody))
+        fun enqueue(body: String, code: Int = 200, headers: String = "", stall: Boolean = false,
+            stallBody: Boolean = false, gate: CountDownLatch? = null) {
+            replies.put(Reply(body, code, headers, stall, stallBody, gate))
         }
         private fun handle(client: Socket) {
             client.soTimeout = 5000
@@ -390,6 +496,10 @@ class LibreTvProtocolTest {
             }
             requests += Captured(Uri.parse(path), headers, String(body, 0, offset))
             val reply = requireNotNull(replies.poll(5, TimeUnit.SECONDS)) { "Unexpected request: $path" }
+            reply.gate?.let { gate ->
+                delayed.put(true)
+                check(gate.await(5, TimeUnit.SECONDS)) { "Delayed response was not released" }
+            }
             if (reply.stall) {
                 if (reply.stallBody) client.getOutputStream().apply {
                     write("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 1000\r\nConnection: close\r\n\r\n{".toByteArray())

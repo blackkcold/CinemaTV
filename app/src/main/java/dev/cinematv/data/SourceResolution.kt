@@ -131,7 +131,7 @@ internal suspend fun <T> withCancellableCall(
                 send(read(response))
                 close()
             }
-        } catch (cancelled: CancellationException) { throw cancelled }
+        } catch (cancelled: CancellationException) { close(cancelled); throw cancelled }
         catch (error: Exception) { close(error) }
         finally { call.cancel() }
     }
