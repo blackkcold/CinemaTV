@@ -331,3 +331,31 @@ test('native Back saves the current focus before returning its bounded token', a
   const preceding = calls.slice(0, backIndex).filter(call => call.method === 'navigation.bookmark').at(-1);
   expect((preceding?.params.bookmark as { focus: string }).focus).toBe('detail:favorite');
 });
+
+test('a delayed first frame never steals newer remote focus', async ({ page }) => {
+  await page.addInitScript(() => {
+    const request = window.requestAnimationFrame.bind(window);
+    const cancel = window.cancelAnimationFrame.bind(window);
+    let sequence = 0;
+    const pending = new Map<number, { frame: number; timer: number }>();
+    window.requestAnimationFrame = callback => {
+      const id = ++sequence;
+      const entry = { frame: 0, timer: 0 };
+      entry.frame = request(time => { entry.timer = window.setTimeout(() => { pending.delete(id); callback(time); }, 200); });
+      pending.set(id, entry);
+      return id;
+    };
+    window.cancelAnimationFrame = id => {
+      const entry = pending.get(id);
+      if (entry) { cancel(entry.frame); window.clearTimeout(entry.timer); pending.delete(id); }
+    };
+  });
+  await open(page);
+  await button(page, 'nav:MOVIES').click();
+  const cards = page.locator('.poster-grid .poster');
+  await cards.first().focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(cards.nth(1)).toBeFocused();
+  await page.waitForTimeout(450);
+  await expect(cards.nth(1)).toBeFocused();
+});

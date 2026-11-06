@@ -44,6 +44,7 @@ export function App() {
   const focusRequest = useRef<{ method: string; params: Record<string, unknown> } | null>(null);
   const focusTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const lastFocus = useRef({ route: '', key: '' });
+  const focusGeneration = useRef(0);
   const layout = useRef<{ route: string; page: number; episode: number } | null>(null);
 
   const apply = useCallback((next: Snapshot) => {
@@ -127,7 +128,7 @@ export function App() {
         if (latest) act('navigation.bookmark', { bookmark: captureBookmark(latest.routeKey) });
       }, 120);
     };
-    const uninstall = installSpatialInput(() => act('navigation.back'), save);
+    const uninstall = installSpatialInput(() => act('navigation.back'), () => { focusGeneration.current++; save(); });
     document.addEventListener('scroll', save, true);
     return () => { clearTimeout(timer); uninstall(); document.removeEventListener('scroll', save, true); };
   }, [act]);
@@ -138,7 +139,13 @@ export function App() {
     const pageChanged = previous?.route === state.routeKey && previous.page !== state.pageIndex;
     const episodesChanged = previous?.route === state.routeKey && previous.episode !== state.episodePage;
     layout.current = { route: state.routeKey, page: state.pageIndex, episode: state.episodePage };
+    const generation = focusGeneration.current;
     const frame = requestAnimationFrame(() => {
+      const active = document.activeElement as HTMLElement | null;
+      // A slow frame may arrive after the user has already moved into the new
+      // page. Deferred restoration must never overwrite that newer focus.
+      if (focusGeneration.current !== generation && active?.dataset.focus && active.isConnected &&
+        !active.matches('[disabled], [aria-disabled="true"]')) return;
       if (pageChanged) {
         const page = document.querySelector('.content');
         if (page) page.scrollTop = 0;
