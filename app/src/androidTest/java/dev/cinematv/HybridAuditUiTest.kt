@@ -209,7 +209,7 @@ class HybridAuditUiTest {
         key(KeyEvent.KEYCODE_BACK); awaitRoute(Page.SETTINGS)
         rule.waitUntil(10_000) { evaluate("document.activeElement?.dataset.focus || ''") == "settings:developer" }
         click("settings:subscriptions")
-        rule.onNodeWithTag("source-subscriptions-screen").assertExists()
+        rule.onNodeWithTag("source-subscriptions-screen", useUnmergedTree = true).assertIsDisplayed()
         capture("${testName.methodName}-subscriptions")
         key(KeyEvent.KEYCODE_BACK); awaitRoute(Page.SETTINGS)
         rule.waitUntil(10_000) { evaluate("document.activeElement?.dataset.focus || ''") == "settings:subscriptions" }
@@ -223,7 +223,7 @@ class HybridAuditUiTest {
         rule.onNodeWithTag("library-progress-review", useUnmergedTree = true).assertIsDisplayed()
         rule.onNodeWithText("打开当前片单").assertExists()
         rule.onNodeWithText("当时的片单缺少明确的剧集身份", substring = true).assertExists()
-        rule.onNodeWithTag("library-review-record:${before.keys.single()}")
+        rule.onNodeWithTag("library-review-record:${before.keys.single()}", useUnmergedTree = true)
             .performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.RequestFocus) { it() }
             .assertIsFocused()
         assertNull(web())
