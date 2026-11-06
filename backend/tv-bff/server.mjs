@@ -31,7 +31,10 @@ async function authenticate() {
   authPromise = (async () => {
     const res = await fetch(upstreamBase + '/api/auth', {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ password: adminPassword }), signal: AbortSignal.timeout(timeoutMs)
+      body: JSON.stringify({ password: adminPassword }), signal: AbortSignal.timeout(timeoutMs),
+      // Authentication belongs to the configured origin. In particular, 307/308
+      // must never forward the password body to a redirect target.
+      redirect: 'manual'
     });
     if (!res.ok) throw new ApiError('LibreTV authentication failed', 502);
     const nextCookie = res.headers.get('set-cookie')?.split(';')[0] || '';
@@ -43,15 +46,18 @@ async function authenticate() {
 
 async function upstream(path, { method = 'GET', body, retry = true } = {}) {
   const headers = { accept: 'application/json' };
-  if (cookie) headers.cookie = cookie;
+  const requestCookie = cookie;
+  if (requestCookie) headers.cookie = requestCookie;
   if (body !== undefined) headers['content-type'] = 'application/json';
   const res = await fetch(upstreamBase + path, {
     method, headers, body: body === undefined ? undefined : JSON.stringify(body),
     signal: AbortSignal.timeout(timeoutMs), redirect: 'manual'
   });
   if (res.status === 401 && retry && adminPassword) {
-    cookie = '';
-    await authenticate();
+    // A late 401 from the previous session must not erase a session that a
+    // concurrent request has already refreshed on this same configured origin.
+    if (cookie === requestCookie) cookie = '';
+    if (!cookie) await authenticate();
     return upstream(path, { method, body, retry: false });
   }
   if (!res.ok) throw new ApiError('LibreTV upstream error: HTTP ' + res.status, res.status === 404 ? 404 : 502);

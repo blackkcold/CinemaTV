@@ -27,8 +27,8 @@ import dev.cinematv.playback.PlaybackSessionGuard
 
 enum class Page { HOME, EXPLORE, MOVIES, SERIES, SEARCH, LIVE, LIBRARY, SETTINGS, DETAIL, PLAYER }
 
-class CinemaViewModel(application: Application) : AndroidViewModel(application) {
-    val repo = LibreTvRepository(application)
+class CinemaViewModel(application: Application, val repo: LibreTvRepository) : AndroidViewModel(application) {
+    constructor(application: Application) : this(application, LibreTvRepository(application))
     val focusCoordinator = FocusCoordinator()
     var reducedMotion by mutableStateOf(repo.reducedMotion)
         private set
@@ -98,6 +98,20 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
         private set
     var liveSources by mutableStateOf<List<LiveSource>>(emptyList())
         private set
+    var defaultSourceSubscriptions by mutableStateOf<List<SourceSubscription>>(emptyList())
+        private set
+    var sourceSubscriptions by mutableStateOf(repo.sourceSubscriptions())
+        private set
+    var sourceSubscriptionAddress by mutableStateOf("")
+    var sourceSubscriptionName by mutableStateOf("")
+    var sourceSubscriptionPreview by mutableStateOf<SourceSubscriptionPreview?>(null)
+        private set
+    var sourceSubscriptionBusy by mutableStateOf(false)
+        private set
+    var sourceSubscriptionNotice by mutableStateOf(repo.subscriptionStorageError)
+        private set
+    private var sourceSubscriptionJob: Job? = null
+    private var sourceSubscriptionGeneration = 0L
     var channels by mutableStateOf<List<TvChannel>>(emptyList())
         private set
     var activeLiveSource by mutableStateOf<LiveSource?>(null)
@@ -111,6 +125,10 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
     var epgPrograms by mutableStateOf<List<TvProgram>>(emptyList())
         private set
     private var epgJob: Job? = null
+    private var epgRequestedAt = 0L
+    private var connectionJob: Job? = null
+    private var connectionAttempt = 0L
+    private var alternativesJob: Job? = null
     private var searchJob: Job? = null
     private var backdropJob: Job? = null
     private var detailJob: Job? = null
@@ -138,6 +156,7 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
     private var browseGeneration = 0L
     fun browseState(series: Boolean) = if (series) seriesBrowse else movieBrowse
     val hasSearchCatalog get() = movieSearchBrowse.pages > 0 || seriesSearchBrowse.pages > 0
+    val searchCatalogRequested get() = completedSearchQuery.isNotBlank()
     val searchCatalogLoading get() = movieSearchBrowse.loading || seriesSearchBrowse.loading
     val canLoadSearchCatalog get() = !searchFilters.doubanTopOnly && completedSearchQuery.isNotBlank() &&
         listOf(false, true).any { (searchFilters.isTv == null || searchFilters.isTv == it) && searchBrowseState(it).canLoadMore }
@@ -182,13 +201,14 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
                 rebuildRecommendations()
             }
         }
-        publish(initial.copy(loading = true, notice = ""))
+        publish(initial.copy(loading = true, notice = "", retryableFailure = false))
         try {
             val response = repo.catalog(if (search) completedSearchQuery else "", series, offset)
             kotlinx.coroutines.currentCoroutineContext().ensureActive()
             if (current()) publish(CatalogBrowsePaging.append(initial, response, offset))
         } catch (cancelled: CancellationException) { throw cancelled }
-        catch (_: Exception) { publish(initial.copy(loading = false, notice = "目录加载失败，已保留结果；可重试。")) }
+        catch (_: Exception) { publish(initial.copy(loading = false, retryableFailure = true,
+            notice = "目录加载失败，已保留结果；可重试。")) }
         finally { if (current() && state().loading) publish(state().copy(loading = false)) }
     }
 
@@ -270,7 +290,8 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
 
     fun dismissMessage() { message = "" }
 
-    private fun connectionError(error: Throwable) {
+    private fun connectionError(error: Throwable, connection: LibreTvConnection = repo.connectionContext()) {
+        if (error is CancellationException || !repo.isCurrentConnectionError(error, connection)) return
         message = ConnectionErrors.message(error)
         if (ConnectionErrors.classify(error) == ConnectionFailure.AUTHENTICATION) {
             authorized = false
@@ -280,24 +301,75 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun refreshConnection() {
-        viewModelScope.launch {
+        connectionJob?.cancel()
+        val attempt = ++connectionAttempt
+        val connection = repo.connectionContext()
+        connectionJob = viewModelScope.launch {
             busy = true
-            runCatching { repo.status() }
-                .onSuccess { status ->
-                    passwordRequired = status.passwordRequired
-                    authorized = status.verified
-                    sources = status.sources
-                    liveSources = status.liveSources
-                    message = if (authorized) "" else if (status.passwordRequired) "此服务器要求密码，请在设置中登录。" else "服务器未配置访问密码（PASSWORD），请联系管理员完成配置。"
-                    if (authorized) loadHome()
-                }.onFailure { authorized = false; connectionError(it) }
-            busy = false
+            try { readConnection(connection, attempt) }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) {
+                if (attempt == connectionAttempt && repo.isCurrentConnectionError(error, connection)) {
+                    authorized = false
+                    connectionError(error, connection)
+                }
+            } finally { if (attempt == connectionAttempt && repo.isCurrentConnection(connection)) busy = false }
         }
+    }
+
+    private suspend fun readConnection(connection: LibreTvConnection, attempt: Long) {
+        val status = repo.status(connection)
+        kotlinx.coroutines.currentCoroutineContext().ensureActive()
+        if (attempt != connectionAttempt || !repo.isCurrentStatus(status, connection)) return
+        passwordRequired = status.passwordRequired
+        authorized = status.verified
+        sources = status.sources
+        liveSources = status.liveSources
+        defaultSourceSubscriptions = status.defaultSubscriptions
+        sourceSubscriptions = repo.sourceSubscriptions()
+        message = if (authorized) "" else if (status.passwordRequired) "此服务器要求密码，请在设置中登录。"
+            else "服务器未配置访问密码（PASSWORD），请联系管理员完成配置。"
+        if (authorized) loadHome()
+    }
+
+    /** Replacing a server cannot retain any in-flight response's UI ownership. Local library stays intact. */
+    private fun cancelConnectionWork() {
+        connectionAttempt++
+        connectionJob?.cancel()
+        searchGeneration++; detailGeneration++; browseGeneration++; chartGeneration++; sourceSubscriptionGeneration++
+        listOf(searchJob, searchMoreJob, detailJob, alternativesJob, channelsJob, epgJob, backdropJob,
+            homeJob, chartJob, recommendationJob, sourceSubscriptionJob).forEach { it?.cancel() }
+        browseJobs.values.forEach { it.cancel() }
+        browseJobs.clear()
+        busy = false
+        chartLoading = false
+        authorized = false
+        passwordRequired = false
+        password = ""
+        selected = null
+        focused = null
+        alternatives = emptyList()
+        activeChannel = null
+        activeLiveSource = null
+        channels = emptyList()
+        epgPrograms = emptyList()
+        epgRequestedAt = 0L
+        sourceProbes = emptyMap()
+        defaultSourceSubscriptions = emptyList()
+        sourceSubscriptionPreview = null
+        sourceSubscriptionBusy = false
+        sourceSubscriptionNotice = repo.subscriptionStorageError
+        resolutionStatus = ""
+        remoteSearch = emptyList()
+        sources = repo.sources()
+        liveSources = repo.liveSources()
+        rebuildSearch()
     }
 
     fun connect() {
         runCatching {
             repo.configureServer(serverAddress)
+            cancelConnectionWork()
             invalidatePlayback()
             page = Page.SETTINGS
             refreshConnection()
@@ -328,15 +400,27 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun login() {
-        viewModelScope.launch {
+        connectionJob?.cancel()
+        listOf(searchJob, detailJob, alternativesJob, channelsJob, epgJob, sourceSubscriptionJob).forEach { it?.cancel() }
+        sourceSubscriptionGeneration++
+        sourceSubscriptionPreview = null
+        sourceSubscriptionBusy = false
+        val attempt = ++connectionAttempt
+        val connection = repo.beginAuthentication()
+        val submittedPassword = password
+        password = ""
+        connectionJob = viewModelScope.launch {
             busy = true
-            runCatching { repo.login(password) }.onSuccess {
-                password = ""
-                authorized = it
-                if (it) { message = "连接成功"; refreshConnection() }
-                else message = "密码错误"
-            }.onFailure { connectionError(it) }
-            busy = false
+            try {
+                val verified = repo.login(submittedPassword, connection)
+                ensureActive()
+                if (attempt != connectionAttempt || !repo.isCurrentConnection(connection)) return@launch
+                if (verified) readConnection(connection, attempt)
+                else { authorized = false; passwordRequired = true; message = "密码错误" }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) {
+                if (attempt == connectionAttempt) connectionError(error, connection)
+            } finally { if (attempt == connectionAttempt && repo.isCurrentConnection(connection)) busy = false }
         }
     }
 
@@ -361,20 +445,121 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun probeSource(source: TvSource) {
+        val connection = repo.connectionContext()
         viewModelScope.launch {
             sourceProbes = sourceProbes + (source.url to SourceProbe(false, 0, "检测中…"))
-            runCatching { repo.probeSource(source) }
-                .onSuccess { sourceProbes = sourceProbes + (source.url to it) }
-                .onFailure { sourceProbes = sourceProbes + (
-                    source.url to SourceProbe(false, 0, it.message ?: "无法连接")
-                ) }
+            try {
+                val result = repo.probeSource(source)
+                ensureActive()
+                if (repo.isCurrentConnection(connection)) sourceProbes = sourceProbes + (source.url to result)
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) {
+                if (repo.isCurrentConnection(connection)) sourceProbes = sourceProbes +
+                    (source.url to SourceProbe(false, 0, error.message ?: "无法连接"))
+            }
         }
     }
 
     fun removeSource(url: String, live: Boolean = false) {
+        if (!repo.isManualSource(url, live)) { message = "此来源由订阅或服务器提供，请在相应设置中管理。"; return }
+        val fallbackRemains = repo.hasSourceFallback(url, live)
         repo.removeSource(url, live)
         sources = repo.sources()
         liveSources = repo.liveSources()
+        message = if (fallbackRemains) "已移除手动来源；同地址仍由订阅或服务器提供。" else "已移除手动来源；收藏与观看进度已保留。"
+    }
+
+    fun canRemoveManualSource(url: String, live: Boolean = false): Boolean = repo.isManualSource(url, live)
+    fun sourceRemovalLabel(url: String, live: Boolean = false): String =
+        if (repo.hasSourceFallback(url, live)) "移除手动源" else "移除"
+
+    fun previewSourceSubscription(subscription: SourceSubscription? = null) {
+        if (!authorized) { sourceSubscriptionNotice = "请先连接 LibreTV 并登录，再读取片源列表订阅。"; return }
+        val choice = subscription ?: SourceSubscription(sourceSubscriptionAddress, sourceSubscriptionName)
+        sourceSubscriptionJob?.cancel()
+        val generation = ++sourceSubscriptionGeneration
+        val connection = repo.connectionContext()
+        sourceSubscriptionPreview = null
+        sourceSubscriptionNotice = ""
+        sourceSubscriptionBusy = true
+        sourceSubscriptionJob = viewModelScope.launch {
+            try {
+                val preview = repo.previewSourceSubscription(choice, connection)
+                ensureActive()
+                if (generation == sourceSubscriptionGeneration && repo.isCurrentConnection(connection)) {
+                    sourceSubscriptionPreview = preview
+                    sourceSubscriptionNotice = "请查看片源变化与跳过原因，确认后保存。"
+                }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) {
+                if (generation == sourceSubscriptionGeneration && repo.isCurrentConnectionError(error, connection)) {
+                    sourceSubscriptionNotice = ConnectionErrors.message(error) + "；已保留现有订阅与片源。"
+                    if (ConnectionErrors.classify(error) == ConnectionFailure.AUTHENTICATION) connectionError(error, connection)
+                }
+            } finally {
+                if (generation == sourceSubscriptionGeneration && repo.isCurrentConnection(connection)) sourceSubscriptionBusy = false
+            }
+        }
+    }
+
+    fun dismissSourceSubscriptionPreview() {
+        sourceSubscriptionGeneration++
+        sourceSubscriptionJob?.cancel()
+        sourceSubscriptionPreview = null
+        sourceSubscriptionBusy = false
+        sourceSubscriptionNotice = ""
+    }
+
+    fun importSourceSubscriptionPreview() {
+        val preview = sourceSubscriptionPreview ?: return
+        if (sourceSubscriptionBusy) return
+        val generation = ++sourceSubscriptionGeneration
+        sourceSubscriptionBusy = true
+        sourceSubscriptionJob = viewModelScope.launch {
+            try {
+                repo.importSourceSubscription(preview)
+                ensureActive()
+                if (generation == sourceSubscriptionGeneration && repo.isCurrentConnection(preview.connection)) {
+                    sourceSubscriptions = repo.sourceSubscriptions()
+                    sources = repo.sources()
+                    liveSources = repo.liveSources()
+                    sourceSubscriptionPreview = null
+                    sourceSubscriptionAddress = ""
+                    sourceSubscriptionName = ""
+                    sourceSubscriptionNotice = "已保存：点播 ${preview.snapshot.sources.size} 个、直播 ${preview.snapshot.liveSources.size} 个；已有停用选择保持不变。"
+                }
+            } catch (cancelled: CancellationException) {
+                if (generation == sourceSubscriptionGeneration) {
+                    sourceSubscriptionPreview = null
+                    sourceSubscriptionNotice = "连接已变化，请重新预览订阅。"
+                }
+                throw cancelled
+            } catch (error: Exception) {
+                if (generation == sourceSubscriptionGeneration) sourceSubscriptionNotice = error.message ?: "订阅保存失败，请重试。"
+            } finally { if (generation == sourceSubscriptionGeneration) sourceSubscriptionBusy = false }
+        }
+    }
+
+    fun stopSourceSubscription(url: String) {
+        if (sourceSubscriptionBusy) return
+        val generation = ++sourceSubscriptionGeneration
+        sourceSubscriptionBusy = true
+        sourceSubscriptionJob = viewModelScope.launch {
+            try {
+                repo.stopSourceSubscription(url)
+                ensureActive()
+                if (generation == sourceSubscriptionGeneration) {
+                    sourceSubscriptions = repo.sourceSubscriptions()
+                    sources = repo.sources()
+                    liveSources = repo.liveSources()
+                    sourceSubscriptionPreview = null
+                    sourceSubscriptionNotice = "已停止订阅；当前片源已保留为手动源，收藏和进度保持不变。"
+                }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) {
+                if (generation == sourceSubscriptionGeneration) sourceSubscriptionNotice = error.message ?: "停止订阅失败，请重试。"
+            } finally { if (generation == sourceSubscriptionGeneration) sourceSubscriptionBusy = false }
+        }
     }
 
     private fun rebuildRecommendations() {
@@ -546,7 +731,9 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
         invalidatePlayback()
         backdropJob?.cancel()
         detailJob?.cancel()
+        alternativesJob?.cancel()
         val generation = ++detailGeneration
+        val connection = repo.connectionContext()
         selectedRecommendationReason = recommendationReasons[item.presentationKey].orEmpty()
         if (!preserveWorkRoute) detailSessionKey = item.presentationKey
         page = Page.DETAIL
@@ -563,7 +750,8 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
                         ResolutionPhase.RESOLVED -> "片源已就绪"
                     }
                 }
-                if (page != Page.DETAIL || detailGeneration != generation) return@launch
+                ensureActive()
+                if (page != Page.DETAIL || detailGeneration != generation || !repo.isCurrentConnection(connection)) return@launch
                 selected = detailed
                 if (repo.persistenceWarning.isNotBlank()) message = repo.persistenceWarning
                 busy = false
@@ -573,23 +761,28 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
-                connectionError(error)
-            } finally { if (detailGeneration == generation) busy = false }
+                if (detailGeneration == generation) connectionError(error, connection)
+            } finally { if (detailGeneration == generation && repo.isCurrentConnection(connection)) busy = false }
         }
     }
 
     fun findAlternatives() {
         val item = selected ?: return
-        viewModelScope.launch {
+        val connection = repo.connectionContext()
+        val generation = detailGeneration
+        alternativesJob?.cancel()
+        alternativesJob = viewModelScope.launch {
             busy = true
-            runCatching { repo.search(item.title) }
-                .onSuccess { items ->
-                    if (selected?.presentationKey != item.presentationKey) return@onSuccess
-                    alternatives = items.filter { sameSourceCandidate(item, it) }
-                        .distinctBy { it.source?.url }
-                }
-                .onFailure { message = "换源失败：${it.message}" }
-            busy = false
+            try {
+                val items = repo.searchSnapshot(item.title, connection).items
+                ensureActive()
+                if (generation == detailGeneration && repo.isCurrentConnection(connection) &&
+                    selected?.presentationKey == item.presentationKey)
+                    alternatives = items.filter { sameSourceCandidate(item, it) }.distinctBy { it.source?.url }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) {
+                if (generation == detailGeneration && repo.isCurrentConnection(connection)) connectionError(error, connection)
+            } finally { if (generation == detailGeneration && repo.isCurrentConnection(connection)) busy = false }
         }
     }
 
@@ -602,14 +795,42 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun focusChannel(channel: TvChannel) {
-        if (activeChannel?.id == channel.id) return
+        if (activeChannel?.let { ChannelIdentity.key(activeLiveSource, it) } == ChannelIdentity.key(activeLiveSource, channel)) {
+            refreshEpgIfStale()
+            return
+        }
         activeChannel = channel
         epgPrograms = emptyList()
+        epgRequestedAt = 0L
+        requestEpg(channel, debounce = true)
+    }
+
+    /** The visible guide invokes this on its lifecycle clock; no background polling or parallel requests. */
+    fun refreshEpgIfStale(nowMs: Long = System.currentTimeMillis()) {
+        val channel = activeChannel ?: return
+        if (epgJob?.isActive == true || activeLiveSource?.epg.isNullOrBlank()) return
+        if (epgRequestedAt > 0 && nowMs >= epgRequestedAt && nowMs - epgRequestedAt < 15 * 60_000L) return
+        requestEpg(channel, debounce = false, nowMs = nowMs)
+    }
+
+    private fun requestEpg(channel: TvChannel, debounce: Boolean, nowMs: Long = System.currentTimeMillis()) {
         epgJob?.cancel()
         val source = activeLiveSource ?: return
+        if (source.epg.isBlank()) return
+        epgRequestedAt = nowMs
+        val connection = repo.connectionContext()
+        val key = ChannelIdentity.key(source, channel)
         epgJob = viewModelScope.launch {
-            delay(350)
-            runCatching { repo.epg(source, channel) }.onSuccess { epgPrograms = it }
+            if (debounce) delay(350)
+            try {
+                val programs = repo.epg(source, channel, connection)
+                ensureActive()
+                if (repo.isCurrentConnection(connection) && activeChannel?.let { ChannelIdentity.key(activeLiveSource, it) } == key)
+                    epgPrograms = programs
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) {
+                if (ConnectionErrors.classify(error) == ConnectionFailure.AUTHENTICATION) connectionError(error, connection)
+            }
         }
     }
 
@@ -728,6 +949,7 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
         seriesChart = CatalogChartSnapshot()
         chartNotice = ""
         val generation = ++searchGeneration
+        val connection = repo.connectionContext()
         completedSearchQuery = wd
         remoteSearch = emptyList()
         queryCatalog = emptyList()
@@ -753,9 +975,9 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
                         if (!repo.isConnected || sources.none { it.enabled }) return@launch
                         searchStage = "本地 → 元数据目录 → LibreTV 片源"
                         try {
-                            repo.searchSnapshots(wd).collect { partial ->
+                            repo.searchSnapshots(wd, connection).collect { partial ->
                                 ensureActive()
-                                if (generation != searchGeneration) return@collect
+                                if (generation != searchGeneration || !repo.isCurrentConnection(connection)) return@collect
                                 remoteSearch = partial.items
                                 val failed = partial.outcomes.count { !it.ok }
                                 searchStage = if (failed > 0) "${if (partial.complete) "搜索完成" else "逐源搜索中"} · $failed 个片源失败或超时，已保留成功结果"
@@ -763,16 +985,20 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
                                 rebuildSearch()
                             }
                         } catch (cancelled: CancellationException) { throw cancelled }
-                        catch (_: Exception) {
-                            if (generation == searchGeneration)
-                                searchStage = "片源响应未完整结束 · 已保留收到的结果，可重新搜索重试"
+                        catch (error: Exception) {
+                            if (generation == searchGeneration && repo.isCurrentConnectionError(error, connection)) {
+                                searchStage = ConnectionErrors.message(error) + " · 已保留本地与成功读取的结果"
+                                if (ConnectionErrors.classify(error) == ConnectionFailure.AUTHENTICATION)
+                                    connectionError(error, connection)
+                            }
                         }
                     }
                 }
-                if (results.isEmpty()) message = "没有符合当前关键词和筛选条件的作品"
+                if (generation == searchGeneration && repo.isCurrentConnection(connection) && results.isEmpty() && message.isBlank())
+                    message = "没有符合当前关键词和筛选条件的作品"
             } finally {
                 // A cancelled older search must not reset the newer search's loading state.
-                if (searchGeneration == generation) busy = false
+                if (searchGeneration == generation && repo.isCurrentConnection(connection)) busy = false
             }
         }
         if (searchFilters.doubanTopOnly) loadLicensedChart()
@@ -786,7 +1012,7 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
             ?: if (item.episodes.size == 1) "播放" else "第 ${index + 1} 集"
         val progress = episodeProgress(index) ?: return name
         return when {
-            progress.durationMs > 0 && progress.positionMs.toDouble() / progress.durationMs >= .95 -> "$name ✓"
+            progress.completed -> "$name · 重新播放"
             progress.positionMs > 0 -> "$name · ${progress.positionMs / 60000}分"
             else -> name
         }
@@ -808,7 +1034,7 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
                 playerReturnPage == Page.DETAIL && selected?.presentationKey == session.mediaKey
             } else playerReturnPage == Page.LIVE
 
-    fun playEpisode(index: Int = 0) {
+    fun playEpisode(index: Int = 0, action: EpisodePlaybackAction = EpisodePlaybackAction.RESUME) {
         val item = selected ?: return
         val url = item.episodes.getOrNull(index)
         if (url == null || (!url.startsWith("https://") && !url.startsWith("http://"))) {
@@ -822,7 +1048,7 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
         playbackUrl = url
         playbackTitle = item.title + if (item.episodes.size > 1) " · 第${index + 1}集" else ""
         val progress = repo.library.snapshot.progress(item, index)
-        playbackPosition = progress?.positionMs ?: 0L
+        playbackPosition = EpisodePlaybackPolicy.startPosition(progress, action)
         playingEpisode = index
         page = Page.PLAYER
         if (repo.libraryStatus(item) == null) viewModelScope.launch {
@@ -940,7 +1166,7 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
             }
             ensureActive()
             if (!isCurrentPlayback(session)) return@launch
-            if (episodeIndex + 1 < entry.episodes.size) playEpisode(episodeIndex + 1)
+            if (episodeIndex + 1 < entry.episodes.size) playEpisode(episodeIndex + 1, EpisodePlaybackAction.RESTART)
             else try {
                 repo.setLibraryStatus(entry, LibraryStatus.WATCHED)
             } catch (cancelled: CancellationException) { throw cancelled }
@@ -957,15 +1183,19 @@ class CinemaViewModel(application: Application) : AndroidViewModel(application) 
         activeChannel = null
         channels = emptyList()
         epgPrograms = emptyList()
+        epgRequestedAt = 0L
+        val connection = repo.connectionContext()
         channelsJob = viewModelScope.launch {
             busy = true
             try {
-                val loaded = repo.channels(source)
-                if (activeLiveSource?.url == source.url) channels = loaded
+                val loaded = repo.channels(source, connection)
+                ensureActive()
+                if (repo.isCurrentConnection(connection) && activeLiveSource?.url == source.url) channels = loaded
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
                 throw cancelled
-            } catch (error: Exception) { connectionError(error) }
-            finally { busy = false }
+            } catch (error: Exception) {
+                if (activeLiveSource?.url == source.url) connectionError(error, connection)
+            } finally { if (repo.isCurrentConnection(connection) && activeLiveSource?.url == source.url) busy = false }
         }
     }
 

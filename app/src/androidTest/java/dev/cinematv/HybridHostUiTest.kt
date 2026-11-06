@@ -22,6 +22,7 @@ import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
 import dev.cinematv.hybrid.HybridPolicy
 import dev.cinematv.data.MediaItem
 import dev.cinematv.ui.shared.metadataLine
@@ -50,8 +51,15 @@ class HybridHostUiTest {
     private lateinit var server: UiFixtureServer
     private var inputTraceEnabled = false
     private val inputTrace = ArrayDeque<JSONObject>()
-    private val expectedMode get() = InstrumentationRegistry.getArguments().getString("hybridExpectedMode")
+    private var windowInputTrace: HybridWindowInputTrace? = null
+    private val requestedMode get() = InstrumentationRegistry.getArguments().getString("hybridExpectedMode")
         ?: if (Build.VERSION.SDK_INT >= 29) "hybrid" else "native-fallback"
+    private val expectedMode get() = if (requestedMode == "provider-policy") {
+        val context = instrumentation.targetContext
+        val provider = WebViewCompat.getCurrentWebViewPackage(context)?.versionName
+        val listener = WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)
+        if (HybridPolicy.evaluate(Build.VERSION.SDK_INT, provider, listener).enabled) "hybrid" else "native-fallback"
+    } else requestedMode
     private val hybrid get() = expectedMode == "hybrid"
     private val output get() = File(InstrumentationRegistry.getArguments().getString("additionalTestOutputDir")
         ?: instrumentation.targetContext.getExternalFilesDir(null)!!.absolutePath, "hybrid-evidence").apply { mkdirs() }
@@ -94,6 +102,8 @@ class HybridHostUiTest {
                 }
                 File(output, "${name.methodName}.json").writeText(JSONObject()
                     .put("method", name.methodName).put("expectedMode", expectedMode).put("api", Build.VERSION.SDK_INT)
+                    .put("requestedMode", requestedMode)
+                    .put("messageListener", runCatching { WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER) }.getOrDefault(false))
                     .put("provider", runCatching { WebViewCompat.getCurrentWebViewPackage(activity)?.versionName }.getOrNull())
                     .put("route", model.page.name).put("webViewPresent", web() != null)
                     .put("activity", activity.javaClass.name).put("syntheticContent", true)
@@ -104,7 +114,10 @@ class HybridHostUiTest {
                 if (inputTraceEnabled) {
                     try {
                         File(output, "${name.methodName}-input-trace.json").writeText(JSONArray(inputTrace.toList()).toString(2))
-                    } finally { runCatching { evaluate("window.__hybridQaInputTrace?.dispose(); true") } }
+                    } finally {
+                        runCatching { evaluate("window.__hybridQaInputTrace?.dispose(); true") }
+                        windowInputTrace?.close()
+                    }
                 }
             } finally {
                 if (::scenario.isInitialized) scenario.close()
@@ -153,9 +166,14 @@ class HybridHostUiTest {
     private fun click(id: String) {
         // A dismissed Dialog and completed search do not imply that Android has
         // returned input ownership. Observe it; never request native focus or hide IME here.
-        awaitHybridInputReady(id, requireTarget = false)
+        awaitHybridInputReady(id, requireTarget = false, phase = "before-focus")
         focus(id)
-        awaitHybridInputReady(id, requireTarget = true)
+        awaitHybridInputReady(id, requireTarget = true, phase = "focused")
+        // JS focus can finish before Chromium and Android present that target.
+        // This synchronizes the test driver with a committed frame; it is not a
+        // claim that the IME caused the previous lost key. Keep one real press.
+        awaitPresentationFrame()
+        awaitHybridInputReady(id, requireTarget = true, phase = "pre-key")
         try { key(KeyEvent.KEYCODE_DPAD_CENTER) }
         finally { if (inputTraceEnabled) recordInputTrace("after-key", id) }
     }
@@ -166,6 +184,7 @@ class HybridHostUiTest {
         instrumentation.runOnMainSync {
             val decor = activity.window.decorView
             val current = HybridDom.find(decor)
+            val focused = decor.findFocus()
             val insets = ViewCompat.getRootWindowInsets(decor)
             val imeVisible = insets?.isVisible(WindowInsetsCompat.Type.ime())
             val ready = activity.lifecycle.currentState == Lifecycle.State.RESUMED && activity.hasWindowFocus() &&
@@ -178,15 +197,18 @@ class HybridHostUiTest {
                 .put("decorHasFocus", decor.hasFocus()).put("webPresent", current != null)
                 .put("webAttached", current?.isAttachedToWindow == true).put("webShown", current?.isShown == true).put("webFocused", current?.isFocused == true)
                 .put("webHasFocus", current?.hasFocus() == true).put("webWindowFocus", current?.hasWindowFocus() == true)
+                .put("decorTouchMode", decor.isInTouchMode).put("webTouchMode", current?.isInTouchMode ?: JSONObject.NULL)
+                .put("focusedView", focused?.javaClass?.name ?: JSONObject.NULL)
+                .put("focusedViewDescendantFocusability", (focused as? ViewGroup)?.descendantFocusability ?: JSONObject.NULL)
                 .put("imeKnown", insets != null).put("imeVisible", imeVisible ?: JSONObject.NULL).put("nativeReady", ready)
         }
         return state
     }
 
-    private fun awaitHybridInputReady(target: String, requireTarget: Boolean) {
+    private fun awaitHybridInputReady(target: String, requireTarget: Boolean, phase: String) {
         val started = SystemClock.uptimeMillis()
         var observation = nativeInputState()
-        if (inputTraceEnabled) recordInputTrace(if (requireTarget) "before-key-wait" else "before-focus-wait", target, observation)
+        if (inputTraceEnabled) recordInputTrace("$phase-wait", target, observation)
         try {
             rule.waitUntil(10_000) {
                 observation = nativeInputState()
@@ -198,7 +220,7 @@ class HybridHostUiTest {
                 }
             }
         } finally {
-            if (inputTraceEnabled) recordInputTrace(if (requireTarget) "pre-key" else "before-focus", target,
+            if (inputTraceEnabled) recordInputTrace(phase, target,
                 observation.put("waitMs", SystemClock.uptimeMillis() - started))
         }
     }
@@ -206,6 +228,7 @@ class HybridHostUiTest {
     /** Passive, bounded metadata only. Wrappers preserve the transport's receiver, result and exceptions. */
     private fun installInputTrace() {
         inputTraceEnabled = true
+        if (windowInputTrace == null) windowInputTrace = HybridWindowInputTrace(instrumentation, activity)
         assertEquals("true", evaluate("""(() => {
             if (window.__hybridQaInputTrace) return true;
             const events = [], transport = window.CinemaNative;
@@ -242,10 +265,11 @@ class HybridHostUiTest {
 
     private fun recordInputTrace(stage: String, target: String = "", state: JSONObject = nativeInputState()) {
         val entry = JSONObject().put("stage", stage).put("target", target).put("native", state)
+            .put("windowEvents", windowInputTrace?.drain() ?: JSONArray())
         runCatching { JSONArray(evaluate("JSON.stringify(window.__hybridQaInputTrace?.events.splice(0) || [])")) }
             .onSuccess { entry.put("domEvents", it) }
             .onFailure { entry.put("domReadError", it.javaClass.simpleName) }
-        if (inputTrace.size == 32) inputTrace.removeFirst()
+        if (inputTrace.size == 128) inputTrace.removeFirst()
         inputTrace.addLast(entry)
     }
 
@@ -516,24 +540,32 @@ class HybridHostUiTest {
 
     @Test fun searchInputAndNativeSettingsReturnToTheirWebControls() {
         if (hybrid) {
-            installInputTrace()
-            click("nav:SEARCH"); awaitRoute(Page.SEARCH)
-            click("search:input")
-            rule.onNodeWithTag("hybrid-search-input").assertExists()
-            rule.onNode(hasSetTextAction()).performTextReplacement("旷野")
-            rule.onNode(hasSetTextAction()).performImeAction()
-            rule.waitUntil(20_000) { model.query == "旷野" && !model.busy && model.results.isNotEmpty() }
-            rule.onNodeWithTag("hybrid-search-input").assertDoesNotExist()
-            awaitRoute(Page.SEARCH)
-            assertTrue(focused().isNotBlank())
-            click("nav:SETTINGS"); awaitRoute(Page.SETTINGS)
-            click("settings:updates")
-            rule.onNodeWithTag("hybrid-native-panel").assertExists()
-            rule.onNodeWithText("关于 CinemaTV").assertExists()
-            assertNull("Native panels also release the browsing renderer", web())
-            key(KeyEvent.KEYCODE_BACK)
-            awaitRoute(Page.SETTINGS)
-            rule.waitUntil(10_000) { focused() == "settings:updates" }
+            listOf("旷野", "蓝色", "深海").forEachIndexed { cycle, query ->
+                // Native panels destroy the prior document, so install the DOM
+                // observer again for each round trip. Window delegation stays put.
+                installInputTrace()
+                recordInputTrace("cycle-start", state = nativeInputState().put("cycle", cycle + 1))
+                click("nav:SEARCH"); awaitRoute(Page.SEARCH)
+                click("search:input")
+                rule.onNodeWithTag("hybrid-search-input").assertExists()
+                rule.onNode(hasSetTextAction()).performTextReplacement(query)
+                rule.onNode(hasSetTextAction()).performImeAction()
+                rule.waitUntil(20_000) {
+                    model.query == query && !model.busy && model.results.isNotEmpty() && model.results.all { query in it.title }
+                }
+                rule.onNodeWithTag("hybrid-search-input").assertDoesNotExist()
+                awaitRoute(Page.SEARCH)
+                assertTrue(focused().isNotBlank())
+                click("nav:SETTINGS"); awaitRoute(Page.SETTINGS)
+                click("settings:updates")
+                rule.onNodeWithTag("hybrid-native-panel").assertExists()
+                rule.onNodeWithText("关于 CinemaTV").assertExists()
+                assertNull("Native panels also release the browsing renderer", web())
+                key(KeyEvent.KEYCODE_BACK)
+                awaitRoute(Page.SETTINGS)
+                rule.waitUntil(10_000) { focused() == "settings:updates" }
+                recordInputTrace("cycle-complete", state = nativeInputState().put("cycle", cycle + 1))
+            }
         } else {
             rule.runOnIdle { model.navigate(Page.SEARCH) }
             rule.onNodeWithText("想看的，在这里。").assertExists()
@@ -597,7 +629,11 @@ class HybridHostUiTest {
             assertEquals("false", evaluate("Boolean(window.__hybridQaReplies.qa_frame)"))
             evaluate("(() => {document.querySelectorAll('iframe').forEach(x=>x.remove());return true;})()")
         } else {
-            assertTrue(Build.VERSION.SDK_INT < HybridPolicy.MIN_HYBRID_API)
+            val context = instrumentation.targetContext
+            val provider = WebViewCompat.getCurrentWebViewPackage(context)?.versionName
+            val listener = WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)
+            assertFalse("Native fallback must be justified by the observed API/provider capabilities",
+                HybridPolicy.evaluate(Build.VERSION.SDK_INT, provider, listener).enabled)
             assertNull(web())
             rule.runOnIdle { model.navigate(Page.SETTINGS) }
             rule.onNodeWithText("LibreTV 服务器").assertExists()

@@ -22,7 +22,7 @@ EXPECTED_MASKS = {
     "05-movies.png": [[410, 482, 555, 530]],
     "06-series.png": [[410, 482, 555, 530]],
     "07-discovery.png": [[410, 482, 555, 530]],
-    "11-settings.png": [[410, 482, 555, 530], [455, 199, 515, 235]],
+    "11-settings.png": [[410, 482, 555, 530], [455, 262, 515, 298]],
 }
 # Exact values from the individually reviewed 80a91e3 artifact bytes, not values
 # derived from the current manifest under test. Tuples are raw SHA, baseline SHA.
@@ -51,8 +51,28 @@ CAPTURES = {'tv1080': {'01-home.png': ('1af2ee36b836e7ee6d317af6ebb747eba28af4ef
           '11-settings.png': ('be69fd0bc6fad07f2d9fb19d44a3fbf1a8ba06d830f9eee46f10d457dfe3eb2c',
                               'd86173e19bafc82bb9a6230ae6cd2f605df71df0bf3923082e88ba738f4bec36')}}
 
-# Historical detail/settings overrides remain recorded in REVIEW.md even though
-# all six current rows now use 80a91e3. Do not erase the earlier capture evidence.
+# Only settings uses the later reviewed capture. Preserve the exact source and
+# bytes above for the five unchanged screens and the superseded settings ledger.
+SETTINGS_SOURCE_COMMIT = "ce0ee6c11a936c0e1b0297f132957838502b6f5f"
+SETTINGS_WORKFLOW_RUN = 42183795256
+SETTINGS_REVIEWED_DATE = "2026-11-06"
+SETTINGS_CAPTURES = {
+    "tv1080": {
+        "artifactId": 13487249284,
+        "rawCaptureSha256": "587954dc787a0705049f906ad588c8f80b338cc347946ac0452f5bf70abd4f8d",
+        "baselineSha256": "4236126c5b52dbd53d23511da0079ff666a74adc1628751c3d8539a965440151",
+        "zipSha256": "19741025b80fb71c6127b1fc0980e1bb9671da4e9c6f928013be59f5fcd3bd4d",
+    },
+    "tv4k": {
+        "artifactId": 13488310708,
+        "rawCaptureSha256": "24cb21b122f06cb5454353d1ea906fdcee1d03b9fbe139fc0a62664f16648f49",
+        "baselineSha256": "c1f013ed41c77001199aebb5e5e7f76dcfec4f67746e0f87fbe385bba0d9641c",
+        "zipSha256": "1805ac955ad7a4336a63e4675f2e0f6e5659a52af785d49595c92e51d0cc2c91",
+    },
+}
+
+# Historical detail/settings overrides remain recorded in REVIEW.md. Do not
+# erase earlier capture evidence when accepting a later per-screen refresh.
 HISTORICAL_CAPTURES = [('tv1080/03-detail.png',
   '3b2e9842d9efa305f56f1cef0148b0fcd3fe0a45',
   41911066064,
@@ -146,7 +166,7 @@ class GoldenProvenanceTest(unittest.TestCase):
                     self.assertEqual(len(raster), 540 * (1 + 960 * 3))
                     self.assertTrue(all(value in range(5) for value in raster[::1 + 960 * 3]))
 
-    def test_six_screen_refresh_records_exact_reviewed_capture_provenance(self):
+    def test_each_screen_records_its_exact_reviewed_capture_provenance(self):
         artifacts = {"tv1080": (13398969985, [1920, 1080]), "tv4k": (13400124111, [3840, 2160])}
         for viewport, captures in CAPTURES.items():
             manifest = read_manifest(viewport)
@@ -154,19 +174,28 @@ class GoldenProvenanceTest(unittest.TestCase):
             self.assertEqual(list(captures), list(SCREENS))
             for row in manifest["screens"]:
                 with self.subTest(viewport=viewport, screen=row["file"]):
-                    self.assertEqual(row["sourceCommit"], SOURCE_COMMIT)
-                    self.assertEqual(row["workflowRun"], WORKFLOW_RUN)
+                    if row["file"] == "11-settings.png":
+                        source, run, reviewed = SETTINGS_SOURCE_COMMIT, SETTINGS_WORKFLOW_RUN, SETTINGS_REVIEWED_DATE
+                        settings = SETTINGS_CAPTURES[viewport]
+                        expected_artifact = settings["artifactId"]
+                        hashes = settings["rawCaptureSha256"], settings["baselineSha256"]
+                    else:
+                        source, run, reviewed = SOURCE_COMMIT, WORKFLOW_RUN, REVIEWED_DATE
+                        expected_artifact = artifact
+                        hashes = captures[row["file"]]
+                    self.assertEqual(row["sourceCommit"], source)
+                    self.assertEqual(row["workflowRun"], run)
                     self.assertEqual(compare.baseline_provenance(manifest, row), {
-                        "baselineSourceCommit": SOURCE_COMMIT, "baselineWorkflowRun": WORKFLOW_RUN,
+                        "baselineSourceCommit": source, "baselineWorkflowRun": run,
                     })
-                    self.assertEqual(row["artifactId"], artifact)
+                    self.assertEqual(row["artifactId"], expected_artifact)
                     self.assertEqual(row["rawCaptureSize"], size)
-                    self.assertEqual((row["rawCaptureSha256"], row["baselineSha256"]), captures[row["file"]])
-                    self.assertEqual(row["reviewedDate"], REVIEWED_DATE)
+                    self.assertEqual((row["rawCaptureSha256"], row["baselineSha256"]), hashes)
+                    self.assertEqual(row["reviewedDate"], reviewed)
                     self.assertGreater(len(row["reviewReason"]), 100)
             self.assertEqual(len({row["reviewReason"] for row in manifest["screens"]}), 6)
 
-    def test_refresh_preserves_all_masks_and_original_manifest_defaults(self):
+    def test_refresh_preserves_reviewed_masks_and_original_manifest_defaults(self):
         for viewport in CAPTURES:
             manifest = read_manifest(viewport)
             self.assertEqual(manifest["sourceCommit"], "07d85420df3fd13a83e0d9b41b740927d5011bc0")
@@ -175,6 +204,17 @@ class GoldenProvenanceTest(unittest.TestCase):
             self.assertEqual(manifest["viewport"], viewport)
             self.assertEqual(manifest["normalizedSize"], [960, 540])
             self.assertEqual({row["file"]: row["masks"] for row in manifest["screens"]}, EXPECTED_MASKS)
+
+    def test_settings_moves_existing_port_mask_without_expanding_it(self):
+        original = [455, 199, 515, 235]
+        for viewport in CAPTURES:
+            row = next(row for row in read_manifest(viewport)["screens"] if row["file"] == "11-settings.png")
+            self.assertEqual(len(row["masks"]), 2)
+            self.assertEqual(row["masks"][0], [410, 482, 555, 530])
+            relocated = row["masks"][1]
+            self.assertEqual([new - old for new, old in zip(relocated, original)], [0, 63, 0, 63])
+            self.assertEqual((relocated[2] - relocated[0], relocated[3] - relocated[1]),
+                             (original[2] - original[0], original[3] - original[1]))
 
     def test_comparison_limits_and_normalization_are_not_weakened(self):
         self.assertEqual(compare.SIZE, (960, 540))
@@ -221,6 +261,28 @@ class GoldenProvenanceTest(unittest.TestCase):
             self.assertIn(required, review)
         for name in SCREENS:
             self.assertIn(f"`{name}`", review)
+
+    def test_settings_review_preserves_prior_history_and_exact_capture_evidence(self):
+        review = (ROOT / "design/ui/goldens/REVIEW.md").read_text()
+        previous, current = review.split("\n## Settings destinations refresh · 2026-11-06", 1)
+        self.assertEqual(hashlib.sha256(previous.encode()).hexdigest(),
+                         "a66732365a117846778255728ab69694fbca739a2c974c8e4c7bd3ed81715949")
+        for required in (SETTINGS_SOURCE_COMMIT, str(SETTINGS_WORKFLOW_RUN),
+                         "6f3d64d375dc82d5ca467fb38db59ab5643354c0", "62 of 62", "18 of 18",
+                         "The source run remains failed", "63 normalized pixels", "no area expansion",
+                         "0.033476/0.070604", "0.032889/0.066644", "0.000007/0",
+                         "Pillow 13.0.0", "no masks baked into the PNG", "fresh exact-commit acceptance"):
+            self.assertIn(required, current)
+        for viewport, capture in SETTINGS_CAPTURES.items():
+            with self.subTest(viewport=viewport):
+                for value in capture.values():
+                    self.assertIn(str(value), current)
+                ledger = current.split("### Superseded 2026-11-05 settings captures", 1)[1]
+                line = next(line for line in ledger.splitlines() if f"`{viewport}/11-settings.png`" in line)
+                old_artifact = {"tv1080": 13398969985, "tv4k": 13400124111}[viewport]
+                for value in (SOURCE_COMMIT, str(WORKFLOW_RUN), REVIEWED_DATE, str(old_artifact),
+                              *CAPTURES[viewport]["11-settings.png"]):
+                    self.assertIn(value, line)
 
 
 if __name__ == "__main__":

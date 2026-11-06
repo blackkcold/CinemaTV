@@ -18,11 +18,15 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import dev.cinematv.ui.typography.CinemaTvText as Text
 import coil3.compose.AsyncImage
 import dev.cinematv.CinemaViewModel
 import dev.cinematv.Page
 import dev.cinematv.data.TvProgram
+import dev.cinematv.data.ChannelIdentity
 import dev.cinematv.ui.GlassAction
 import dev.cinematv.ui.tv.components.CinemaGlassSurface
 import dev.cinematv.ui.tv.design.*
@@ -39,9 +43,21 @@ fun LiveScreen(model: CinemaViewModel) {
     var group by remember(model.activeLiveSource?.url) { mutableStateOf<String?>(null) }
     val channels = model.channels.filter { group == null || it.group == group }
     val list = rememberTvListState(model, "channels")
+    val lifecycle = LocalLifecycleOwner.current
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(Unit) { while (true) { kotlinx.coroutines.delay(30000); now = System.currentTimeMillis() } }
-    val programs = model.epgPrograms.sortedBy { it.start }
+    LaunchedEffect(model, lifecycle) {
+        lifecycle.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            while (true) {
+                now = System.currentTimeMillis()
+                model.refreshEpgIfStale(now)
+                kotlinx.coroutines.delay(30_000)
+            }
+        }
+    }
+    val programs = model.epgPrograms.asSequence().filter { it.start < it.stop && it.stop > now }
+        .distinctBy { Triple(it.start, it.stop, it.title) }
+        .sortedWith(compareBy<TvProgram> { it.start }.thenBy { it.stop }.thenBy { it.title })
+        .take(48).toList()
     val current = programs.firstOrNull { now in it.start until it.stop }
     RestorePageFocus(model)
     Column(Modifier.fillMaxSize().padding(top = layout.contentTop)) {
@@ -71,12 +87,12 @@ fun LiveScreen(model: CinemaViewModel) {
                 LazyColumn(state = list, modifier = Modifier.weight(.36f).fillMaxHeight().focusRestorer(),
                     verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(vertical = 10.dp)) {
                     if (channels.isEmpty()) item { Text(if (model.busy) "正在载入频道…" else "暂无可用频道", color = TvColors.Secondary) }
-                    items(channels, key = { "${it.id}|${it.url}" }) { channel ->
-                        val key = "${channel.id}|${channel.url}"
+                    items(channels, key = { ChannelIdentity.key(model.activeLiveSource, it) }) { channel ->
+                        val key = ChannelIdentity.key(model.activeLiveSource, channel)
                         val target = rememberFocusTarget(model, "channels", key)
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
                             if (channel.logo.isNotBlank()) AsyncImage(channel.logo, null, modifier = Modifier.size(30.dp))
-                            GlassAction(channel.name, Modifier.weight(1f).height(47.dp).focusRequester(target), selected = channel.id == model.activeChannel?.id,
+                            GlassAction(channel.name, Modifier.weight(1f).height(47.dp).focusRequester(target), selected = model.activeChannel?.let { ChannelIdentity.key(model.activeLiveSource, it) == key } == true,
                                 onFocus = { model.focusCoordinator.remember(model.focusRoute, "channels", key); model.focusChannel(channel) }) { model.playChannel(channel) }
                         }
                     }
@@ -97,7 +113,7 @@ fun LiveScreen(model: CinemaViewModel) {
                                 Box(Modifier.fillMaxWidth(progress).fillMaxHeight().background(TvColors.Text, RoundedCornerShape(2.dp)))
                             }
                         }
-                        items(programs.filter { it.stop > now }.take(48), key = { "${it.start}:${it.title}" }) { program ->
+                        items(programs, key = { "${it.start}:${it.stop}:${it.title}" }) { program ->
                             GuideProgram(program, program == current)
                         }
                     }

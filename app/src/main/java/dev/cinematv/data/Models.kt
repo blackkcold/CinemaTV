@@ -74,7 +74,11 @@ data class ServerStatus(
     val verified: Boolean,
     val sources: List<TvSource>,
     val liveSources: List<LiveSource>,
-    val version: String
+    val version: String,
+    /** Non-secret response receipt; a queued status cannot outlive a newer login. */
+    val connection: LibreTvConnection? = null,
+    val sessionRevision: Long? = null,
+    val defaultSubscriptions: List<SourceSubscription> = emptyList()
 )
 
 data class SourceProbe(val reachable: Boolean, val latencyMs: Long, val message: String)

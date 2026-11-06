@@ -76,16 +76,24 @@ export function Pager({ state, act, episodes = false }: { state: Snapshot; act: 
   const page = episodes ? state.episodePage : state.pageIndex, size = episodes ? 40 : state.pageSize;
   const total = episodes ? state.episodeTotal : state.total;
   const method = episodes ? 'detail.episodes' : 'catalog.page';
-  if (total <= size && !state.canLoadMore) return null;
+  const remote = !episodes && state.pagingStatus !== 'unavailable';
+  if (total <= size && !remote) return null;
+  const loading = state.pagingStatus === 'loading' || state.busy;
+  const refresh = state.pagingStatus === 'restart' || state.pagingStatus === 'exhausted';
+  const status = ({ ready: '筛选仅适用于已载入内容，还可以继续载入。', loading: '正在载入，已收到的作品可直接查看。', retry: '载入失败，已保留成功读取的结果。', restart: '目录已变化，请刷新后继续。', exhausted: '匹配目录已载完。', unavailable: '' })[state.pagingStatus];
   return <div className="pager" data-focus-layout="row" aria-label={episodes ? '剧集分页' : '目录分页'}>
-    <Button id={`pager:${method}:previous`} group="pager" disabled={page === 0} onClick={() => act(method, { page: page - 1 })}><Icon name="back" />上一页</Button>
-    <span aria-live="polite">{total ? `${page * size + 1}–${Math.min((page + 1) * size, total)} / ${total}` : '暂无条目'}</span>
-    <Button id={`pager:${method}:next`} group="pager" disabled={(page + 1) * size >= total} onClick={() => act(method, { page: page + 1 })}>下一页<Icon name="arrow" /></Button>
-    {!episodes && state.canLoadMore && <Button id="pager:load" group="pager" disabled={state.busy} onClick={() => act('catalog.more')}>载入更多</Button>}
+    {total > size && <><Button id={`pager:${method}:previous`} group="pager" disabled={page === 0} onClick={() => act(method, { page: page - 1 })}><Icon name="back" />上一页</Button>
+      <span aria-live="polite">{`${page * size + 1}–${Math.min((page + 1) * size, total)} / ${total}`}</span>
+      <Button id={`pager:${method}:next`} group="pager" disabled={(page + 1) * size >= total} onClick={() => act(method, { page: page + 1 })}>下一页<Icon name="arrow" /></Button></>}
+    {remote && <><span role="status">{status}</span>
+      {/* Keep the same focusable trigger during loading and after the final page. */}
+      <Button id="pager:load" group="pager" onClick={() => { if (!loading) act(refresh ? 'catalog.refresh' : 'catalog.more'); }}>
+        {loading ? '正在载入…' : refresh ? state.route === 'SEARCH' ? '重新检索目录' : '刷新目录' : state.pagingStatus === 'retry' ? '重试载入' : '载入更多'}
+      </Button></>}
   </div>;
 }
 export function Grid({ state, act }: { state: Snapshot; act: Action }) {
-  return <><div className={`poster-grid ${state.route === 'SERIES' ? 'landscape-grid' : ''}`} data-focus-layout="grid">
+  return <div className={`poster-grid ${state.route === 'SERIES' ? 'landscape-grid' : ''}`} data-focus-layout="grid">
     {state.items.map((item, index) => <Poster key={item.key} item={item} row="grid" wide={state.route === 'SERIES'} act={act} index={state.pageIndex * state.pageSize + index} total={state.total} />)}
-  </div><Pager state={state} act={act} /></>;
+  </div>;
 }

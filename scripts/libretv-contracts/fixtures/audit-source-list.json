@@ -1,0 +1,10 @@
+{
+  "name": "CinemaTV synthetic SourceList parser fixture",
+  "sources": [
+    {"name": "Synthetic VOD", "url": "https://example.com/api.php/provide/vod"},
+    {"name": "Duplicate VOD", "url": "https://example.com/api.php/provide/vod"}
+  ],
+  "liveSources": [
+    {"name": "Synthetic live", "url": "https://example.com/cinematv-audit.m3u", "epg": "https://example.com/cinematv-audit.xml"}
+  ]
+}

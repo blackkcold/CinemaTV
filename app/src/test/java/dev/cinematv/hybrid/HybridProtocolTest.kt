@@ -33,6 +33,17 @@ class HybridProtocolTest {
         rejected("PROTOCOL_UNSUPPORTED") { HybridProtocol.decode(request("navigation.back").replace("\"v\":1", "\"v\":2")) }
     }
 
+    @Test fun presentationActionsAcceptBoundedIntentAndProvenanceOnly() {
+        assertEquals("playback.open", HybridProtocol.decode(request("playback.open", JSONObject()
+            .put("key", "media_opaque").put("episodeId", "episode_opaque").put("action", "RESTART"))).method)
+        assertEquals("search.filter", HybridProtocol.decode(request("search.filter", JSONObject()
+            .put("type", "SERIES").put("year", "2025").put("minRating", 8)
+            .put("ratingSource", "Douban").put("topOnly", false))).method)
+        assertEquals("live.group", HybridProtocol.decode(request("live.group", JSONObject().put("id", "group_opaque"))).method)
+        rejected("BAD_PARAMS") { HybridProtocol.decode(request("live.group", JSONObject()
+            .put("id", "group_opaque").put("url", "https://untrusted.invalid"))) }
+    }
+
     @Test fun requestLimitUsesUtf8AndRejectsExcessiveNesting() {
         rejected("REQUEST_TOO_LARGE") { HybridProtocol.decode(request("search.submit", JSONObject().put("query", "汉".repeat(12_000)))) }
         rejected("INVALID_MESSAGE") { HybridProtocol.decode("[".repeat(1000) + "0" + "]".repeat(1000)) }

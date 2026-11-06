@@ -252,10 +252,31 @@ test('glass quality, motion and distinct native setting destinations are effecti
   await expect(page.locator('.tv-app')).toHaveAttribute('data-reduced-motion', 'true');
   await button(page, 'quality:ENHANCED').click();
   await expect(page.locator('.tv-app')).toHaveAttribute('data-quality', 'ENHANCED');
-  for (const section of ['connection', 'sources', 'updates', 'advanced']) {
-    await button(page, `settings:${section}`).click();
+  await button(page, 'settings:connection').focus();
+  for (const section of ['connection', 'sources', 'subscriptions', 'updates', 'recommendations', 'library', 'developer']) {
+    await expect(button(page, `settings:${section}`)).toBeFocused();
+    await page.keyboard.press('Enter');
     expect((await lastCall(page, 'native.open'))?.params).toEqual({ target: 'SETTINGS', section });
+    if (section !== 'developer') await page.keyboard.press('ArrowDown');
   }
+  const lastLink = await button(page, 'settings:developer').boundingBox();
+  const header = await page.locator('.topbar').boundingBox();
+  expect(lastLink!.y).toBeGreaterThan(header!.y + header!.height);
+  // Chromium rounds scrollTop to pixels while rem-based controls can end on fractions.
+  expect(lastLink!.y + lastLink!.height).toBeLessThanOrEqual(page.viewportSize()!.height + 1);
+  const titleOverlapsWordmark = await page.evaluate(() => {
+    const title = document.querySelector('.route-settings .page-heading h1')!;
+    const mark = document.querySelector('.topbar .wordmark')!;
+    const a = title.getBoundingClientRect(), b = mark.getBoundingClientRect();
+    const left = Math.max(a.left, b.left), right = Math.min(a.right, b.right);
+    const top = Math.max(a.top, b.top), bottom = Math.min(a.bottom, b.bottom);
+    if (right <= left || bottom <= top) return false;
+    // Bounding rectangles can overlap after scrolling even when an ancestor clips
+    // the title. Check the painted viewport rather than a full-page screenshot.
+    return document.elementsFromPoint((left + right) / 2, (top + bottom) / 2)
+      .some(node => node === title || title.contains(node));
+  });
+  expect(titleOverlapsWordmark).toBe(false);
   await page.screenshot({ path: info.outputPath('settings.png') });
   await button(page, 'nav:HOME').click();
   const card = button(page, 'card:continue:fixture_0');
@@ -358,4 +379,137 @@ test('a delayed first frame never steals newer remote focus', async ({ page }) =
   await expect(cards.nth(1)).toBeFocused();
   await page.waitForTimeout(450);
   await expect(cards.nth(1)).toBeFocused();
+});
+
+for (const route of ['MOVIES', 'SERIES', 'EXPLORE', 'SEARCH']) {
+  test(`${route}: an empty filtered page retains remote loading and stable D-pad focus`, async ({ page }) => {
+    await open(page, 'remote-pages');
+    await button(page, `nav:${route}`).click();
+    if (route === 'SEARCH') {
+      await page.getByRole('textbox').fill('群山');
+      await button(page, 'search:submit').click();
+    }
+    await expect(page.locator('.poster-grid .poster, .coverflow .poster')).toHaveCount(0);
+    const load = button(page, 'pager:load');
+    await expect(load).toHaveText('载入更多');
+    await load.focus();
+    await page.keyboard.press('Enter');
+    await expect(load).toHaveText('正在载入…');
+    await expect(load).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect.poll(async () => page.locator('.poster-grid .poster, .coverflow .poster').count()).toBeGreaterThan(0);
+    await expect(load).toBeFocused();
+    await expect(load).toHaveText(route === 'SEARCH' ? '重新检索目录' : '刷新目录');
+    const requests = await page.evaluate(() => window.CinemaPreview?.calls().filter(call => call.method === 'catalog.more').length);
+    expect(requests).toBe(1);
+    if (route === 'SEARCH') await expect(page.getByRole('textbox')).toHaveValue('群山');
+  });
+}
+
+test('failed remote loading can retry from an empty page without changing the filter', async ({ page }) => {
+  await open(page, 'remote-retry');
+  await button(page, 'nav:MOVIES').click();
+  const category = page.locator('[data-focus^="catalog:category:"]').first();
+  await category.click();
+  const load = button(page, 'pager:load');
+  await load.focus();
+  await page.keyboard.press('Enter');
+  await expect(load).toHaveText('重试载入');
+  await expect(load).toBeFocused();
+  await expect(category).toHaveAttribute('aria-pressed', 'true');
+  await page.keyboard.press('Enter');
+  await expect.poll(async () => page.locator('.poster-grid .poster').count()).toBeGreaterThan(0);
+  await expect(category).toHaveAttribute('aria-pressed', 'true');
+  await expect(load).toBeFocused();
+});
+
+test('the live guide advances without provider events and keeps a surviving program focused', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-11-06T10:00:00Z') });
+  await open(page);
+  await button(page, 'nav:LIVE').click();
+  const guide = page.locator('.program');
+  const current = await guide.first().getAttribute('data-focus');
+  const future = await guide.nth(2).getAttribute('data-focus');
+  await button(page, future!).focus();
+  await page.clock.fastForward(61 * 60 * 1000);
+  await expect(button(page, current!)).toHaveCount(0);
+  await expect(page.locator('.program.on-air')).toHaveCount(1);
+  await expect(page.locator('.program.on-air')).toContainText('回望');
+  await expect(button(page, future!)).toBeFocused();
+});
+
+test('the live guide pauses in the background and recalibrates focus immediately on return', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-11-06T10:00:00Z') });
+  await open(page);
+  await button(page, 'nav:LIVE').click();
+  const previous = await page.locator('.program').first().getAttribute('data-focus');
+  const next = await page.locator('.program').nth(1).getAttribute('data-focus');
+  await button(page, previous!).focus();
+  await page.evaluate(() => window.CinemaPreview?.event('host.visibility', { visible: false }));
+  await page.clock.fastForward(61 * 60 * 1000);
+  await expect(button(page, previous!)).toBeFocused();
+  await page.evaluate(() => window.CinemaPreview?.event('host.visibility', { visible: true }));
+  await expect(button(page, previous!)).toHaveCount(0);
+  await expect(button(page, next!)).toBeFocused();
+  await expect(button(page, next!)).toHaveClass(/on-air/);
+});
+
+test('rating source is retained by type and year filters and Top250 keeps Douban provenance', async ({ page }) => {
+  await button(page, 'nav:SEARCH').click();
+  await button(page, 'filter:tmdb').click();
+  expect((await lastCall(page, 'search.filter'))?.params).toMatchObject({ minRating: 8, ratingSource: 'TMDB', topOnly: false });
+  await button(page, 'filter:MOVIES').click();
+  expect((await lastCall(page, 'search.filter'))?.params).toMatchObject({ type: 'MOVIES', minRating: 8, ratingSource: 'TMDB' });
+  await button(page, 'filter:year').click();
+  await button(page, 'filter:douban').click();
+  expect((await lastCall(page, 'search.filter'))?.params).toMatchObject({ type: 'MOVIES', year: '2025', minRating: 8, ratingSource: 'Douban', topOnly: false });
+  await button(page, 'filter:chart').click();
+  expect((await lastCall(page, 'search.filter'))?.params).toMatchObject({ ratingSource: 'Douban', minRating: 0, topOnly: true });
+  await expect(page.getByText('豆瓣筛选仅显示有效授权目录；未配置时不会替代为其他评分。')).toBeVisible();
+  await button(page, 'filter:reset').click();
+  expect((await lastCall(page, 'search.filter'))?.params).toEqual({ type: '', year: '', minRating: 0, ratingSource: '', topOnly: false });
+});
+
+test('live groups filter channels and reset cleanly when changing source', async ({ page }) => {
+  await button(page, 'nav:LIVE').click();
+  await expect(page.locator('.channel')).toHaveCount(3);
+  await button(page, 'live-group:音乐测试频道').click();
+  await expect(page.locator('.channel')).toHaveCount(1);
+  await expect(button(page, 'channel:channel_3')).toBeVisible();
+  await expect(button(page, 'live-group:音乐测试频道')).toHaveAttribute('aria-pressed', 'true');
+  await button(page, 'live-source:live_1').click();
+  await expect(button(page, 'live-group:all')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('.channel')).toHaveCount(3);
+});
+
+test('detail exposes recommendation reasons and an explicit restart without clearing the library', async ({ page }) => {
+  await button(page, 'hero:open').click();
+  await expect(page.locator('.recommendation-reason')).toHaveText('因为你最近观看了原创测试作品');
+  await expect(button(page, 'detail:play')).toHaveText('继续观看');
+  await button(page, 'detail:restart').click();
+  expect((await lastCall(page, 'playback.open'))?.params).toEqual({ key: 'fixture_0', episodeId: 'fixture_0:episode:0', action: 'RESTART' });
+  await expect(button(page, 'detail:favorite')).toHaveAttribute('aria-pressed', 'true');
+  await button(page, 'detail:play').click();
+  expect((await lastCall(page, 'playback.open'))?.params.action).toBe('RESUME');
+});
+
+test('completed episodes say replay and request a restart for both primary and episode actions', async ({ page }) => {
+  await open(page, 'completed');
+  await button(page, 'hero:open').click();
+  await expect(button(page, 'detail:play')).toHaveText('重新播放');
+  await expect(button(page, 'detail:restart')).toHaveCount(0);
+  await button(page, 'detail:play').click();
+  expect((await lastCall(page, 'playback.open'))?.params.action).toBe('RESTART');
+  await button(page, 'episode:fixture_0:episode:0').click();
+  expect((await lastCall(page, 'playback.open'))?.params.action).toBe('RESTART');
+});
+
+test('library management opens the retained-record review and leaves the current filter intact', async ({ page }) => {
+  await button(page, 'nav:LIBRARY').click();
+  await button(page, 'library:FAVORITES').click();
+  await button(page, 'library:manage').click();
+  expect((await lastCall(page, 'native.open'))?.params).toEqual({ target: 'LIBRARY' });
+  await expect(button(page, 'library:FAVORITES')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('.poster-grid .poster')).toHaveCount(20);
+  await expect(page.locator('.toast')).toContainText('待核对的观看记录');
 });

@@ -35,6 +35,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.webkit.WebViewAssetLoader
 import androidx.webkit.WebViewCompat
 import dev.cinematv.BuildConfig
@@ -223,6 +224,14 @@ fun HybridWebHost(gateway: CinemaPresentationGateway, modifier: Modifier = Modif
     LaunchedEffect(web, ready) {
         if (!ready) { delay(15_000); if (!dispatcher.ready) failure("界面启动超时，可以重试或使用兼容界面。") }
         else { web.requestFocus(); dispatcher.visibility(owner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) }
+    }
+    LaunchedEffect(gateway, owner) {
+        owner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            while (true) {
+                gateway.refreshProgramWindow()
+                delay(30_000)
+            }
+        }
     }
     LaunchedEffect(gateway, dispatcher) {
         snapshotFlow { gateway.payload().toString() }.collect { dispatcher.state(JSONObject(it)) }

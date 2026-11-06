@@ -23,6 +23,11 @@ class CatalogBrowsePagingTest {
         assertEquals(first.items, failed.items)
         assertEquals(50, failed.nextOffset)
         assertTrue(failed.notice.contains("重试"))
+        assertTrue(failed.retryableFailure)
+        assertTrue(failed.canLoadMore)
+        val recovered = CatalogBrowsePaging.append(failed, page(listOf("b")), 50)
+        assertFalse(recovered.retryableFailure)
+        assertEquals(listOf("a", "b"), recovered.items.map { it.id })
     }
     @Test fun changedSnapshotProviderOrLicenseNeverMixesPages() {
         val first = CatalogBrowsePaging.append(CatalogBrowseState(), page(listOf("a"), 50), 0)
@@ -31,6 +36,7 @@ class CatalogBrowsePagingTest {
             val result = CatalogBrowsePaging.append(first, it, 50, nowMs = 1)
             assertEquals(first.items, result.items)
             assertTrue(result.restartRequired)
+            assertFalse(result.retryableFailure)
             assertFalse(result.canLoadMore)
         }
     }

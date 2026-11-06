@@ -23,6 +23,7 @@ import androidx.compose.ui.window.DialogProperties
 import dev.cinematv.ui.typography.CinemaTvText as Text
 import dev.cinematv.CinemaViewModel
 import dev.cinematv.data.LibraryStatus
+import dev.cinematv.data.EpisodePlaybackAction
 import dev.cinematv.ui.GlassAction
 import dev.cinematv.ui.shared.*
 import dev.cinematv.ui.tv.components.CinemaGlassSurface
@@ -33,6 +34,8 @@ import dev.cinematv.ui.tv.focus.*
 fun DetailScreen(model: CinemaViewModel) {
     val libraryVersion = model.libraryVersion
     val item = model.selected ?: return
+    val resumeIndex = item.lastEpisode.coerceIn(0, (item.episodes.size - 1).coerceAtLeast(0))
+    val resumeProgress = model.episodeProgress(resumeIndex)
     val layout = LocalTvLayout.current
     val entry = LocalContentFocus.current
     val primary = rememberFocusTarget(model, "actions", "play")
@@ -63,10 +66,13 @@ fun DetailScreen(model: CinemaViewModel) {
                 // actually left, rather than whichever button is nearest their center.
                 Row(Modifier.padding(vertical = 6.dp).focusRestorer(primary).focusGroup(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    GlassAction(if (item.positionMs > 0) "▶ 继续播放" else "▶ 立即播放",
+                    GlassAction(if (resumeProgress?.completed == true) "▶ 重新播放" else if (item.positionMs > 0) "▶ 继续播放" else "▶ 立即播放",
                         Modifier.focusRequester(entry).focusRequester(primary).width(150.dp).height(45.dp), prominent = true, icon = CinemaSymbol.Play,
                         onFocus = { model.focusCoordinator.remember(model.focusRoute, "actions", "play") }) {
-                        model.playEpisode(item.lastEpisode.coerceIn(0, (item.episodes.size - 1).coerceAtLeast(0)))
+                        model.playEpisode(resumeIndex, if (resumeProgress?.completed == true) EpisodePlaybackAction.RESTART else EpisodePlaybackAction.RESUME)
+                    }
+                    if (resumeProgress != null && !resumeProgress.completed && resumeProgress.positionMs > 0) {
+                        GlassAction("从头播放", Modifier.width(115.dp).height(45.dp)) { model.playEpisode(resumeIndex, EpisodePlaybackAction.RESTART) }
                     }
                     GlassAction(if (model.repo.isFavorite(item)) "已收藏 ✓" else "＋ 收藏",
                         Modifier.width(115.dp).height(45.dp), icon = CinemaSymbol.Bookmark, iconSelected = model.repo.isFavorite(item)) { model.toggleFavorite() }

@@ -39,6 +39,9 @@ fun LibraryScreen(model: CinemaViewModel) {
     val shelves = remember(tick) { LibraryStatus.entries.associateWith { if (it == LibraryStatus.FAVORITE) model.favorites() else model.libraryByStatus(it) } }
     var filter by rememberSaveable { mutableStateOf("all") }
     var showClearHistoryConfirmation by remember { mutableStateOf(false) }
+    var showProgressReview by remember { mutableStateOf(false) }
+    var reviewWasOpened by remember { mutableStateOf(false) }
+    val reviewEntry = rememberFocusTarget(model, "actions", "review-progress")
     // Cancel returns to the trigger; clearing removes it, so restore the All filter instead.
     var restoreClearHistoryTrigger by remember { mutableStateOf<Boolean?>(null) }
     val clearHistory = rememberFocusTarget(model, "actions", "clear-history")
@@ -57,6 +60,10 @@ fun LibraryScreen(model: CinemaViewModel) {
         }
         restoreClearHistoryTrigger = null
     }
+    LaunchedEffect(showProgressReview) {
+        if (!showProgressReview && reviewWasOpened && model.page == Page.LIBRARY) { withFrameNanos { }; runCatching { reviewEntry.requestFocus() } }
+    }
+    if (showProgressReview) LibraryProgressReviewDialog(model) { showProgressReview = false }
     CompositionLocalProvider(LocalBringIntoViewSpec provides RailViewportBringIntoViewSpec) {
         LazyColumn(state = state, modifier = Modifier.fillMaxSize().padding(top = layout.contentTop), contentPadding = PaddingValues(bottom = 42.dp)) {
             item(key = "heading") {
@@ -65,6 +72,11 @@ fun LibraryScreen(model: CinemaViewModel) {
                         Text("你的观影时光。", color = TvColors.Text, fontSize = 34.sp)
                         Spacer(Modifier.height(6.dp))
                         Text("把喜欢的故事留下，把未完的故事继续。", color = TvColors.Secondary, fontSize = 14.sp)
+                        Spacer(Modifier.height(12.dp))
+                        GlassAction("管理观看记录", Modifier.focusRequester(reviewEntry).width(170.dp).height(40.dp),
+                            onFocus = { model.focusCoordinator.remember(model.focusRoute, "actions", "review-progress") }) {
+                            reviewWasOpened = true; showProgressReview = true
+                        }
                         if (model.quarantinedProgressCount > 0) {
                             Spacer(Modifier.height(10.dp))
                             Text("${model.quarantinedProgressCount} 条续播进度无法确认对应剧集，已保留但不会自动续播。",

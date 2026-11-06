@@ -5,6 +5,10 @@ on:
     paths:
       - 'app/**'
       - 'frontend/tv-web/**'
+      - 'backdrop/**'
+      - 'backend/tv-bff/**'
+      - 'scripts/fonts/**'
+      - 'scripts/libretv-contracts/**'
       - 'scripts/hybrid/**'
       - 'release/signing-identity.json'
       - '*.gradle.kts'
@@ -15,6 +19,10 @@ on:
     paths:
       - 'app/**'
       - 'frontend/tv-web/**'
+      - 'backdrop/**'
+      - 'backend/tv-bff/**'
+      - 'scripts/fonts/**'
+      - 'scripts/libretv-contracts/**'
       - 'scripts/hybrid/**'
       - 'release/signing-identity.json'
       - '*.gradle.kts'
@@ -59,10 +67,11 @@ jobs:
         env:
           EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
-          bash -n scripts/hybrid/build-dev-candidate.sh scripts/hybrid/run-device.sh scripts/hybrid/wait-device.sh
+          bash -n scripts/hybrid/build-dev-candidate.sh scripts/hybrid/run-device.sh scripts/hybrid/run-phone.sh scripts/hybrid/wait-device.sh scripts/hybrid/run-tv-emulator.sh
           python3 -m unittest discover -s scripts/hybrid -p 'test_*.py' -v
           python3 scripts/hybrid/artifacts.py check-source
           bash scripts/generate-test-media.sh
+          npm --prefix backend/tv-bff test
           npm --prefix frontend/tv-web ci --ignore-scripts
       - name: Build unsigned Dev13 candidate without signing credentials
         env:
@@ -106,7 +115,7 @@ jobs:
     name: Android TV / ${{ matrix.name }}
     needs: build
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -116,10 +125,62 @@ jobs:
             api: 36
             arch: x86_64
             mode: hybrid
+            size: 1920x1080
+            density: 320
           - name: fallback-api26
             api: 26
             arch: x86
             mode: native-fallback
+            size: 1920x1080
+            density: 320
+          - name: provider-boundary-api29
+            api: 29
+            arch: x86
+            mode: provider-policy
+            size: 1920x1080
+            density: 320
+          - name: hybrid-4k-api36
+            api: 36
+            arch: x86_64
+            mode: hybrid
+            size: 3840x2160
+            density: 640
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: hybrid-exact-head-apks
+          path: ${{ runner.temp }}/hybrid-device-apks
+      - name: Enable KVM
+        run: sudo chmod 666 /dev/kvm
+      - name: Boot Android TV and run bounded exact-APK gates
+        timeout-minutes: 26
+        # sys.boot_completed can precede input/window service registration.
+        # The owned launcher waits for those services before sending any input;
+        # the harness then verifies the requested display and every PNG's size.
+        run: |
+          bash scripts/hybrid/run-tv-emulator.sh '${{ matrix.api }}' '${{ matrix.arch }}' \
+            "$RUNNER_TEMP/hybrid-device-apks" "$RUNNER_TEMP/hybrid-evidence" \
+            '${{ matrix.mode }}' '${{ matrix.size }}' '${{ matrix.density }}'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hybrid-device-${{ matrix.name }}
+          path: |
+            ${{ runner.temp }}/hybrid-evidence/
+            ${{ runner.temp }}/hybrid-evidence-emulator/
+          if-no-files-found: error
+      - name: Preserve scope of device evidence
+        if: always()
+        run: |
+          echo 'Actual Android TV emulator and production MainActivity; synthetic local media only. The signed release APK, real TV GPU/decoder performance, four-hour playback and final updater installation are separate gates.' >> "$GITHUB_STEP_SUMMARY"
+  phone:
+    name: Phone / exact APK navigation, playback and adapter contracts
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
         with:
@@ -131,23 +192,19 @@ jobs:
       - name: Enable KVM
         run: sudo chmod 666 /dev/kvm
       - uses: reactivecircus/android-emulator-runner@v2
-        timeout-minutes: 16
+        timeout-minutes: 21
         with:
-          api-level: ${{ matrix.api }}
-          target: android-tv
-          arch: ${{ matrix.arch }}
-          profile: tv_1080p
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
           emulator-build: '15004761'
           disable-animations: false
-          emulator-options: '-no-window -no-audio -gpu lavapipe -feature -Vulkan -no-snapshot -no-boot-anim -memory 2048 -skin 1920x1080'
-          script: bash scripts/hybrid/run-device.sh "$RUNNER_TEMP/hybrid-device-apks" "$RUNNER_TEMP/hybrid-evidence" '${{ matrix.mode }}'
+          emulator-options: '-no-window -no-audio -gpu lavapipe -feature -Vulkan -no-snapshot -no-boot-anim -memory 2048'
+          script: bash scripts/hybrid/run-phone.sh "$RUNNER_TEMP/hybrid-device-apks" "$RUNNER_TEMP/phone-evidence"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: hybrid-device-${{ matrix.name }}
-          path: ${{ runner.temp }}/hybrid-evidence/
+          name: hybrid-phone-regressions-api35
+          path: ${{ runner.temp }}/phone-evidence/
           if-no-files-found: error
-      - name: Preserve scope of device evidence
-        if: always()
-        run: |
-          echo 'Actual Android TV emulator and production MainActivity; synthetic local media only. The signed release APK, real TV GPU/decoder performance, four-hour playback and final updater installation are separate gates.' >> "$GITHUB_STEP_SUMMARY"

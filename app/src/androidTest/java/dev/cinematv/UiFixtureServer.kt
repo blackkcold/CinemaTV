@@ -28,7 +28,9 @@ class UiFixtureServer(private val context: Context) : AutoCloseable {
     @Volatile var catalogPartial = false
     @Volatile var catalogExpired = false
     @Volatile var pagedCatalog = false
+    @Volatile var catalogFilteredPages = false
     @Volatile var homeCatalog = false
+    @Volatile var duplicateLiveIds = false
     val requests = CopyOnWriteArrayList<String>()
     val catalogRequests = CopyOnWriteArrayList<String>()
 
@@ -59,6 +61,10 @@ class UiFixtureServer(private val context: Context) : AutoCloseable {
                 JSONObject().put("id", "${if (tv) "tv" else "movie"}-$i")
                     .put("title", "Paging fixture ${if (tv) "series" else "movie"} $i")
                     .put("type", if (tv) "tv" else "movie").put("poster", poster).put("backdrop", backdrop(i))
+                    .apply { if (catalogFilteredPages) {
+                        put("year", if (i == 0) "2025" else "2026")
+                        put("category", if (i == 1) "纪录" else "剧情")
+                    } }
             })).toString()
     }
 
@@ -152,8 +158,11 @@ class UiFixtureServer(private val context: Context) : AutoCloseable {
                 .put("episodes", JSONArray((0 until 36).map { "$base/stream.mp4?episode=$it" })).toString()).toByteArray()
             }
             "/api/live/playlist" -> JSONObject().put("channels", JSONArray((0 until 18).map { i ->
-                JSONObject().put("id", "channel-$i").put("name", listOf("电影精选", "世界纪录", "自然之声")[i % 3] + if (i > 2) " ${i + 1}" else "")
-                    .put("url", "$base/stream.mp4?live=$i").put("group", if (i < 6) "精选" else "更多").put("tvgId", "channel-$i")
+                JSONObject().put("id", if (duplicateLiveIds && i < 2) "shared-epg-id" else "channel-$i")
+                    .put("name", if (duplicateLiveIds && i < 2) "同一频道 ${if (i == 0) "HD" else "SD"}"
+                        else listOf("电影精选", "世界纪录", "自然之声")[i % 3] + if (i > 2) " ${i + 1}" else "")
+                    .put("url", "$base/stream.mp4?live=$i").put("group", if (i < 6) "精选" else "更多")
+                    .put("tvgId", if (duplicateLiveIds && i < 2) "shared-epg-id" else "channel-$i")
             })).toString().toByteArray()
             "/api/live/epg" -> JSONObject().put("programs", JSONArray((0 until 12).map { i ->
                 JSONObject().put("title", listOf("山海之间", "远方的故事", "光影时刻")[i % 3])

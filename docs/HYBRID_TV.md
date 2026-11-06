@@ -50,6 +50,37 @@ allowlists, payload/concurrency limits and explicit failures. Timed-out writes a
 not automatically retried. Artwork is resolved by native code, not arbitrary
 JavaScript fetches.
 
+### Browse, guide and native tools
+
+Movie, series, discovery and search pages keep the remote page action available
+when local filters hide every currently loaded item. Loading, retry, exhausted and
+snapshot-restart states are explicit. The remote action retains its focus key while
+its state changes, and the server cursor is not discarded after a retryable error.
+Search rating filters preserve their TMDB or Douban provenance; Top 250 remains a
+separate licensed Douban restriction. Live channel groups and recommendation reasons
+use bounded presentation fields rather than provider responses.
+
+The live guide recalculates time every 30 seconds while the screen is visible and
+immediately on foreground return. Native code filters and sorts the complete cached
+guide before sending at most 48 current/upcoming programs; each visible tick also
+checks the native 15-minute provider refresh window. Background screens do not poll.
+Program keys survive clock updates, and the Web UI recovers the next guide item or
+channel when the focused program ends.
+
+Native settings destinations are named explicitly: connection, sources, display,
+updates, developer options, recommendations, retained-progress review and source-list
+subscriptions. The legacy `advanced` bridge destination maps to developer options.
+Source-list URLs, preview/import calls and credentials stay in the native screen.
+Subscriptions show preview/diff information before import or refresh; unsubscribing
+retains already imported sources. Returning from these panels restores the Web route
+and its focus bookmark.
+
+The library's management action opens a native review of unresolved episode progress.
+It shows the preserved source, original playlist position, measured time and reason
+the record cannot be attached safely. Opening the current playlist does not transfer
+or delete the old checkpoint. Details distinguish resume from restart, including an
+explicit restart action for incomplete episodes; completed episodes restart from zero.
+
 Official API references:
 [local WebView content](https://developer.android.com/develop/ui/views/layout/webapps/load-local-content),
 [native bridge risks](https://developer.android.com/privacy-and-security/risks/insecure-webview-native-bridges),
@@ -97,6 +128,10 @@ Two workflows provide distinct evidence without recompiling beside an emulator:
 | `Hybrid TV Android` build | Exact PR-head checkout; release tests/lint; unsigned Dev candidate; debug + instrumentation APKs; byte-for-byte equality between packaged Web assets and the built frontend |
 | Android TV API36 | Actual `android-tv` x86_64 image and `tv_1080p` profile; `MainActivity` hybrid admission, real WebView, D-pad/Back and native-player handoff/rebuild |
 | Android TV API26 | Actual `android-tv` x86 image and `tv_1080p` profile; expected native compatibility fallback |
+| Android TV API29 | Actual `android-tv` x86 image; the installed provider's capability selects hybrid or native fallback and is recorded in the receipt |
+| Android TV API36 / 4K | Actual `android-tv` x86_64 image at 3840×2160 / density640; the same checksummed APK and D-pad/Back/playback flows |
+| Phone API35 | Independent mobile navigation, portrait/landscape playback, channel variants, replay intent, native subscription UI, real repository HTTP fixtures and MediaSession |
+| Existing native UI matrix | The `[ui-qa]` PR marker requests the unchanged phone/TV1080/TV4K/API26 regression workflow alongside exact-head hybrid acceptance |
 
 The TV packages are published through Google's
 [official SDK image repository](https://dl.google.com/android/repository/sys-img/android-tv/sys-img2-1.xml).
@@ -111,6 +146,15 @@ presentation-mode and API metadata; their hashes are retained in the device rece
 Test output, provider information and a final memory snapshot are also exported. The final
 memory snapshot is diagnostic only; it is not an A/B resource benchmark and does not
 measure the entire browser renderer lifetime.
+
+After the primary TV evidence passes, the same APK runs real MediaSession controls
+and native subscription D-pad regressions on every API. Capable providers also run
+the empty-page and retained-progress/native-destination return tests in the production
+WebView. Both phases require every selected `class#method` to complete without a
+skip; restored-host audit screenshots must match the installed APK hash. Phone
+evidence requires both named player orientations. Runners reject nonempty host
+output directories and clear only their dedicated device evidence directories so
+an earlier capture cannot satisfy a new run.
 
 The existing Android/backend/Compose regression workflows remain applicable. Passing
 the new browser suite does not replace Android WebView execution, and a synthetic
@@ -149,7 +193,7 @@ invalid packaged identity or assets differing from the built frontend. It produc
 
 The relevant CI artifact is `UNSIGNED-hybrid-dev-candidate-NOT-FOR-INSTALLATION`.
 Before external signing, require successful exact-head browser, Android, applicable
-existing regression and both new TV device gates; retain their receipts together.
+existing regression and all TV/phone device gates; retain their receipts together.
 
 Final steps follow [the existing update-channel procedure](UPDATE_CHANNELS.md):
 verify the unsigned receipt, sign outside GitHub with the existing private key,
