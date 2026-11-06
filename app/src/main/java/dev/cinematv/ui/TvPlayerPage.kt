@@ -42,6 +42,7 @@ import dev.cinematv.playback.ObservePlaybackLifecycle
 import dev.cinematv.ui.tv.components.CinemaGlassSurface
 import dev.cinematv.ui.tv.design.LocalTvLayout
 import dev.cinematv.ui.tv.focus.trackTvContentFocus
+import dev.cinematv.ui.shared.RemoteBackPress
 import dev.cinematv.Page
 import dev.cinematv.CinemaViewModel
 import kotlinx.coroutines.delay
@@ -120,6 +121,7 @@ fun TvPlayerPage(model: CinemaViewModel) {
     val subtitleFocus = remember(session) { FocusRequester() }
     val speedFocus = remember(session) { FocusRequester() }
     var returnFocus by remember(session) { mutableStateOf(playFocus) }
+    val backPress = remember(session) { RemoteBackPress() }
     val layout = LocalTvLayout.current
     ObservePlaybackLifecycle(player)
     val handleBack: () -> Unit = {
@@ -130,7 +132,7 @@ fun TvPlayerPage(model: CinemaViewModel) {
             else -> model.back()
         }
     }
-    BackHandler(onBack = handleBack)
+    BackHandler { backPress.reset(); handleBack() }
     val openPanel: (PlayerPanel, FocusRequester) -> Unit = { next, trigger ->
         controlsVisible = true
         returnFocus = trigger
@@ -195,8 +197,15 @@ fun TvPlayerPage(model: CinemaViewModel) {
         Modifier.fillMaxSize().background(Color.Black)
             .focusRequester(rootFocus)
             .onPreviewKeyEvent { event ->
-                if (event.type == KeyEventType.KeyDown && event.key == Key.Back) {
-                    handleBack(); true
+                if (event.key == Key.Back) {
+                    val native = event.nativeKeyEvent
+                    when (native.action) {
+                        android.view.KeyEvent.ACTION_DOWN -> backPress.down(native.downTime, native.repeatCount)
+                        android.view.KeyEvent.ACTION_UP -> if (backPress.up(native.downTime, native.isCanceled)) handleBack()
+                    }
+                    // Consume the entire remote press. Changing routes on key-up
+                    // keeps its release out of the newly created browsing view.
+                    true
                 } else if (event.type == KeyEventType.KeyDown && event.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE) {
                     if (player.isPlaying) player.pause() else player.play()
                     controlsVisible = true; returnFocus = playFocus

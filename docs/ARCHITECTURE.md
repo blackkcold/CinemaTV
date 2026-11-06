@@ -2,12 +2,16 @@
 
 ## Boundaries
 
-CinemaTV is an original MIT-licensed native client. LibreTV remains a separately
-deployed service. Source JSON parsing stays in `data/`; TV and mobile presentations
-share the ViewModel, domain identity, repository and playback factory.
+CinemaTV is an original MIT-licensed Android client. On the hybrid Dev line, TV
+browsing uses APK-local React/TypeScript/CSS; playback, services and persistence
+remain Kotlin. LibreTV remains a separately deployed service. Source JSON parsing
+stays in `data/`; TV and mobile share the ViewModel, domain identity, repository and
+playback factory. Mobile retains its independent native presentation.
 
 | Layer | Responsibility |
 |---|---|
+| `frontend/tv-web` | Local TV pages, restrained liquid glass, bounded lists and D-pad focus/scroll restoration |
+| `hybrid` | Capability policy, same-origin WebView, bounded presentation DTOs, artwork proxy and explicit native actions |
 | `ui/tv/design` | TV theme, constraint-based dp dimensions, motion and conservative effects policy |
 | `ui/tv/components` | Validated scene, source-owned live glass, focusable cards, rails and floating navigation |
 | `ui/tv/focus` | Live requester registry; no View references escape composition |
@@ -20,7 +24,36 @@ share the ViewModel, domain identity, repository and playback factory.
 | `ui/TvPlayerPage.kt` | TV video Surface and remote controller/track panel ownership |
 | `backend/tv-bff` | Independently configured TMDB exact-match metadata adapter |
 
-## Rendering
+## Hybrid rendering and application boundary
+
+The app packages one static web bundle under `assets/tv-web/`, served through
+`WebViewAssetLoader` at `https://appassets.androidplatform.net`. There is no runtime
+Node server, remote website shell or JavaScript video decoder. Gradle installs the
+locked frontend dependencies, type-checks/builds the bundle and stages its exact
+bytes before Android packaging. Runtime dependency licenses are included.
+
+The host checks Android API, installed WebView version and message-listener support
+independently. API26 installation remains supported; the hybrid presentation is
+enabled on API29+ with Chromium111+ and the restricted messaging capability. An
+unsupported provider or a renderer failure exposes native recovery. System RAM and
+the user's effects/motion preference bound visual work; a capability check is not
+a measured device-performance certificate.
+
+The Web UI owns focus and scroll, while `CinemaViewModel` owns business navigation.
+Requests use a versioned whitelist and opaque keys. Cookies, account credentials,
+arbitrary playback URLs and provider JSON stay native. Artwork is resized and
+loaded through a bounded native registry. External documents, frames, scripts and
+unrestricted WebView networking are excluded. Search text entry, sensitive settings
+and system installation use native surfaces; playback uses the existing Media3
+factory and TV player. Returning restores the saved route and logical focus.
+
+Glass is confined to navigation and important controls, using CSS background blur,
+translucent layers, highlights and shadows. It does not sample the native video
+Surface or claim physical optical equivalence to Apple's renderer. Basic mode
+removes blur; Reduced Motion removes transitions and card transforms. CSS capability
+fallback and WebView failure recovery are independent mechanisms.
+
+## Native recovery, player and phone rendering
 
 A scene validates landscape aspect and decoded size before swapping; it keeps the
 previous decoded still during loading. Posters remain posters. Missing art uses
@@ -41,7 +74,14 @@ share card behavior but have different compositions.
 
 ## Focus and state
 
-The root owns a live requester registry. Logical focus and scroll bookmarks live
+Hybrid nodes keep stable geometry while an inner artwork layer animates. Navigation
+remembers focus per group and saves logical bookmarks before detail/native/player
+handoff. Catalog and episode payloads are bounded; the frontend mounts only a
+window of each long rail. Missing or replaced items recover to a reachable control.
+Explicit setters make favorite updates safe if a bridge acknowledgement is lost.
+Native and web state share Room; no web database or `localStorage` library is added.
+
+The native recovery root owns a live requester registry. Its focus and scroll bookmarks live
 in the ViewModel's `FocusCoordinator`; title sessions isolate detail state from
 other works. Stable provider/id keys survive progressive search and metadata
 updates. Rails own horizontal key traversal, bringing offscreen targets into the
@@ -77,11 +117,17 @@ position; unknown duration never yields a made-up percentage. Main library and p
 
 ## QA and release
 
-CI runs JVM/BFF tests, AndroidTest compilation, Lint and APK archive/signature
+CI runs web type/build/browser tests, JVM/BFF tests, AndroidTest compilation, Lint and APK archive/signature
 verification. Full UI QA runs phone and two TV viewports with a local protocol
 fixture, original art, synthetic H.264/AAC media and screenshot/frame evidence.
 UTP's additional-output directory retains files before APK uninstall. Preview
 publishing depends on build and UI jobs for the exact commit.
+
+The hybrid workflow adds an actual TV WebView lane and API26 recovery lane using
+prebuilt exact-commit APKs. A dedicated unsigned Dev candidate records source/tree,
+web lockfile, complete packaged web bytes and artifact hashes. It is not installable
+until the existing external signing identity finishes it and the final signed bytes
+pass installation/upgrade acceptance. See [hybrid delivery status](HYBRID_TV.md).
 
 Physical TV, low-end SoC, HDR/codec breadth, long soak, reference fidelity and
 production signing are separately tracked in `RELEASE_CHECKLIST.md`; emulator

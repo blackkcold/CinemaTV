@@ -1,0 +1,153 @@
+name: Hybrid TV Android
+on:
+  pull_request:
+    branches: [dev]
+    paths:
+      - 'app/**'
+      - 'frontend/tv-web/**'
+      - 'scripts/hybrid/**'
+      - 'release/signing-identity.json'
+      - '*.gradle.kts'
+      - 'gradle.properties'
+      - '.github/workflows/hybrid-android.yml'
+  push:
+    branches: [dev]
+    paths:
+      - 'app/**'
+      - 'frontend/tv-web/**'
+      - 'scripts/hybrid/**'
+      - 'release/signing-identity.json'
+      - '*.gradle.kts'
+      - 'gradle.properties'
+      - '.github/workflows/hybrid-android.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: cinematv-hybrid-android-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    name: Exact source / debug and unsigned release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.4'
+          cache: npm
+          cache-dependency-path: frontend/tv-web/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+      - name: Install compilation SDK before emulator allocation
+        run: |
+          SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -1)
+          "$SDKMANAGER" 'platforms;android-36' 'build-tools;36.0.0'
+      - uses: actions/cache@v4
+        with:
+          path: .cache/cinematv-noto-fonts
+          key: noto-fonts-v2-${{ hashFiles('scripts/fonts/noto-fonts.lock.json') }}
+      - name: Validate source, release handoff and synthetic media
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          bash -n scripts/hybrid/build-dev-candidate.sh scripts/hybrid/run-device.sh scripts/hybrid/wait-device.sh
+          python3 -m unittest discover -s scripts/hybrid -p 'test_*.py' -v
+          python3 scripts/hybrid/artifacts.py check-source
+          bash scripts/generate-test-media.sh
+          npm --prefix frontend/tv-web ci --ignore-scripts
+      - name: Build unsigned Dev13 candidate without signing credentials
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: bash scripts/hybrid/build-dev-candidate.sh "$RUNNER_TEMP/hybrid-candidate"
+      - name: Compile exact-head debug instrumentation once
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          VERSION_NAME=$(python3 -c 'import json; print(json.load(open("scripts/hybrid/release.json"))["versionName"])')
+          VERSION_CODE=$(python3 -c 'import json; print(json.load(open("scripts/hybrid/release.json"))["versionCode"])')
+          gradle --no-daemon --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process \
+            -PcinematvChannel=dev "-PcinematvVersionName=$VERSION_NAME" "-PcinematvVersionCode=$VERSION_CODE" \
+            :app:assembleDebug :app:assembleDebugAndroidTest
+          python3 scripts/fonts/verify-noto-fonts.py
+          python3 scripts/hybrid/artifacts.py check-source
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose app/build/outputs/apk/debug/app-debug.apk
+          python3 scripts/hybrid/artifacts.py device-bundle \
+            --apk app/build/outputs/apk/debug/app-debug.apk \
+            --test-apk app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk \
+            --output "$RUNNER_TEMP/hybrid-device-apks"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hybrid-exact-head-apks
+          path: ${{ runner.temp }}/hybrid-device-apks/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: UNSIGNED-hybrid-dev-candidate-NOT-FOR-INSTALLATION
+          path: ${{ runner.temp }}/hybrid-candidate/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hybrid-native-build-reports
+          path: |
+            app/build/test-results/testReleaseUnitTest/
+            app/build/reports/lint-results-release.*
+          if-no-files-found: warn
+  device:
+    name: Android TV / ${{ matrix.name }}
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # These are actual TV images, not phone images with landscape dimensions.
+          - name: hybrid-api36
+            api: 36
+            arch: x86_64
+            mode: hybrid
+          - name: fallback-api26
+            api: 26
+            arch: x86
+            mode: native-fallback
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: hybrid-exact-head-apks
+          path: ${{ runner.temp }}/hybrid-device-apks
+      - name: Enable KVM
+        run: sudo chmod 666 /dev/kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        timeout-minutes: 16
+        with:
+          api-level: ${{ matrix.api }}
+          target: android-tv
+          arch: ${{ matrix.arch }}
+          profile: tv_1080p
+          emulator-build: '15004761'
+          disable-animations: false
+          emulator-options: '-no-window -no-audio -gpu lavapipe -feature -Vulkan -no-snapshot -no-boot-anim -memory 2048 -skin 1920x1080'
+          script: bash scripts/hybrid/run-device.sh "$RUNNER_TEMP/hybrid-device-apks" "$RUNNER_TEMP/hybrid-evidence" '${{ matrix.mode }}'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hybrid-device-${{ matrix.name }}
+          path: ${{ runner.temp }}/hybrid-evidence/
+          if-no-files-found: error
+      - name: Preserve scope of device evidence
+        if: always()
+        run: |
+          echo 'Actual Android TV emulator and production MainActivity; synthetic local media only. The signed release APK, real TV GPU/decoder performance, four-hour playback and final updater installation are separate gates.' >> "$GITHUB_STEP_SUMMARY"

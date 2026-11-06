@@ -96,6 +96,27 @@ class LocalMediaLibraryTest {
         assertEquals(0L, store.snapshot.favorites().single().positionMs)
     }
 
+    @Test fun explicitFavoriteRetriesPreserveStatusAndEpisodeProgress() = runBlocking {
+        val store = library()
+        store.initialize()
+        store.setStatus(first, LibraryStatus.WATCHING)
+        store.saveProgress(first, 2500, 0, 10_000)
+        repeat(2) { store.setFavorite(first, true) }
+        assertTrue(store.snapshot.isFavorite(first))
+        assertEquals(LibraryStatus.WATCHING, store.snapshot.status(first))
+        assertEquals(2500L, store.snapshot.progress(first, 0)?.positionMs)
+        repeat(2) { store.setFavorite(first, false) }
+        assertFalse(store.snapshot.isFavorite(first))
+        db.close()
+        openDatabase()
+        val reopened = library()
+        reopened.initialize()
+        assertFalse(reopened.snapshot.isFavorite(first))
+        assertEquals(LibraryStatus.WATCHING, reopened.snapshot.status(first))
+        assertEquals(2500L, reopened.snapshot.progress(first, 0)?.positionMs)
+        assertEquals(10_000L, reopened.snapshot.progress(first, 0)?.durationMs)
+    }
+
     @Test fun corruptLegacyArrayDoesNotMarkMigrationCompleteOrDiscardValidRecords() = runBlocking {
         val prefs = context.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
         prefs.edit().putString("favorites", JSONArray(listOf(MediaItemCodec.json(first))).toString())

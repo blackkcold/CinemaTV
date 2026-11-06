@@ -4,11 +4,11 @@
 
 # CinemaTV
 
-**为遥控器与触屏分别设计的原生影视客户端**
+**为遥控器与触屏分别设计的 Android 影视客户端**
 
 Android TV · Google TV · Android 手机
 
-Native LibreTV client with separate TV and touch interfaces.
+Hybrid TV presentation, native playback and a separate touch interface.
 
 [![Android 8.0+](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white)](docs/INSTALL.md)
 [![Release](https://img.shields.io/github/v/release/blackkcold/CinemaTV?include_prereleases&label=release)](https://github.com/blackkcold/CinemaTV/releases)
@@ -19,9 +19,9 @@ Native LibreTV client with separate TV and touch interfaces.
 
 </div>
 
-CinemaTV 连接你自建的 [LibreTV](https://github.com/LibreSpark/LibreTV)，把浏览、搜索、选集、播放和本地片库放在同一个应用里。使用 Kotlin、Jetpack Compose 和 Media3，电视与手机各有适合自己的界面。
+CinemaTV 连接你自建的 [LibreTV](https://github.com/LibreSpark/LibreTV)，把浏览、搜索、选集、播放和本地片库放在同一个应用里。混合架构 Dev 使用本地 React/CSS 呈现电视浏览界面，Kotlin、Jetpack Compose 和 Media3 继续负责原生播放、数据与手机界面。
 
-**当前公开版本为 [v0.7.0-preview](https://github.com/blackkcold/CinemaTV/releases/tag/v0.7.0-preview)。** 本文功能与主画廊对应这个已发布的调试签名预览版；实体电视验收与固定签名升级仍在推进。新的玻璃/动效、dev/stable 更新和豆瓣个人同步尚未正式发布，不计入下列可用功能。
+**已发布 Stable：[v0.8.0](https://github.com/blackkcold/CinemaTV/releases/tag/v0.8.0)；已发布 Dev：[v0.8.0-dev.2](https://github.com/blackkcold/CinemaTV/releases/tag/v0.8.0-dev.2)。** 本分支在开发新的混合电视界面，进度和验收范围见 [Hybrid TV](docs/HYBRID_TV.md)。下方主画廊仍保留有明确来源的 v0.7.0-preview 原生界面截图，不将它们标为新版混合界面。
 
 应用不附带公共片源、账号或影视内容。使用前需要配置自己的服务和有权访问的内容来源。本项目与 LibreTV、DpadTV 及下列第三方服务均无隶属关系。
 
@@ -79,16 +79,17 @@ CinemaTV 连接你自建的 [LibreTV](https://github.com/LibreSpark/LibreTV)，�
 ### 适配与显示
 
 - 电视遥控器与手机触屏分别设计，提供分层玻璃控件、减少动态效果和性能降级。
-- 离线打包 Noto 字体，按内容语言与地区选择中日韩字形，不转换简繁内容。
+- 原生界面离线打包 Noto 字体，按内容语言与地区选择中日韩字形，不转换简繁内容；混合电视界面复用拉丁字体，中日韩文字使用设备的地区字体。
 - 原创 A1 品牌与静态启动图标；应用内简短品牌动态不阻塞操作。
 
-## 主分支中的下一版
+## 混合架构 Dev
 
-新的原生玻璃与电视卡片动效已经合入主分支并完成对应模拟器验收，正在准备正式签名与发布，**不在上方 v0.7 下载包和截图中**。
+电视浏览层采用 APK 内的 React/TypeScript/CSS，包含首页、发现、电影、剧集、搜索、详情、资料库、直播与设置入口。视觉以全屏场景、悬浮玻璃导航、清晰焦点和有层次的内容轨道为基础。
 
-- Basic / Blur / Full 分档：Blur 需要 API 31+，Full 为 API 33+ 的显式选择；自动模式保守降级。
-- 电视焦点抬升、按压和层次动效支持减少动态；播放器 Surface 和独立弹窗不冒充可采样的电影画面。
-- 代码与限制见 [玻璃实现](docs/GLASS_PRODUCTION.md)、[动效实现](docs/MOTION_PRODUCTION.md)。模拟器验收不代表真实电视帧率认证。
+- 安装下限保持 API26；混合界面检查 API29+、WebView Chromium111+ 和受限消息接口。旧系统、缺失内核或渲染器故障进入原生兼容界面。
+- HTML、CSS 和 JS 随 APK 打包；播放仍由原生 Media3 处理，收藏与逐集进度继续使用同一个 Room 片库。
+- 玻璃材质、焦点动效、减少动态与基础效果分档独立处理；不让 CSS 模糊采样原生视频 Surface。
+- 原生兼容界面与手机的材质边界仍见 [玻璃实现](docs/GLASS_PRODUCTION.md)、[动效实现](docs/MOTION_PRODUCTION.md)。浏览器与模拟器验收不代表真实电视帧率认证。
 
 ## 安装与首次使用
 
@@ -107,7 +108,7 @@ CinemaTV 连接你自建的 [LibreTV](https://github.com/LibreSpark/LibreTV)，�
 
 完整配置、遥控器操作和设备测试范围见 [安装指南](docs/INSTALL.md)。
 
-**发布计划：** 正式签名与 stable/dev 切换正在开发，当前没有可用的正式更新订阅。其余通过验收的功能面向 stable；豆瓣个人账户与片单同步先在后续 dev 验证，不进入当前已发布版。功能是否可安装以实际 Release 和签名说明为准。
+**更新通道：** Stable 与 Dev 沿用同一个包名和固定签名，版本码全局递增。Dev 的豆瓣个人账户实验默认关闭，其验收与混合浏览层分开记录。手动下载版本和自动更新清单分别发布，是否可安装以实际 Release 和签名说明为准，详见 [更新通道](docs/UPDATE_CHANNELS.md)。
 
 ## 数据与隐私
 
@@ -120,7 +121,7 @@ CinemaTV 连接你自建的 [LibreTV](https://github.com/LibreSpark/LibreTV)，�
 
 ## 开发
 
-环境：JDK 17、Gradle 8.13、Android SDK 36、Build Tools 36.0.0。测试媒体已随源码提供，普通构建无需 FFmpeg。
+环境：JDK 17、Gradle 8.13、Android SDK 36、Build Tools 36.0.0、Node 22.12+。测试媒体已随源码提供，普通构建无需 FFmpeg。Gradle 会按锁文件安装并编译 TV 前端；Node 仅用于构建，不打包进 APK。
 
 ```bash
 bash scripts/generate-test-media.sh
@@ -129,6 +130,17 @@ npm --prefix backend/tv-bff test
 ```
 
 调试 APK 输出到 `app/build/outputs/apk/debug/app-debug.apk`。
+
+单独迭代电视界面：
+
+```bash
+cd frontend/tv-web
+npm ci
+npm run dev
+# 另一个终端：npm run build && npm run verify && npm test
+```
+
+浏览器预览使用开发专用合成资料；生产构建会排除这些数据。网页预览不会播放真实视频或写入 Android 片库。
 
 - [架构](docs/ARCHITECTURE.md)：共享数据与播放逻辑，独立 TV / 手机界面。
 - [构建与测试](https://github.com/blackkcold/CinemaTV/actions/workflows/android.yml)：编译、Lint、单元与协议测试。
@@ -148,6 +160,7 @@ CinemaTV 原创代码和测试画面采用 [MIT License](LICENSE)。没有复制
 
 - [LibreTV](https://github.com/LibreSpark/LibreTV)：连接的上游服务。
 - [AndroidX Media3](https://github.com/androidx/media)、Jetpack Compose：播放与原生界面。
+- React / React DOM / Scheduler：MIT；运行时许可随 TV Web 资源一同打包。
 - RankSys：MPL-2.0；fastutil / jOOL：Apache-2.0，保留对应版本的附加声明。APK 提供完整许可及匹配版本的 RankSys 源码包，详见 [第三方推荐组件](docs/RANKSYS_INTEGRATION.md)。
 - 主分支的 AndroidLiquidGlass / Backdrop 复用部分采用 Apache-2.0，保留 [许可证](backdrop/LICENSE)、[上游与修改声明](backdrop/NOTICE.md)，不归入 CinemaTV 原创 MIT 代码。
 - Noto Sans / Noto Sans CJK：SIL Open Font License，详见 [字体说明](docs/NOTO_TYPOGRAPHY.md)。

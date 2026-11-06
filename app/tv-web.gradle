@@ -1,0 +1,44 @@
+// Static, local TV presentation. Node is a build dependency, never an APK runtime.
+// Keep this plugin-independent script in Groovy to avoid Kotlin UAST/Lint regressions.
+def tvWebRoot = rootProject.file('frontend/tv-web')
+def tvWebDist = new File(tvWebRoot, 'dist')
+def tvWebAssets = layout.buildDirectory.dir('generated/tvWebAssets')
+def npmCommand = providers.gradleProperty('cinematvNpmExecutable').getOrElse(
+    System.getProperty('os.name').toLowerCase(Locale.ROOT).contains('windows') ? 'npm.cmd' : 'npm')
+
+def installTvWeb = tasks.register('installTvWebDependencies', Exec) {
+    group = 'build'
+    description = 'Install the locked, build-only TV frontend toolchain.'
+    workingDir tvWebRoot
+    inputs.files(new File(tvWebRoot, 'package.json'), new File(tvWebRoot, 'package-lock.json'))
+    outputs.file(new File(tvWebRoot, 'node_modules/.package-lock.json'))
+    // npm's private install manifest is an up-to-date marker, not a portable build cache.
+    outputs.cacheIf { false }
+    commandLine([npmCommand, 'ci', '--no-audit', '--no-fund'] +
+        (gradle.startParameter.offline ? ['--offline'] : []))
+}
+
+def buildTvWeb = tasks.register('buildTvWeb', Exec) {
+    group = 'build'
+    description = 'Type-check and compile local TV React resources for Chromium 111.'
+    dependsOn installTvWeb
+    workingDir tvWebRoot
+    inputs.files(fileTree(tvWebRoot) {
+        include 'src/**', 'scripts/**', 'index.html', 'package*.json', 'tsconfig.json', 'vite.config.ts'
+    })
+    outputs.dir(tvWebDist)
+    commandLine npmCommand, 'run', 'build'
+}
+
+tasks.register('stageTvWeb', Sync) {
+    group = 'build'
+    description = 'Package the compiled TV UI into APK-local assets.'
+    dependsOn buildTvWeb
+    from tvWebDist
+    into tvWebAssets.map { it.dir('tv-web') }
+    doFirst {
+        if (!new File(tvWebDist, 'index.html').isFile()) {
+            throw new GradleException('The TV frontend did not produce index.html')
+        }
+    }
+}

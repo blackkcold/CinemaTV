@@ -24,6 +24,11 @@ jobs:
           python3 -m unittest discover -s scripts/tests -v
           python3 -m unittest discover -s scripts/glass-production -p 'test_*.py' -v
           python3 -m unittest discover -s scripts/glass-performance -p 'test_*.py' -v
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/tv-web/package-lock.json
       - uses: actions/setup-java@v4
         with:
           distribution: temurin

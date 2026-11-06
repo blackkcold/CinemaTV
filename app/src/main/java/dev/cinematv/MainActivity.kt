@@ -27,6 +27,7 @@ import dev.cinematv.ui.mobile.MobileRootApp
 import dev.cinematv.ui.shared.CinemaBrandSession
 import dev.cinematv.ui.tv.design.GlassQuality
 import dev.cinematv.ui.tv.TvRootApp
+import dev.cinematv.hybrid.HybridTvRootApp
 
 class MainActivity : ComponentActivity() {
     private val model: CinemaViewModel by viewModels()
@@ -65,12 +66,13 @@ class MainActivity : ComponentActivity() {
         setContent {
             CinemaNotoProvider {
                 CompositionLocalProvider(LocalOpticalGlass provides model.opticalGlassEnabled) {
-                    BackHandler(enabled = model.page != Page.HOME) { model.back() }
+                    // TV hybrid/native detours and playback own their Back order in one host.
+                    BackHandler(enabled = !isTv && model.page != Page.HOME) { model.back() }
                     CinemaBrandSession(
                         reducedMotion = model.reducedMotion,
                         lowCost = model.glassQuality == GlassQuality.BASIC,
                     ) {
-                        if (isTv) TvRootApp(model) else MobileRootApp(model)
+                        if (isTv) HybridTvRootApp(model) else MobileRootApp(model)
                     }
                 }
             }
