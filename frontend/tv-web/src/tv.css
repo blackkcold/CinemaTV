@@ -154,6 +154,7 @@ img { display: block; }
 .detail-hero .synopsis { max-width: 46vw; -webkit-line-clamp: 4; }
 .detail-hero h1 { margin-bottom: 1rem; max-width: 65vw; }
 .status-chips { margin-top: .8rem; margin-bottom: 0; }
+.recommendation-reason { color: #c5dfeb; font-size: .75rem; line-height: 1.6; }
 .resume-note { display: flex; align-items: center; gap: .45rem; color: #dce4efc9; font-size: .66rem; margin-top: .9rem; }
 .detail-section { margin-bottom: 2rem; }
 .detail-section > h2 { margin-bottom: 1rem; }

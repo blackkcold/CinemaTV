@@ -432,3 +432,53 @@ test('the live guide pauses in the background and recalibrates focus immediately
   await expect(button(page, next!)).toBeFocused();
   await expect(button(page, next!)).toHaveClass(/on-air/);
 });
+
+test('rating source is retained by type and year filters and Top250 keeps Douban provenance', async ({ page }) => {
+  await button(page, 'nav:SEARCH').click();
+  await button(page, 'filter:tmdb').click();
+  expect((await lastCall(page, 'search.filter'))?.params).toMatchObject({ minRating: 8, ratingSource: 'TMDB', topOnly: false });
+  await button(page, 'filter:MOVIES').click();
+  expect((await lastCall(page, 'search.filter'))?.params).toMatchObject({ type: 'MOVIES', minRating: 8, ratingSource: 'TMDB' });
+  await button(page, 'filter:year').click();
+  await button(page, 'filter:douban').click();
+  expect((await lastCall(page, 'search.filter'))?.params).toMatchObject({ type: 'MOVIES', year: '2025', minRating: 8, ratingSource: 'Douban', topOnly: false });
+  await button(page, 'filter:chart').click();
+  expect((await lastCall(page, 'search.filter'))?.params).toMatchObject({ ratingSource: 'Douban', minRating: 0, topOnly: true });
+  await expect(page.getByText('豆瓣筛选仅显示有效授权目录；未配置时不会替代为其他评分。')).toBeVisible();
+  await button(page, 'filter:reset').click();
+  expect((await lastCall(page, 'search.filter'))?.params).toEqual({ type: '', year: '', minRating: 0, ratingSource: '', topOnly: false });
+});
+
+test('live groups filter channels and reset cleanly when changing source', async ({ page }) => {
+  await button(page, 'nav:LIVE').click();
+  await expect(page.locator('.channel')).toHaveCount(3);
+  await button(page, 'live-group:音乐测试频道').click();
+  await expect(page.locator('.channel')).toHaveCount(1);
+  await expect(button(page, 'channel:channel_3')).toBeVisible();
+  await expect(button(page, 'live-group:音乐测试频道')).toHaveAttribute('aria-pressed', 'true');
+  await button(page, 'live-source:live_1').click();
+  await expect(button(page, 'live-group:all')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('.channel')).toHaveCount(3);
+});
+
+test('detail exposes recommendation reasons and an explicit restart without clearing the library', async ({ page }) => {
+  await button(page, 'hero:open').click();
+  await expect(page.locator('.recommendation-reason')).toHaveText('因为你最近观看了原创测试作品');
+  await expect(button(page, 'detail:play')).toHaveText('继续观看');
+  await button(page, 'detail:restart').click();
+  expect((await lastCall(page, 'playback.open'))?.params).toEqual({ key: 'fixture_0', episodeId: 'fixture_0:episode:0', action: 'RESTART' });
+  await expect(button(page, 'detail:favorite')).toHaveAttribute('aria-pressed', 'true');
+  await button(page, 'detail:play').click();
+  expect((await lastCall(page, 'playback.open'))?.params.action).toBe('RESUME');
+});
+
+test('completed episodes say replay and request a restart for both primary and episode actions', async ({ page }) => {
+  await open(page, 'completed');
+  await button(page, 'hero:open').click();
+  await expect(button(page, 'detail:play')).toHaveText('重新播放');
+  await expect(button(page, 'detail:restart')).toHaveCount(0);
+  await button(page, 'detail:play').click();
+  expect((await lastCall(page, 'playback.open'))?.params.action).toBe('RESTART');
+  await button(page, 'episode:fixture_0:episode:0').click();
+  expect((await lastCall(page, 'playback.open'))?.params.action).toBe('RESTART');
+});

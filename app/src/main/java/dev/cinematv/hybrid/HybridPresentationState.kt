@@ -14,6 +14,7 @@ class HybridRouteState {
     var page = 0
     var episodePage = 0
     var libraryFilter = "ALL"
+    var liveGroup = ""
     var catalogFilter = HybridCatalogFilter()
     var bookmark: JSONObject? = null
 }

@@ -39,7 +39,7 @@ export function createMockPlatform(): Platform {
     year: String(2022 + index % 4), category: index % 2 ? '剧情 · 悬疑' : '冒险 · 剧情',
     description: descriptions[index % descriptions.length].repeat(scenario === 'long' ? 64 : 1), rating: '', ratingSource: '',
     isTv: index % 3 === 0, favorite: index % 5 === 0, status: index === 2 ? 'WATCHING' : '',
-    positionMs: index < 5 ? 1800000 - index * 180000 : 0, durationMs: index < 5 ? 5400000 : 0,
+    positionMs: index < 5 ? 1800000 - index * 180000 : 0, durationMs: index < 5 ? (scenario === 'completed' && index === 0 ? 1800000 : 5400000) : 0,
     lastEpisode: scenario === 'episodes' && index === 0 ? 87 : 0,
     sourceName: '合成开发资料', attribution: '原创合成测试数据',
   }));
@@ -48,7 +48,7 @@ export function createMockPlatform(): Platform {
   let route: Route = 'HOME', section: Route = 'HOME', detailReturn: Route = 'HOME';
   let selected: Card | null = null, focused: Card | null = catalog[0] ?? null;
   let query = '', libraryFilter = 'ALL', reduced = false, quality = 'AUTO', busy = false, message = '';
-  let episodePage = 0, alternatives: Card[] = [], activeChannel = 'channel_1';
+  let episodePage = 0, alternatives: Card[] = [], activeChannel = 'channel_1', liveGroup = '';
   let searchPartial = false;
   const remotePaging = scenario === 'remote-pages' || scenario === 'remote-retry';
   let remoteDelivered = false, remoteFailed = false, remoteAttempts = 0;
@@ -56,17 +56,17 @@ export function createMockPlatform(): Platform {
   const marks = new Map<string, Bookmark>();
   const history: string[] = [];
   const routeFilters = new Map<string, CatalogFilters>();
-  let filters = { type: '', year: '', minRating: 0, topOnly: false };
+  let filters = { type: '', year: '', minRating: 0, ratingSource: '', topOnly: false };
   const listeners = new Set<(event: string, payload: unknown) => void>();
   const calls: { method: string; params: Record<string, unknown> }[] = [];
   const timers = new Set<ReturnType<typeof setTimeout>>();
   const routeKey = () => route === 'DETAIL' ? `DETAIL:${selected?.key}` : route;
   const catalogFilters = () => routeFilters.get(route) ?? { category: '', year: '', rated: false };
   const allEpisodes = (): Episode[] => selected ? Array.from({ length: selected.isTv ? scenario === 'episodes' ? 120 : 12 : 1 }, (_, index) => ({
-    id: `${selected!.key}:episode:${index}`, index, label: selected!.isTv ? `第 ${index + 1} 集` : '播放正片', progress: index === selected!.lastEpisode && selected!.positionMs ? .33 : null,
+    id: `${selected!.key}:episode:${index}`, index, label: selected!.isTv ? `第 ${index + 1} 集` : '播放正片', progress: index === selected!.lastEpisode && selected!.positionMs ? scenario === 'completed' ? 1 : .33 : null, completed: scenario === 'completed' && index === selected!.lastEpisode,
   })) : [];
   const scheduleStart = Date.now() - 1200000;
-  const channels = [{ id: 'channel_1', name: '山海影像', group: '原创测试频道', logo: '' }, { id: 'channel_2', name: '城市纪录', group: '原创测试频道', logo: '' }, { id: 'channel_3', name: '音乐现场', group: '原创测试频道', logo: '' }];
+  const channels = [{ id: 'channel_1', name: '山海影像', group: '原创测试频道', logo: '' }, { id: 'channel_2', name: '城市纪录', group: '原创测试频道', logo: '' }, { id: 'channel_3', name: '音乐现场', group: '音乐测试频道', logo: '' }];
 
   function snapshot(): Snapshot {
     let items = route === 'MOVIES' ? catalog.filter(item => !item.isTv) : route === 'SERIES' ? catalog.filter(item => item.isTv) :
@@ -87,7 +87,8 @@ export function createMockPlatform(): Platform {
     const remoteRoute = remotePaging && ['MOVIES', 'SERIES', 'EXPLORE', 'SEARCH'].includes(route) && (route !== 'SEARCH' || Boolean(query));
     if (remoteRoute && !remoteDelivered) items = [];
     const pageSize = 48;
-    const total = route === 'LIVE' ? channels.length : items.length;
+    const shownChannels = channels.filter(channel => !liveGroup || channel.group === liveGroup);
+    const total = route === 'LIVE' ? shownChannels.length : items.length;
     const page = Math.min(pages.get(routeKey()) ?? 0, Math.max(0, Math.ceil(total / pageSize) - 1));
     pages.set(routeKey(), page);
     const episodes = allEpisodes();
@@ -102,11 +103,12 @@ export function createMockPlatform(): Platform {
         { id: 'series', title: '值得追的故事', items: catalog.filter(item => item.isTv).slice(0, 24) },
       ],
       items: items.slice(page * pageSize, (page + 1) * pageSize), total, pageIndex: page, pageSize,
-      canLoadMore: remoteRoute && !busy && !remoteDelivered, pagingStatus: !remoteRoute ? 'unavailable' : busy ? 'loading' : remoteFailed ? 'retry' : remoteDelivered ? 'exhausted' : 'ready', notice: scenario === 'offline' ? '暂时无法连接影视服务，已保存的资料仍可查看。' : '', attribution: '', selected,
+      canLoadMore: remoteRoute && !busy && !remoteDelivered, pagingStatus: !remoteRoute ? 'unavailable' : busy ? 'loading' : remoteFailed ? 'retry' : remoteDelivered ? 'exhausted' : 'ready', notice: scenario === 'offline' ? '暂时无法连接影视服务，已保存的资料仍可查看。' : '', attribution: '', recommendationReason: route === 'DETAIL' ? '因为你最近观看了原创测试作品' : '', selected,
       episodes: episodes.slice(episodePage * 40, (episodePage + 1) * 40), resumeEpisode: episodes[selected?.lastEpisode ?? 0] ?? episodes[0] ?? null,
       episodePage, episodeTotal: episodes.length, alternatives, query, history: [...history], filters: { ...filters },
       years: ['2025', '2024', '2023', '2022'], catalogFilters: cf, categories, catalogYears,
-      channels: empty ? [] : channels, activeChannel, liveSources: empty ? [] : [{ id: 'live_1', name: '合成订阅' }], activeLiveSource: 'live_1',
+      liveGroups: empty ? [] : [...new Set(channels.map(channel => channel.group))].map(name => ({ id: name, name })), liveGroup,
+      channels: empty ? [] : shownChannels, activeChannel, liveSources: empty ? [] : [{ id: 'live_1', name: '合成订阅' }], activeLiveSource: 'live_1',
       programs: empty ? [] : Array.from({ length: 6 }, (_, index) => ({ id: `${activeChannel}:${scheduleStart}:${index}`, title: `${activeChannel === 'channel_2' ? '城市之声' : '山海来信'} · ${['清晨', '回望', '出发', '相遇', '远方', '归途'][index]}`, start: scheduleStart + index * 3600000, stop: scheduleStart + (index + 1) * 3600000 })),
       libraryFilter, hasHistory: catalog.some(item => item.positionMs > 0), quarantinedProgressCount: 0,
       bookmark: marks.get(routeKey()) ?? null,
@@ -127,6 +129,8 @@ export function createMockPlatform(): Platform {
         return { accepted: true };
       }
       if (method === 'media.focus') { focused = registry.get(String(params.key)) ?? focused; }
+      else if (method === 'live.group') { liveGroup = String(params.id); activeChannel = channels.find(channel => !liveGroup || channel.group === liveGroup)?.id ?? ''; }
+      else if (method === 'live.source') { liveGroup = ''; activeChannel = 'channel_1'; }
       else if (method === 'live.focus') activeChannel = String(params.id);
       else if (method === 'navigation.go') { route = params.route as Route; section = route; message = ''; }
       else if (method === 'navigation.back') {

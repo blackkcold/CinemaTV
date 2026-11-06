@@ -4,6 +4,8 @@ import dev.cinematv.BuildConfig
 import dev.cinematv.CinemaViewModel
 import dev.cinematv.Page
 import dev.cinematv.data.LibraryStatus
+import dev.cinematv.data.EpisodePlaybackAction
+import dev.cinematv.data.ChannelIdentity
 import dev.cinematv.data.MediaDomainMapper
 import dev.cinematv.data.MediaItem
 import dev.cinematv.data.RatingPolicy
@@ -29,6 +31,7 @@ class CinemaPresentationGateway(
     private val items = mutableMapOf<String, MediaItem>()
     private val channels = mutableMapOf<String, TvChannel>()
     private val liveSources = mutableMapOf<String, LiveSource>()
+    private val liveGroups = mutableMapOf<String, String>()
     private val episodes = mutableMapOf<String, Pair<String, Int>>()
     private var lastPayload = ""
     private var revision = 0L
@@ -36,7 +39,12 @@ class CinemaPresentationGateway(
     fun routeKey(): String = session.ids.key("route", model.focusRoute)
     private fun routeState() = session.route(routeKey())
     private fun mediaKey(item: MediaItem) = session.ids.key("media", item.presentationKey)
-    private fun channelKey(channel: TvChannel) = session.ids.key("channel", "${model.activeLiveSource?.key}\u0000${channel.id}\u0000${channel.url}")
+    private fun channelKey(channel: TvChannel) = session.ids.key("channel", ChannelIdentity.key(model.activeLiveSource, channel))
+    private fun liveGroup(): String = routeState().liveGroup.takeIf { group -> model.channels.any { it.group == group } }.orEmpty()
+    private fun filteredChannels(): List<TvChannel> {
+        val group = liveGroup()
+        return model.channels.filter { group.isEmpty() || it.group == group }
+    }
     private fun sourceKey(source: LiveSource) = session.ids.key("live", "${source.key}\u0000${source.url}")
     private fun episodeKey(item: MediaItem, index: Int) = session.ids.key("episode",
         "${item.presentationKey}\u0000${MediaDomainMapper.episodeId(item, index)}\u0000$index\u0000${item.episodes[index]}")
@@ -75,6 +83,7 @@ class CinemaPresentationGateway(
         episodes[key] = mediaKey(item) to index
         val progress = model.repo.library.snapshot.progress(item, index)
         return JSONObject().put("id", key).put("index", index).put("label", text(model.episodeLabel(index), 120))
+            .put("completed", progress?.completed == true)
             .put("progress", if (progress != null && progress.durationMs > 0)
                 (progress.positionMs.toDouble() / progress.durationMs).coerceIn(0.0, 1.0) else JSONObject.NULL)
     }
@@ -107,7 +116,7 @@ class CinemaPresentationGateway(
     fun payload(): JSONObject {
         @Suppress("UNUSED_VARIABLE") val observe = model.libraryVersion to session.change
         val state = routeState()
-        items.clear(); channels.clear(); liveSources.clear(); episodes.clear()
+        items.clear(); channels.clear(); liveSources.clear(); liveGroups.clear(); episodes.clear()
         val all = baseCatalog()
         val remotePages = when (model.page) {
             Page.MOVIES -> listOf(model.movieBrowse)
@@ -120,7 +129,7 @@ class CinemaPresentationGateway(
         val pagingStatus = HybridCatalogPaging.status(model.repo.hasMetadataCatalog &&
             (model.page != Page.SEARCH || (!model.searchFilters.doubanTopOnly && model.searchCatalogRequested)), remotePages)
         val visible = filteredCatalog()
-        val total = if (model.page == Page.LIVE) model.channels.size else visible.size
+        val total = if (model.page == Page.LIVE) filteredChannels().size else visible.size
         val page = state.page.coerceIn(0, ((total - 1).coerceAtLeast(0) / HybridProtocol.PAGE_SIZE))
         val sliced = visible.drop(page * HybridProtocol.PAGE_SIZE).take(HybridProtocol.PAGE_SIZE)
         val selected = model.selected?.takeIf { model.page in setOf(Page.DETAIL, Page.PLAYER) }?.usableMetadata()
@@ -149,9 +158,13 @@ class CinemaPresentationGateway(
                 else -> model.catalogStatus
             }, 600))
             .put("attribution", text(model.catalogAttribution, 1000))
+            .put("recommendationReason", if (model.page == Page.DETAIL &&
+                (model.selectedRecommendationReason.startsWith("因为") || model.selectedRecommendationReason.startsWith("来自")))
+                text(model.selectedRecommendationReason, 360) else "")
             .put("query", text(model.query, 120)).put("history", JSONArray(model.searchHistory.take(20).map { text(it, 120) }))
             .put("filters", JSONObject().put("type", when (model.searchFilters.isTv) { true -> "SERIES"; false -> "MOVIES"; null -> "" })
                 .put("year", model.searchFilters.year.orEmpty()).put("minRating", model.searchFilters.minRating ?: 0)
+                .put("ratingSource", when (model.searchFilters.ratingSource?.let(RatingPolicy::normalizeProvider)) { "tmdb" -> "TMDB"; "douban" -> "Douban"; else -> "" })
                 .put("topOnly", model.searchFilters.doubanTopOnly))
             .put("years", JSONArray(model.searchYears.take(100)))
             .put("catalogFilters", JSONObject().put("category", state.catalogFilter.category).put("year", state.catalogFilter.year).put("rated", state.catalogFilter.rated))
@@ -182,7 +195,11 @@ class CinemaPresentationGateway(
                 episode(it, it.lastEpisode.coerceIn(it.episodes.indices))
             } ?: JSONObject.NULL)
             .put("alternatives", JSONArray(if (model.page == Page.DETAIL) model.alternatives.take(16).mapNotNull { it.usableMetadata() }.map { card(it) } else emptyList<JSONObject>()))
-        val shownChannels = if (model.page == Page.LIVE) model.channels.drop(page * HybridProtocol.PAGE_SIZE).take(HybridProtocol.PAGE_SIZE) else emptyList()
+        val shownChannels = if (model.page == Page.LIVE) filteredChannels().drop(page * HybridProtocol.PAGE_SIZE).take(HybridProtocol.PAGE_SIZE) else emptyList()
+        result.put("liveGroups", JSONArray(model.channels.map { it.group }.filter(String::isNotBlank).distinct().take(128).map { group ->
+            val key = session.ids.key("group", "${model.activeLiveSource?.let(::sourceKey)}\u0000$group"); liveGroups[key] = group
+            JSONObject().put("id", key).put("name", text(group, 80))
+        })).put("liveGroup", liveGroups.entries.firstOrNull { it.value == liveGroup() }?.key.orEmpty())
         result.put("channels", JSONArray(shownChannels.map { channel ->
             val key = channelKey(channel); channels[key] = channel
             JSONObject().put("id", key).put("name", text(channel.name, 120)).put("group", text(channel.group, 80))
@@ -258,7 +275,7 @@ class CinemaPresentationGateway(
             "media.focus" -> { model.onMediaFocus(item(p), "hybrid"); return JSONObject().put("accepted", true) }
             "catalog.page" -> {
                 val page = HybridProtocol.integer(p, "page", 10000)
-                val total = if (model.page == Page.LIVE) model.channels.size else filteredCatalog().size
+                val total = if (model.page == Page.LIVE) filteredChannels().size else filteredCatalog().size
                 if (page > (total - 1).coerceAtLeast(0) / HybridProtocol.PAGE_SIZE) throw HybridRequestFailure("CONFLICT")
                 routeState().page = page; routeState().bookmark = null; session.changed()
             }
@@ -285,8 +302,10 @@ class CinemaPresentationGateway(
                 if (year.isNotEmpty() && !year.matches(Regex("\\d{4}"))) throw HybridRequestFailure("BAD_PARAMS")
                 val rating = (p.opt("minRating") as? Number)?.toDouble() ?: throw HybridRequestFailure("BAD_PARAMS")
                 if (!rating.isFinite() || rating !in 0.0..10.0) throw HybridRequestFailure("BAD_PARAMS")
+                val ratingSource = if (p.has("ratingSource")) HybridProtocol.string(p, "ratingSource", 8, true) else ""
+                if (ratingSource !in setOf("", "TMDB", "Douban")) throw HybridRequestFailure("BAD_PARAMS")
                 model.updateSearchFilters(SearchFilters(isTv = when (type) { "MOVIES" -> false; "SERIES" -> true; else -> null },
-                    year = year.ifBlank { null }, minRating = rating.takeIf { it > 0 }, doubanTopOnly = HybridProtocol.boolean(p, "topOnly")))
+                    year = year.ifBlank { null }, minRating = rating.takeIf { it > 0 }, ratingSource = ratingSource.ifBlank { null }, doubanTopOnly = HybridProtocol.boolean(p, "topOnly")))
                 routeState().page = 0; routeState().bookmark = null; session.changed()
             }
             "search.year" -> { model.cycleSearchYear(); routeState().page = 0; routeState().bookmark = null; session.changed() }
@@ -303,7 +322,9 @@ class CinemaPresentationGateway(
                 val choice = episodes[token] ?: throw HybridRequestFailure("CONFLICT")
                 if (choice.first != mediaKey(item) || choice.second !in item.episodes.indices ||
                     episodeKey(item, choice.second) != token) throw HybridRequestFailure("CONFLICT")
-                model.playEpisode(choice.second)
+                val action = if (p.has("action")) HybridProtocol.string(p, "action", 8) else "RESUME"
+                val intent = EpisodePlaybackAction.entries.firstOrNull { it.name == action } ?: throw HybridRequestFailure("BAD_PARAMS")
+                model.playEpisode(choice.second, intent)
             }
             "library.favorite" -> model.repo.setFavorite(selected(p), HybridProtocol.boolean(p, "favorite"))
             "library.status" -> {
@@ -323,7 +344,16 @@ class CinemaPresentationGateway(
                 if (model.page != Page.LIVE) throw HybridRequestFailure("CONFLICT")
                 val source = liveSources[HybridProtocol.string(p, "id", 64)] ?: throw HybridRequestFailure("CONFLICT")
                 if (model.liveSources.none { sourceKey(it) == sourceKey(source) }) throw HybridRequestFailure("CONFLICT")
-                routeState().page = 0; routeState().bookmark = null; model.loadChannels(source); session.changed()
+                routeState().page = 0; routeState().bookmark = null; routeState().liveGroup = ""; model.loadChannels(source); session.changed()
+            }
+            "live.group" -> {
+                if (model.page != Page.LIVE) throw HybridRequestFailure("CONFLICT")
+                val id = HybridProtocol.string(p, "id", 64, true)
+                val group = if (id.isEmpty()) "" else liveGroups[id] ?: throw HybridRequestFailure("CONFLICT")
+                if (group.isNotEmpty() && model.channels.none { it.group == group }) throw HybridRequestFailure("CONFLICT")
+                routeState().liveGroup = group; routeState().page = 0; routeState().bookmark = null
+                filteredChannels().firstOrNull()?.let(model::focusChannel)
+                session.changed()
             }
             "live.focus" -> { model.focusChannel(channel(p)); return JSONObject().put("accepted", true) }
             "live.play" -> model.playChannel(channel(p))
@@ -357,5 +387,5 @@ class CinemaPresentationGateway(
             model.navigate(session.nativeReturnPage)
     }
 
-    override fun close() { images.close(); items.clear(); channels.clear(); liveSources.clear(); episodes.clear() }
+    override fun close() { images.close(); items.clear(); channels.clear(); liveSources.clear(); liveGroups.clear(); episodes.clear() }
 }

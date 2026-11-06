@@ -95,9 +95,13 @@ export function Search({ state, act, native }: { state: Snapshot; act: Action; n
     <div className="chips filters" data-scroll="filters" data-focus-layout="row" aria-label="搜索筛选">
       {[['', '全部'], ['MOVIES', '电影'], ['SERIES', '剧集']].map(([type, title]) => <Button key={type} id={`filter:${type || 'all'}`} group="filters" selected={state.filters.type === type} onClick={() => act('search.filter', { ...state.filters, type })}>{title}</Button>)}
       <Button id="filter:year" group="filters" selected={Boolean(state.filters.year)} label={`年份：${state.filters.year || '全部'}，按确认键切换`} onClick={() => act('search.year')}>{state.filters.year || '全部年份'}<Icon name="down" /></Button>
-      <Button id="filter:rating" group="filters" selected={state.filters.minRating > 0} onClick={() => act('search.filter', { ...state.filters, minRating: state.filters.minRating ? 0 : 8 })}>{state.filters.minRating ? '评分 8 分及以上' : '全部评分'}</Button>
-      <Button id="filter:chart" group="filters" selected={state.filters.topOnly} onClick={() => act('search.filter', { ...state.filters, topOnly: !state.filters.topOnly })}>Top 250</Button>
+      <Button id="filter:rating" group="filters" selected={state.filters.minRating > 0 && !state.filters.ratingSource} onClick={() => act('search.filter', { ...state.filters, minRating: state.filters.minRating && !state.filters.ratingSource ? 0 : 8, ratingSource: '', topOnly: false })}>{state.filters.minRating && !state.filters.ratingSource ? '评分 8 分及以上' : '全部来源评分'}</Button>
+      <Button id="filter:tmdb" group="filters" selected={state.filters.ratingSource === 'TMDB'} onClick={() => act('search.filter', { ...state.filters, minRating: 8, ratingSource: 'TMDB', topOnly: false })}>TMDB ≥ 8</Button>
+      <Button id="filter:douban" group="filters" selected={state.filters.ratingSource === 'Douban' && !state.filters.topOnly} onClick={() => act('search.filter', { ...state.filters, minRating: 8, ratingSource: 'Douban', topOnly: false })}>豆瓣 ≥ 8</Button>
+      <Button id="filter:chart" group="filters" selected={state.filters.topOnly} onClick={() => act('search.filter', { ...state.filters, minRating: 0, ratingSource: state.filters.topOnly ? '' : 'Douban', topOnly: !state.filters.topOnly })}>豆瓣 Top 250</Button>
+      <Button id="filter:reset" group="filters" onClick={() => act('search.filter', { type: '', year: '', minRating: 0, ratingSource: '', topOnly: false })}>重置筛选</Button>
     </div>
+    {state.filters.ratingSource === 'Douban' && <p className="footnote">豆瓣筛选仅显示有效授权目录；未配置时不会替代为其他评分。</p>}
     <p className="status-line" role="status">{state.busy ? '正在检索，已收到的结果可直接查看' : state.query ? `“${state.query}” · ${state.total} 项结果` : '先搜索，再挑选你想看的故事'}</p>
     {state.items.length ? <Grid state={state} act={act} /> : <Empty title={state.busy ? '正在寻找' : state.query ? '暂未找到匹配作品' : '想看什么？'}
       detail={state.query ? '尝试其他关键词或筛选条件；也可以检查影视服务与片源的连接。' : '片名、演员、别名，都可以作为开始。'} />}
@@ -111,7 +115,9 @@ export function Detail({ state, act }: { state: Snapshot; act: Action }) {
   if (!item) return <Empty title="正在打开作品" detail="正在读取作品资料。" />;
   const resume = state.resumeEpisode;
   return <><section className="detail-hero"><div className="hero-copy"><span className="eyebrow">{item.sourceName || '作品详情'}</span><h1>{item.title}</h1><Metadata item={item} /><p className="synopsis">{item.description || '暂无简介'}</p>
-    <div className="actions" data-focus-layout="row"><Button id="detail:play" group="detail-actions" primary disabled={!resume} onClick={() => act('playback.open', { key: item.key, episodeId: resume?.id })}><Icon name="play" />{item.positionMs > 0 ? '继续观看' : '播放'}</Button>
+    {state.recommendationReason && <p className="recommendation-reason">{state.recommendationReason}</p>}
+    <div className="actions" data-focus-layout="row"><Button id="detail:play" group="detail-actions" primary disabled={!resume} onClick={() => act('playback.open', { key: item.key, episodeId: resume?.id, action: resume?.completed ? 'RESTART' : 'RESUME' })}><Icon name="play" />{resume?.completed ? '重新播放' : item.positionMs > 0 ? '继续观看' : '播放'}</Button>
+      {resume && !resume.completed && item.positionMs > 0 && <Button id="detail:restart" group="detail-actions" onClick={() => act('playback.open', { key: item.key, episodeId: resume.id, action: 'RESTART' })}>从头播放</Button>}
       <Button id="detail:favorite" group="detail-actions" selected={item.favorite} onClick={() => act('library.favorite', { key: item.key, favorite: !item.favorite })}><Icon name={item.favorite ? 'check' : 'plus'} />{item.favorite ? '已收藏' : '加入收藏'}</Button>
       <Button id="detail:sources" group="detail-actions" disabled={state.busy} onClick={() => act('detail.sources')}>切换片源</Button>
       <Button id="detail:tools" group="detail-actions" onClick={() => act('native.open', { target: 'DETAIL' })}>分季与作品整理</Button></div>
@@ -124,7 +130,7 @@ export function Detail({ state, act }: { state: Snapshot; act: Action }) {
     </div></section>}
     <section className="detail-section"><div className="section-heading"><h2>{item.isTv ? '剧集' : '播放版本'}</h2><span>{state.episodeTotal ? `${state.episodeTotal} 项` : state.busy ? '正在查找片源' : '暂无可播放版本'}</span></div>
       {state.episodes.length > 0 ? <div className="episodes" data-focus-layout="grid">{state.episodes.map(episode => <Button key={episode.id} id={`episode:${episode.id}`} group="episodes" className="episode" selected={episode.id === resume?.id && item.positionMs > 0} label={`${episode.label}${episode.progress !== null ? `，已观看 ${Math.round(Math.min(1, Math.max(0, episode.progress)) * 100)}%` : ''}`}
-        onClick={() => act('playback.open', { key: item.key, episodeId: episode.id })}><span className="episode-number">{String(episode.index + 1).padStart(2, '0')}</span><span>{episode.label}</span><Icon name="play" />
+        onClick={() => act('playback.open', { key: item.key, episodeId: episode.id, action: episode.completed ? 'RESTART' : 'RESUME' })}><span className="episode-number">{String(episode.index + 1).padStart(2, '0')}</span><span>{episode.label}</span><Icon name="play" />
         {episode.progress !== null && <span className="progress"><span style={{ width: `${Math.min(100, Math.max(0, episode.progress * 100))}%` }} /></span>}</Button>)}</div> :
         <div className="episode-empty"><p>{state.busy ? '正在查找可用版本，请稍候。' : '可切换片源，或检查服务连接后重试。'}</p>
           <Button id="detail:retry" disabled={state.busy} onClick={() => act('detail.sources')}><Icon name="refresh" />查找片源</Button></div>}
@@ -149,6 +155,10 @@ export function Live({ state, act }: { state: Snapshot; act: Action }) {
   }, [now, state.programs, state.activeChannel]);
   return <><div className="page-heading"><span className="eyebrow">正在发生的世界</span><h1>直播</h1></div>
     <div className="chips" data-scroll="live-sources" data-focus-layout="row" aria-label="直播订阅">{state.liveSources.map(source => <Button key={source.id} id={`live-source:${source.id}`} group="live-sources" selected={source.id === state.activeLiveSource} onClick={() => act('live.source', { id: source.id })}>{source.name}</Button>)}</div>
+    {state.liveSources.length > 0 && <div className="chips" data-scroll="live-groups" data-focus-layout="row" aria-label="频道分组">
+      <Button id="live-group:all" group="live-groups" selected={!state.liveGroup} onClick={() => act('live.group', { id: '' })}>全部频道</Button>
+      {state.liveGroups.map(group => <Button key={group.id} id={`live-group:${group.id}`} group="live-groups" selected={state.liveGroup === group.id} onClick={() => act('live.group', { id: group.id })}>{group.name}</Button>)}
+    </div>}
     {!state.liveSources.length ? <Empty title="连接你的直播订阅" detail="添加有权访问的直播订阅，频道和节目单会在这里显示。"><Button id="live:setup" primary onClick={() => act('native.open', { target: 'SETTINGS', section: 'sources' })}>设置直播来源<Icon name="arrow" /></Button></Empty> :
       <div className="live-layout"><section className="channels" aria-label="频道" data-focus-layout="column">{state.channels.length ? state.channels.map(channel => <Button key={channel.id} id={`channel:${channel.id}`} group="channels" className="channel" navRight={programs[0] ? `program:${programs[0].id}` : undefined} selected={state.activeChannel === channel.id} onFocus={() => act('live.focus', { id: channel.id })} onClick={() => act('live.play', { id: channel.id })}>
         <span className="channel-logo">{channel.logo ? <img key={channel.logo} src={channel.logo} alt="" loading="lazy" onError={event => { event.currentTarget.style.opacity = '0'; }} /> : <Icon name="play" />}</span><span><strong>{channel.name}</strong><small>{channel.group}</small></span><Icon name="play" />
