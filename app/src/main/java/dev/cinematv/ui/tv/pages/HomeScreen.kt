@@ -12,6 +12,10 @@ import androidx.compose.ui.unit.sp
 import dev.cinematv.ui.typography.CinemaTvText as Text
 import dev.cinematv.ui.tv.design.TvColors
 import dev.cinematv.CinemaViewModel
+import dev.cinematv.ui.tv.components.TvEmptyState
+import dev.cinematv.Page
+import dev.cinematv.isUsable
+import dev.cinematv.ConnectionCopy
 import dev.cinematv.ui.GlassAction
 import dev.cinematv.ui.tv.components.*
 import dev.cinematv.ui.tv.focus.*
@@ -53,7 +57,7 @@ fun HomeScreen(model: CinemaViewModel) {
             item(key = "hero") {
                 CompositionLocalProvider(LocalBringIntoViewSpec provides itemBringIntoViewSpec) {
                     CinemaHero(model.focused ?: model.featured.firstOrNull() ?: discovery.items.firstOrNull(),
-                        model, belowFocus = firstRail.takeIf { hasRail }, reserveNavigation = true)
+                        model, belowFocus = firstRail.takeIf { hasRail })
                 }
             }
             if (history.isNotEmpty()) item(key = "continue") {
@@ -63,7 +67,8 @@ fun HomeScreen(model: CinemaViewModel) {
             }
             if (model.featured.isNotEmpty()) item(key = "movies") {
                 CompositionLocalProvider(LocalBringIntoViewSpec provides itemBringIntoViewSpec) {
-                    ContentRail("为你精选", model.featured, model, entryRequester = firstRail.takeIf { history.isEmpty() })
+                    ContentRail("为你精选", model.featured, model, portrait = true,
+                        entryRequester = firstRail.takeIf { history.isEmpty() })
                 }
             }
             if (model.tvShows.isNotEmpty()) item(key = "series") {
@@ -81,6 +86,28 @@ fun HomeScreen(model: CinemaViewModel) {
                                 Modifier.width(132.dp).height(40.dp)) { model.rotateDiscovery() }
                         }
                     }
+                }
+            }
+            if (!hasRail && !discovery.loading) item(key = "home-empty") {
+                CompositionLocalProvider(LocalBringIntoViewSpec provides itemBringIntoViewSpec) {
+                    val usable = model.connectionState.isUsable
+                    TvEmptyState(
+                        title = if (usable) "还没有可看的推荐" else "先连接影视服务",
+                        detail = ConnectionCopy.summary(model.connectionState) + " · 搜索以发现内容",
+                        modifier = Modifier.padding(horizontal = layout.gutter, vertical = 24.dp),
+                        action = {
+                            GlassAction(if (usable) "开始搜索" else "连接影视服务",
+                                Modifier.width(150.dp).height(44.dp), prominent = true) {
+                                model.navigate(if (usable) Page.SEARCH else Page.SETTINGS)
+                            }
+                        }
+                    )
+                }
+            }
+            if (!hasRail && model.busy && !discovery.loading) item(key = "home-loading") {
+                CompositionLocalProvider(LocalBringIntoViewSpec provides itemBringIntoViewSpec) {
+                    Text("正在准备你的影院…", color = TvColors.Secondary, fontSize = 13.sp,
+                        modifier = Modifier.padding(horizontal = layout.gutter, vertical = 12.dp))
                 }
             }
             if (discovery.items.isEmpty() && discovery.loading) item(key = "discover-loading") {
