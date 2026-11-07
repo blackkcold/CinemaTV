@@ -31,6 +31,8 @@ class UiFixtureServer(private val context: Context) : AutoCloseable {
     @Volatile var catalogFilteredPages = false
     @Volatile var homeCatalog = false
     @Volatile var duplicateLiveIds = false
+    // Optional static visual data; ordinary functional tests keep the real clock.
+    @Volatile var programEpochMs: Long? = null
     val requests = CopyOnWriteArrayList<String>()
     val catalogRequests = CopyOnWriteArrayList<String>()
 
@@ -135,7 +137,7 @@ class UiFixtureServer(private val context: Context) : AutoCloseable {
         while (read < bytes.size) { val count = input.read(bytes, read, bytes.size - read); if (count < 0) break; read += count }
         val body = runCatching { JSONObject(String(bytes, Charsets.UTF_8)) }.getOrDefault(JSONObject())
         var type = "application/json; charset=utf-8"
-        val now = System.currentTimeMillis()
+        val now = programEpochMs ?: System.currentTimeMillis()
         val response: ByteArray = when (uri.path) {
             "/v1/catalog" -> catalog(uri).toByteArray()
             "/api/status" -> JSONObject().put("passwordRequired", false).put("verified", true)

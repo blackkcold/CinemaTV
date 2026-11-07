@@ -26,10 +26,14 @@ def visual_environment(metadata, size, density):
     require(dom['reducedMotion'] == 'true' and isinstance(dom['focus'], str) and dom['focus'], 'Motion or focus state is invalid')
     require(abs(dom['width'] * dom['dpr'] - size[0]) <= 1 and abs(dom['height'] * dom['dpr'] - size[1]) <= 1, 'DOM is not the actual raster viewport')
     require(dom['overflow'] <= 1, 'Unexpected horizontal overflow')
+    require(dom.get('visualEpochMs') == 4070944800000, 'Visual clock is not fixed')
+    require(isinstance(dom.get('locale'), str) and dom['locale'] and
+            isinstance(dom.get('timeZone'), str) and dom['timeZone'], 'Missing visual locale/timezone')
     return {'family': metadata['family'], 'api': metadata['api'], 'provider': metadata['provider'],
             'fingerprint': metadata['fingerprint'], 'width': size[0], 'height': size[1], 'densityDpi': density,
             'cssWidth': dom['width'], 'cssHeight': dom['height'], 'dpr': dom['dpr'],
             'quality': dom['quality'], 'reducedMotion': True,
+            'locale': dom['locale'], 'timeZone': dom['timeZone'], 'visualEpochMs': dom['visualEpochMs'],
             'fontLockSha256': digest(ROOT / 'scripts/fonts/noto-fonts.lock.json')}
 
 

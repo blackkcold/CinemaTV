@@ -31,8 +31,11 @@ class AndroidVisualTest(unittest.TestCase):
         item = {'family': 'hybrid-android-production', 'activity': 'dev.cinematv.MainActivity', 'api': 36,
                 'syntheticContent': True, 'width': 3840, 'height': 2160, 'densityDpi': 640,
                 'provider': '111.0', 'fingerprint': 'synthetic',
-                'dom': {'width': 960, 'height': 540, 'dpr': 4, 'reducedMotion': 'true', 'focus': 'nav:HOME', 'overflow': 0, 'quality': 'BASIC'}}
+                'dom': {'width': 960, 'height': 540, 'dpr': 4, 'visualEpochMs': 4070944800000, 'locale': 'en-US', 'timeZone': 'UTC', 'reducedMotion': 'true', 'focus': 'nav:HOME', 'overflow': 0, 'quality': 'BASIC'}}
         self.assertEqual(visual_environment(item, (3840, 2160), 640)['dpr'], 4)
+        item['dom']['visualEpochMs'] += 1000
+        with self.assertRaisesRegex(ValueError, 'clock'): visual_environment(item, (3840, 2160), 640)
+        item['dom']['visualEpochMs'] = 4070944800000
         item['dom']['dpr'] = 2
         with self.assertRaises(ValueError): visual_environment(item, (3840, 2160), 640)
         item['family'] = 'native-components'

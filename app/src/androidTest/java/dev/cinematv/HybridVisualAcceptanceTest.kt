@@ -33,6 +33,9 @@ import java.util.concurrent.atomic.AtomicBoolean
  */
 @RunWith(AndroidJUnit4::class)
 class HybridVisualAcceptanceTest {
+    // Future fixtures survive the production gateway's real-time expiry filter.
+    // Only this visual suite freezes the Web wall clock; functional EPG tests do not.
+    private val visualEpochMs = 4070944800000L // 2099-01-01T10:00:00Z
     @get:Rule val rule = createEmptyComposeRule()
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private lateinit var scenario: ActivityScenario<MainActivity>
@@ -45,7 +48,10 @@ class HybridVisualAcceptanceTest {
         assertTrue(Build.VERSION.SDK_INT >= 29)
         assertEquals(Configuration.UI_MODE_TYPE_TELEVISION,
             instrumentation.targetContext.resources.configuration.uiMode and Configuration.UI_MODE_TYPE_MASK)
-        server = UiFixtureServer(instrumentation.context).apply { homeCatalog = true }
+        server = UiFixtureServer(instrumentation.context).apply {
+            homeCatalog = true
+            programEpochMs = visualEpochMs
+        }
         scenario = ActivityScenario.launch(MainActivity::class.java)
         scenario.onActivity {
             activity = it
@@ -60,6 +66,7 @@ class HybridVisualAcceptanceTest {
         rule.waitUntil(25_000) { model.authorized && model.featured.size == 24 && model.tvShows.size == 24 }
         awaitRoute(Page.HOME)
         assertEquals(HybridPolicy.ENTRY_URL, evaluate("location.href"))
+        assertEquals(visualEpochMs.toString(), evaluate("Date.now = () => $visualEpochMs; Date.now()"))
     }
 
     @After fun close() {
@@ -132,14 +139,15 @@ class HybridVisualAcceptanceTest {
 
     private fun capture(label: String) {
         rule.waitUntil(15_000) {
-            evaluate("(() => {const shown=i=>{const r=i.getBoundingClientRect();return r.width>1&&r.height>1&&r.right>0&&r.bottom>0&&r.left<innerWidth&&r.top<innerHeight;};return Array.from(document.images).filter(shown).every(i=>i.complete)&&!document.querySelector('.scene-probe');})()") == "true"
+            evaluate("(() => {const shown=i=>{const r=i.getBoundingClientRect();return r.width>1&&r.height>1&&r.right>0&&r.bottom>0&&r.left<innerWidth&&r.top<innerHeight;};return document.fonts.status==='loaded'&&Array.from(document.images).filter(shown).every(i=>i.complete)&&!document.querySelector('.scene-probe');})()") == "true"
         }
         rule.waitForIdle()
         committedFrame()
-        val dom = JSONObject(evaluate("JSON.stringify({width:innerWidth,height:innerHeight,dpr:devicePixelRatio,quality:document.querySelector('.tv-app').dataset.quality,reducedMotion:document.querySelector('.tv-app').dataset.reducedMotion,focus:document.activeElement?.dataset.focus||'',overflow:document.querySelector('.content').scrollWidth-document.querySelector('.content').clientWidth})"))
+        val dom = JSONObject(evaluate("JSON.stringify({width:innerWidth,height:innerHeight,dpr:devicePixelRatio,locale:navigator.language,timeZone:Intl.DateTimeFormat().resolvedOptions().timeZone,visualEpochMs:Date.now(),quality:document.querySelector('.tv-app').dataset.quality,reducedMotion:document.querySelector('.tv-app').dataset.reducedMotion,focus:document.activeElement?.dataset.focus||'',overflow:document.querySelector('.content').scrollWidth-document.querySelector('.content').clientWidth})"))
         assertTrue("The captured state must have a focused control", dom.getString("focus").isNotBlank())
         assertTrue("Horizontal content overflow", dom.getInt("overflow") <= 1)
         assertEquals("true", dom.getString("reducedMotion"))
+        assertEquals(visualEpochMs, dom.getLong("visualEpochMs"))
         val bitmap = instrumentation.uiAutomation.takeScreenshot() ?: throw AssertionError("Empty compositor screenshot")
         try {
             val metadata = JSONObject().put("schema", 1).put("state", label)
@@ -161,7 +169,10 @@ class HybridVisualAcceptanceTest {
         for (page in listOf(Page.EXPLORE, Page.MOVIES, Page.SERIES, Page.SEARCH, Page.LIVE, Page.LIBRARY, Page.SETTINGS)) {
             activate("nav:${page.name}")
             awaitRoute(page)
-            if (page == Page.LIVE) rule.waitUntil(15_000) { model.channels.isNotEmpty() }
+            if (page == Page.LIVE) {
+                rule.waitUntil(15_000) { model.channels.isNotEmpty() && model.epgPrograms.isNotEmpty() }
+                rule.waitUntil(10_000) { evaluate("document.querySelectorAll('.program.on-air').length===1") == "true" }
+            }
             capture(page.name.lowercase())
         }
         focus("settings:connection")
