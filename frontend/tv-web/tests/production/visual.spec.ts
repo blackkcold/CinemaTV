@@ -6,7 +6,11 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
 declare global {
-  interface Window { CinemaVisualFixture?: { call(method: string, params?: Record<string, unknown>): Promise<unknown> }; }
+  interface Window { CinemaVisualFixture?: {
+    call(method: string, params?: Record<string, unknown>): Promise<unknown>;
+    image(path: string): string | null;
+    statistics(): { largestReplyBytes: number; imageCount: number };
+  }; }
 }
 const captureOnly = process.env.CINEMA_VISUAL_CAPTURE === '1';
 const source = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
@@ -42,6 +46,13 @@ async function ready(page: Page, fixture = '') {
     const body = await readFile(resolve('../../.cache/cinematv-noto-fonts', name));
     await route.fulfill({ status: 200, contentType: 'font/ttf', body });
   });
+  // Artwork is served outside RPC, like the production Android local image adapter.
+  await page.route(url => /^\/__cinema_visual_art\/\d+\.svg$/.test(url.pathname), async route => {
+    const path = new URL(route.request().url()).pathname;
+    const body = await page.evaluate(path => window.CinemaVisualFixture?.image(path), path);
+    if (typeof body !== 'string') throw new Error(`Unregistered synthetic artwork: ${path}`);
+    await route.fulfill({ status: 200, contentType: 'image/svg+xml', body });
+  });
   // Freeze wall-clock metadata, not requestAnimationFrame or input scheduling.
   await page.clock.setFixedTime(new Date('2026-11-06T10:00:00Z'));
   await page.addInitScript({ content: injection });
@@ -50,13 +61,17 @@ async function ready(page: Page, fixture = '') {
   await expect(page.locator('html')).toHaveAttribute('data-native', 'true');
   await expect(page.locator('.tv-app')).toHaveAttribute('data-reduced-motion', 'true');
   await page.evaluate(() => document.fonts.ready);
+  const stats = await page.evaluate(() => window.CinemaVisualFixture!.statistics());
+  expect(stats.largestReplyBytes).toBeGreaterThan(0);
+  expect(stats.largestReplyBytes).toBeLessThanOrEqual(512 * 1024);
+  expect(stats.imageCount).toBeGreaterThan(0);
 }
 
 async function capture(page: Page, browser: Browser, info: TestInfo, name: string) {
   await page.waitForFunction(() => !document.querySelector('.scene-probe') && [...document.images].filter(image => {
     const r = image.getBoundingClientRect();
     return r.width > 1 && r.height > 1 && r.right > 0 && r.bottom > 0 && r.left < innerWidth && r.top < innerHeight;
-  }).every(image => image.complete));
+  }).every(image => image.complete && image.naturalWidth > 0));
   await expect(page.locator('[data-focus]:focus')).toHaveCount(1);
   const overflow = await page.locator('.content').evaluate(element => element.scrollWidth - element.clientWidth);
   expect(overflow).toBeLessThanOrEqual(1);
@@ -144,7 +159,7 @@ test('production assets contain no fixture module or development runtime', async
   const response = await page.request.get('/');
   const html = await response.text();
   expect(html).not.toContain('/@vite/client');
-  const assets = [...html.matchAll(/(?:src|href)="((?:\.\/|\/)assets\/[^"]+)"/g)].map(match => match[1]);
+  const assets = [...html.matchAll(/(?:src|href)="((?:\.\/|\/)assets\/[^"\s]+)"/g)].map(match => match[1]);
   expect(assets.length).toBeGreaterThan(0);
   expect(assets.some(path => path.endsWith('.js'))).toBe(true);
   for (const asset of assets) {
