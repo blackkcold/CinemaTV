@@ -1,0 +1,31 @@
+name: Hybrid reviewed baseline objects
+on:
+  push:
+    branches: [dev-hybird]
+permissions:
+  contents: read
+jobs:
+  stage:
+    if: contains(github.event.head_commit.message, '[baseline-stage]')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - run: python3 -m pip install --disable-pip-version-check 'Pillow==11.3.0'
+      - name: Validate explicit review and create immutable blobs only
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 scripts/acceptance/review_baselines.py --output "$RUNNER_TEMP/reviewed-baseline-objects"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: reviewed-baseline-objects
+          path: ${{ runner.temp }}/reviewed-baseline-objects/reviewed-blob-elements.json
+          if-no-files-found: error
+      - name: Preserve branch-only approval boundary
+        run: echo 'Only explicitly reviewed image blobs were staged. No refs, commits, releases or baselines were automatically promoted.' >> "$GITHUB_STEP_SUMMARY"
