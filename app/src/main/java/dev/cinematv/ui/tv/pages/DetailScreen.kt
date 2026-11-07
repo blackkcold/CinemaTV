@@ -111,7 +111,9 @@ fun DetailScreen(model: CinemaViewModel) {
             Text(if (model.busy) "正在获取播放列表…" else "当前片源没有可播放地址，可尝试更换片源。", color = TvColors.Secondary,
                 fontSize = 15.sp, modifier = Modifier.padding(horizontal = layout.gutter))
         }
-        val columns = ((layout.width - layout.gutter * 2).value / 116).toInt().coerceIn(3, 7)
+        // Four columns keep every episode label readable; the old 3..7 estimate produced
+        // seven cramped chips on a 1080p panel.
+        val columns = 4
         items((item.episodes.size + columns - 1) / columns, key = { "episode-row:$it" }) { row ->
             val firstEpisode = remember { FocusRequester() }
             val entryPolicy = if (row == 0) Modifier.focusProperties {
