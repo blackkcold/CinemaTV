@@ -42,6 +42,7 @@ class HybridVisualAcceptanceTest {
     private lateinit var activity: MainActivity
     private lateinit var model: CinemaViewModel
     private lateinit var server: UiFixtureServer
+    private var completedCaptures = false
     private val output get() = File(requireNotNull(InstrumentationRegistry.getArguments().getString("additionalTestOutputDir")), "visual-evidence").apply { mkdirs() }
 
     @Before fun launchFreshProductionHost() {
@@ -72,8 +73,19 @@ class HybridVisualAcceptanceTest {
     @After fun close() {
         try {
             if (::activity.isInitialized) {
-                File(output, "final-state.json").writeText(JSONObject().put("route", model.page.name)
-                    .put("webViewPresent", web() != null).put("syntheticContent", true).toString(2))
+                val finalState = JSONObject().put("route", model.page.name)
+                    .put("webViewPresent", web() != null).put("syntheticContent", true)
+                    .put("completedCaptures", completedCaptures)
+                runCatching {
+                    finalState.put("dom", JSONObject(evaluate("JSON.stringify({focus:document.activeElement?.dataset.focus||'',playDisabled:document.querySelector('[data-focus=\"detail:play\"]')?.disabled??null,actions:Array.from(document.querySelectorAll('.actions [data-focus]')).map(n=>({id:n.dataset.focus,disabled:n.disabled,text:n.textContent?.slice(0,120)}))})")))
+                    if (!completedCaptures) {
+                        instrumentation.uiAutomation.takeScreenshot()?.let { bitmap ->
+                            try { File(output, "failed-state.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) } }
+                            finally { bitmap.recycle() }
+                        }
+                    }
+                }.onFailure { finalState.put("diagnosticError", it.javaClass.simpleName) }
+                File(output, "final-state.json").writeText(finalState.toString(2))
             }
         } finally {
             if (::scenario.isInitialized) scenario.close()
@@ -183,6 +195,14 @@ class HybridVisualAcceptanceTest {
         activate("hero:open")
         rule.waitUntil(25_000) { model.page == Page.DETAIL && !model.busy && model.selected?.episodes?.isNotEmpty() == true }
         awaitRoute(Page.DETAIL)
+        // An uncached detail first focuses Favorite while Play is disabled. When
+        // episodes arrive, the production UI deliberately preserves that valid
+        // focus. Capture the primary state with one real Left, not forced DOM
+        // focus, a second click, or an expectation that loading steals focus.
+        rule.waitUntil(5_000) {
+            evaluate("(() => {const p=document.querySelector('[data-focus=\"detail:play\"]');return Boolean(p&&!p.disabled)&&['detail:play','detail:favorite'].includes(document.activeElement?.dataset.focus);})()") == "true"
+        }
+        if (evaluate("document.activeElement?.dataset.focus") == "detail:favorite") key(KeyEvent.KEYCODE_DPAD_LEFT)
         rule.waitUntil(5_000) { evaluate("document.activeElement?.dataset.focus") == "detail:play" }
         capture("detail")
         key(KeyEvent.KEYCODE_BACK); awaitRoute(Page.HOME)
@@ -194,5 +214,6 @@ class HybridVisualAcceptanceTest {
         rule.waitUntil(5_000) { evaluate("document.querySelector('.tv-app').dataset.quality") == "BASIC" }
         activate("nav:HOME"); awaitRoute(Page.HOME)
         capture("home-basic")
+        completedCaptures = true
     }
 }
