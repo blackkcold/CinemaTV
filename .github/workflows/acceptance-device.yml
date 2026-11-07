@@ -75,8 +75,10 @@ jobs:
           script: bash scripts/acceptance/run-lane.sh "$CINEMA_ACCEPTANCE_LANE" "$RUNNER_TEMP/acceptance-apks" "$RUNNER_TEMP/acceptance-evidence"
       - name: Preserve bounded environment and original failure evidence
         if: always()
+        env:
+          EXECUTION_OUTCOME: ${{ job.status }}
         run: |
-          python3 scripts/acceptance/diagnostics.py --lane "$CINEMA_ACCEPTANCE_LANE" --evidence "$RUNNER_TEMP/acceptance-evidence"
+          python3 scripts/acceptance/diagnostics.py --lane "$CINEMA_ACCEPTANCE_LANE" --evidence "$RUNNER_TEMP/acceptance-evidence" --outcome "$EXECUTION_OUTCOME"
           if [ -d qa ]; then cp -R qa "$RUNNER_TEMP/acceptance-evidence/official-host"; fi
       - name: Bind completed cases and evidence to installed configuration
         env:

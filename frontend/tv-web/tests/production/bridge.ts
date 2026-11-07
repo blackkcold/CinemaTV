@@ -7,7 +7,7 @@ const backend = createMockPlatform();
 const imagePaths = new Map<string, string>();
 const images = new Map<string, string>();
 let largestReplyBytes = 0;
-function boundedImages(value: unknown): unknown {
+function boundedImages(value: unknown, field = ''): unknown {
   if (typeof value === 'string' && value.startsWith('data:image/svg+xml,')) {
     let path = imagePaths.get(value);
     if (!path) {
@@ -17,9 +17,17 @@ function boundedImages(value: unknown): unknown {
     }
     return path;
   }
-  if (Array.isArray(value)) return value.map(boundedImages);
+  if (Array.isArray(value)) return value.map(child => boundedImages(child));
   if (value !== null && typeof value === 'object') {
-    return Object.fromEntries(Object.entries(value).map(([key, child]) => [key, boundedImages(child)]));
+    const record = value as Record<string, unknown>;
+    // Match CinemaPresentationGateway.card: full scene/detail text is 1200
+    // UTF-16 units, rail/grid text 360. Never truncate the message itself.
+    const card = typeof record.key === 'string' && typeof record.description === 'string';
+    return Object.fromEntries(Object.entries(record).map(([key, child]) => [key,
+      card && key === 'description' && typeof child === 'string'
+        ? child.slice(0, field === 'scene' || field === 'selected' ? 1200 : 360)
+        : boundedImages(child, key),
+    ]));
   }
   return value;
 }
