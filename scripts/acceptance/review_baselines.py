@@ -10,6 +10,7 @@ from pathlib import Path
 import re
 import stat
 import subprocess
+import time
 import zipfile
 from PIL import Image
 from manifest import ROOT, digest, read, require, write
@@ -53,8 +54,15 @@ def prepare(archive_path, artifact, review):
     prepared = {}
     with zipfile.ZipFile(archive_path) as archive:
         require(len(archive.infolist()) <= 3000 and len(archive.namelist()) == len(set(archive.namelist())), 'Duplicate or excessive archive members')
-        for item in entries:
+        for original in entries:
+            item = {**artifact.get('captureDefaults', {}), **original}
             family, project, state = item['family'], item['project'], item['state']
+            if 'imagePath' not in item or 'metadataPath' not in item:
+                root = artifact.get('captureRoot', '')
+                require(isinstance(root, str) and root and not root.endswith('/'), 'Missing capture root')
+                item.setdefault('imagePath', f'{root}/{project}/{state}.png')
+                item.setdefault('metadataPath', f'{root}/{project}/{state}.json')
+            item.setdefault('reason', review.get('stateReviews', {}).get(state, ''))
             if family == 'hybrid-browser':
                 require(project in BROWSER_PROJECTS and state in BROWSER_STATES, 'Unknown browser baseline')
                 expected_size = BROWSER_PROJECTS[project]
@@ -138,7 +146,9 @@ def stage(manifest, output):
         archive.unlink()
     # All captures are validated before creating the first immutable Git object.
     elements = []
-    for path, data in sorted(all_entries.items()):
+    for index, (path, data) in enumerate(sorted(all_entries.items())):
+        # Bound content-creation pressure; do not retry writes or change approval.
+        if index: time.sleep(1)
         value = api(f'repos/{REPOSITORY}/git/blobs', {'encoding': 'base64', 'content': base64.b64encode(data).decode()})
         expected = hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest()
         require(value['sha'] == expected, 'Git blob identity differs from reviewed bytes')

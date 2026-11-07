@@ -65,6 +65,23 @@ class BaselineReviewTest(unittest.TestCase):
             artifact['zipSha256'] = 'f' * 64
             with self.assertRaisesRegex(ValueError, 'digest mismatch'): prepare(archive, artifact, review)
 
+    def test_compact_review_expands_to_identical_approved_bytes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            archive, artifact, review, _ = self.fixture(Path(tmp))
+            original = prepare(archive, artifact, review)
+            item = artifact['images'][0]
+            artifact['captureDefaults'] = {'family': item.pop('family'), 'project': item.pop('project')}
+            review['stateReviews'] = {'home': item.pop('reason')}
+            self.assertEqual(prepare(archive, artifact, review), original)
+
+    def test_compact_root_cannot_escape_archive_member_policy(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            archive, artifact, review, _ = self.fixture(Path(tmp))
+            item = artifact['images'][0]
+            del item['imagePath']; del item['metadataPath']
+            artifact['captureRoot'] = '../outside'
+            with self.assertRaisesRegex(ValueError, 'Invalid capture path'): prepare(archive, artifact, review)
+
     def test_api_cannot_mutate_a_ref_or_create_a_release(self):
         with patch('review_baselines.subprocess.run') as call:
             for endpoint in ('repos/blackkcold/CinemaTV/git/refs/heads/dev', 'repos/blackkcold/CinemaTV/releases', 'repos/elsewhere/other/git/blobs'):
