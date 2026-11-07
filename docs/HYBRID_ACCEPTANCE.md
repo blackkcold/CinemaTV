@@ -1,8 +1,9 @@
 # Hybrid acceptance hardening · branch-only implementation
 
 Base: `dev@7d3ec0055cf8cf48edb18b8ea91763114633123a`.
-Working branch: `fix/hybrid-acceptance-serial-qa`.
-The user's 2026-11-06 instruction supersedes the historical branch name in AGENTS.md: save incremental commits on this new branch; do not merge or publish.
+Working development line: **`dev-hybird`** (the user's exact spelling).
+Recovered checkpoint: `c176b0303616c4f46786315d99c5d74dbb1583b9` from `fix/hybrid-acceptance-serial-qa`; that branch remains untouched.
+Save incremental commits on `dev-hybird`; do not merge, sign or publish. The new development line descends from the unchanged Dev base through the recovered acceptance commits.
 
 ## Scope
 
@@ -28,3 +29,14 @@ Legacy native TV component captures, actual TV hybrid captures, native fallback,
 - Android emulator acceleration: https://developer.android.com/studio/run/emulator-acceleration
 
 Implementation and actual verification results are recorded separately. A checked-in test or reserved release number is not a passed test or published APK.
+
+## Development-line validation
+
+Every push runs host safety and provenance checks. A green host-only workflow is **not** a complete acceptance result. Commit markers select deliberate resource-intensive runs:
+
+- `[visual-capture]`: production-browser candidate captures; no automatic approval.
+- `[android-visual-capture]`: build exact APK configurations, then actual-TV 1080p and 4K captures sequentially; not the full device matrix.
+- `[acceptance-capture]`: full ordered matrix with visual review pending.
+- `[acceptance-run]`: full strict matrix against reviewed, environment-matched baselines.
+
+The aggregate `acceptance-manifest.json`, not the workflow's green badge, determines the scope accepted. All emulator leaf jobs share `cinematv-emulator-exclusive` with `queue: max` and no cancellation. The final full chain ends with native 4K followed by actual-TV hybrid 4K. No production-private signing material is required or requested for this branch.

@@ -1,7 +1,7 @@
-name: Hybrid acceptance
+name: Dev-hybird acceptance
 on:
   push:
-    branches: [fix/hybrid-acceptance-serial-qa]
+    branches: [dev-hybird]
   workflow_dispatch:
 permissions:
   contents: read
@@ -63,27 +63,6 @@ jobs:
           path: ${{ runner.temp }}/acceptance-source/
           if-no-files-found: error
           retention-days: 7
-  policy-stage:
-    name: Prepare mutex policy blobs / no ref mutation
-    needs: source
-    if: contains(github.event.head_commit.message, '[policy-stage]')
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-        with: {ref: '${{ github.sha }}', persist-credentials: false}
-      - run: python3 -m pip install --disable-pip-version-check 'PyYAML==6.0.3'
-      - name: Stage only deterministic policy changes for connector review
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python3 scripts/acceptance/stage_workflows.py --output "$RUNNER_TEMP/staged-policy"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: acceptance-staged-policy
-          path: ${{ runner.temp }}/staged-policy/
-          if-no-files-found: error
   browser:
     needs: source
     if: needs.source.outputs.visual == 'true'

@@ -37,7 +37,7 @@ class OrchestrationTest(unittest.TestCase):
             self.assertNotIn('gh pr merge', text)
             self.assertNotIn('git push', text)
         text = (ROOT / '.github/workflows/hybrid-acceptance.yml').read_text()
-        self.assertIn('branches: [fix/hybrid-acceptance-serial-qa]', text)
+        self.assertIn('branches: [dev-hybird]', text)
 
 
 if __name__ == '__main__': unittest.main()

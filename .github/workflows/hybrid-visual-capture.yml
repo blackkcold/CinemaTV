@@ -1,7 +1,7 @@
 name: Hybrid actual-TV visual candidates
 on:
   push:
-    branches: [fix/hybrid-acceptance-serial-qa]
+    branches: [dev-hybird]
 permissions:
   contents: read
 concurrency:
