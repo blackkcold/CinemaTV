@@ -12,7 +12,7 @@ on:
         description: Select one device for diagnosis, or all for acceptance
         type: choice
         default: all
-        options: [all, phone, tv1080, tv4k, compat26]
+        options: [all, phone, tv1080, tv4k, tvNative, tv29, tv31, tv36, compat26]
   schedule:
     - cron: '40 3 * * 1'
 permissions:
@@ -111,14 +111,14 @@ jobs:
         run: sudo chmod 666 /dev/kvm
       - uses: reactivecircus/android-emulator-runner@v2
         # 4K's bounded functional suite needs renderer variance plus setup/export.
-        timeout-minutes: ${{ matrix.name == 'tv4k' && 30 || 25 }}
+        timeout-minutes: ${{ (matrix.name == 'tv4k' || matrix.name == 'tvNative') && 30 || 25 }}
         with:
           api-level: ${{ matrix.api }}
           # TV hosts use AOSP: prior Google-image evidence is a different
           # environment and cannot substitute for this matrix's acceptance.
           target: ${{ matrix.target }}
-          arch: x86_64
-          profile: pixel_2
+          arch: ${{ matrix.name == 'tvNative' && 'x86' || 'x86_64' }}
+          profile: ${{ matrix.name == 'tvNative' && 'tv_1080p' || 'pixel_2' }}
           # Android's archived stable build; newer 37.2.13 runners lost the
           # emulator connection during screenshot readback in this suite.
           emulator-build: '15004761'

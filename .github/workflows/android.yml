@@ -24,6 +24,8 @@ jobs:
           python3 -m unittest discover -s scripts/tests -v
           python3 -m unittest discover -s scripts/glass-production -p 'test_*.py' -v
           python3 -m unittest discover -s scripts/glass-performance -p 'test_*.py' -v
+          python3 -m unittest discover -s scripts/perf_common -p 'test_*.py' -v
+          python3 -m unittest discover -s scripts/native-tv-perf -p 'test_*.py' -v
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -57,6 +59,10 @@ jobs:
           npm --prefix backend/tv-bff test
       - name: Verify exact Noto font bytes before further gates
         run: python3 scripts/fonts/verify-noto-fonts.py
+      - name: Compile the release TV acceptance test APK
+        run: |
+          gradle --no-daemon --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process \
+            -PcinematvNativeTvAcceptance=true :app:assembleReleaseAndroidTest
       - name: Require executed Android JUnit tests
         run: |
           python3 - <<'PYTEST'

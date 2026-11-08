@@ -22,6 +22,7 @@ internal class FrameTimingRecorder(private val activity: Activity) {
     private val handler = Handler(thread.looper)
     private val frames = mutableListOf<JSONObject>()
     private val windows = JSONArray()
+    private val inputs = JSONArray()
     private var callbackDrops = 0
     private var truncated = false
     private var closed = false
@@ -37,6 +38,15 @@ internal class FrameTimingRecorder(private val activity: Activity) {
             put("commandNs", metrics.getMetric(FrameMetrics.COMMAND_ISSUE_DURATION))
             put("swapNs", metrics.getMetric(FrameMetrics.SWAP_BUFFERS_DURATION))
             put("firstDraw", metrics.getMetric(FrameMetrics.FIRST_DRAW_FRAME) == 1L)
+            synchronized(inputs) {
+                for (index in 0 until inputs.length()) {
+                    val input = inputs.getJSONObject(index)
+                    if (!input.has("responseDrawNs") &&
+                        input.getLong("receivedNs") <= metrics.getMetric(FrameMetrics.VSYNC_TIMESTAMP)) {
+                        input.put("responseDrawNs", metrics.getMetric(FrameMetrics.VSYNC_TIMESTAMP))
+                    }
+                }
+            }
             if (Build.VERSION.SDK_INT >= 31) {
                 put("gpuNs", metrics.getMetric(FrameMetrics.GPU_DURATION))
                 put("deadlineNs", metrics.getMetric(FrameMetrics.DEADLINE))
@@ -46,6 +56,7 @@ internal class FrameTimingRecorder(private val activity: Activity) {
     init { activity.window.addOnFrameMetricsAvailableListener(listener, handler) }
     fun mark(input: JSONObject, startNs: Long) {
         windows.put(JSONObject(input.toString()).put("startNs", startNs).put("endNs", startNs + ACTIVE_NS))
+        synchronized(inputs) { inputs.put(JSONObject(input.toString()).put("receivedNs", startNs)) }
     }
     fun cancel() {
         if (closed) return
@@ -53,7 +64,8 @@ internal class FrameTimingRecorder(private val activity: Activity) {
         activity.window.removeOnFrameMetricsAvailableListener(listener)
         thread.quitSafely()
     }
-    fun finish(runId: String, metadata: JSONObject) {
+    /** [outputFile] lets a release acceptance test choose an owned path; the benchmark keeps its default. */
+    fun finish(runId: String, metadata: JSONObject, outputFile: File? = null) {
         check(!closed)
         closed = true
         activity.window.removeOnFrameMetricsAvailableListener(listener)
@@ -62,7 +74,9 @@ internal class FrameTimingRecorder(private val activity: Activity) {
         handler.post {
             try {
                 @Suppress("DEPRECATION") val refresh = activity.windowManager.defaultDisplay.refreshRate
-                metadata.put("schema", 2).put("runId", runId)
+                if (!metadata.has("device")) metadata.put("device", Build.MODEL)
+                if (!metadata.has("renderer")) metadata.put("renderer", "window-framemetrics")
+                metadata.put("schema", 3).put("protocolVersion", 3).put("runId", runId)
                     .put("buildType", BuildConfig.BUILD_TYPE)
                     .put("debuggable", 0 != (activity.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE))
                     .put("deviceModel", Build.MODEL).put("hardware", Build.HARDWARE).put("sdk", Build.VERSION.SDK_INT)
@@ -71,10 +85,11 @@ internal class FrameTimingRecorder(private val activity: Activity) {
                     .put("screenWidthDp", activity.resources.configuration.screenWidthDp)
                     .put("screenHeightDp", activity.resources.configuration.screenHeightDp)
                     .put("refreshHz", refresh).put("metricCallbackDrops", callbackDrops).put("truncated", truncated)
-                    .put("activeWindowNs", ACTIVE_NS).put("windows", windows).put("frames", JSONArray(frames))
+                    .put("activeWindowNs", ACTIVE_NS).put("windows", windows)
+                    .put("inputs", JSONArray(inputs.toString())).put("frames", JSONArray(frames))
                     .put("scope", "Window FrameMetrics. VSYNC_TIMESTAMP is app render cadence, not actual display presentation. TOTAL_DURATION inverse is not FPS. Native-key activity windows exclude launch, warmup and idle gaps.")
-                val file = File(activity.getExternalFilesDir(null), "glass-performance/$runId.json")
-                file.parentFile!!.mkdirs()
+                val file = outputFile ?: File(activity.getExternalFilesDir(null), "glass-performance/$runId.json")
+                file.parentFile?.mkdirs()
                 file.writeText(metadata.toString())
             } catch (error: Throwable) { writeFailure = error } finally { latch.countDown() }
         }

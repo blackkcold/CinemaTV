@@ -5,11 +5,21 @@ import sys
 
 DEVICES = [
     {"name": "phone", "target": "google_apis", "api": 30, "size": "1080x1920", "density": 420,
-     "classes": "dev.cinematv.MobileNavigationSmokeTest,dev.cinematv.OfficialLibreTvPlaybackAcceptanceTest,dev.cinematv.TvLaunchSmokeTest,dev.cinematv.MobilePlaybackSmokeTest,dev.cinematv.data.LocalMediaLibraryTest,dev.cinematv.data.LocalWorkAssociationPersistenceTest,dev.cinematv.data.RepositoryContractTest,dev.cinematv.data.LibreTvProtocolTest,dev.cinematv.MobileWorkNavigationTest,dev.cinematv.MobileManualWorkAssociationTest,dev.cinematv.MobileLibraryCatalogControlsTest,dev.cinematv.MobileRecommendationDashboardTest,dev.cinematv.MobileGlassButtonTest,dev.cinematv.CinemaBrandStartupTest,dev.cinematv.ui.typography.NotoFontsDeviceTest"},
+     "classes": "dev.cinematv.MobileNavigationSmokeTest,dev.cinematv.OfficialLibreTvPlaybackAcceptanceTest,dev.cinematv.MobilePlaybackSmokeTest,dev.cinematv.data.LocalMediaLibraryTest,dev.cinematv.data.LocalWorkAssociationPersistenceTest,dev.cinematv.data.RepositoryContractTest,dev.cinematv.data.LibreTvProtocolTest,dev.cinematv.MobileWorkNavigationTest,dev.cinematv.MobileManualWorkAssociationTest,dev.cinematv.MobileLibraryCatalogControlsTest,dev.cinematv.MobileRecommendationDashboardTest,dev.cinematv.MobileGlassButtonTest,dev.cinematv.CinemaBrandStartupTest,dev.cinematv.ui.typography.NotoFontsDeviceTest"},
     {"name": "tv1080", "target": "default", "api": 33, "size": "1920x1080", "density": 320,
      "classes": "dev.cinematv.TvUiRegressionTest,dev.cinematv.OfficialLibreTvPlaybackAcceptanceTest,dev.cinematv.TvWorkNavigationTest,dev.cinematv.TvManualWorkAssociationTest,dev.cinematv.TvLibraryCatalogControlsTest,dev.cinematv.TvRecommendationDashboardTest,dev.cinematv.GlassMaterialSmokeTest,dev.cinematv.ui.typography.NotoFontsDeviceTest,dev.cinematv.FocusMediaCardMotionTest,dev.cinematv.InterruptedFocusRestorationTest,dev.cinematv.GlassActionLayoutTest,dev.cinematv.ContentRailTraversalTest,dev.cinematv.ContentRailVisibilityTest,dev.cinematv.FocusBoundRelocationTest"},
     {"name": "tv4k", "target": "default", "api": 33, "size": "3840x2160", "density": 640,
      "classes": "dev.cinematv.TvUiRegressionTest,dev.cinematv.TvWorkNavigationTest,dev.cinematv.TvManualWorkAssociationTest,dev.cinematv.TvLibraryCatalogControlsTest,dev.cinematv.TvRecommendationDashboardTest,dev.cinematv.GlassMaterialSmokeTest,dev.cinematv.ui.typography.NotoFontsDeviceTest"},
+    # The only production-entry TV lane: a real Android TV image, not a resized phone.
+    {"name": "tvNative", "target": "google-tv", "api": 33, "size": "1920x1080", "density": 320,
+     "classes": "dev.cinematv.TvLaunchSmokeTest,dev.cinematv.MainActivityPathSmokeTest,dev.cinematv.TvRouteBackTest,dev.cinematv.TvImeBackTest,dev.cinematv.playback.NativePlaybackSessionTest,dev.cinematv.SourceSubscriptionsUiTest#nativeTvRemoteCanReadLongPreviewAndFailedRefreshKeepsImportedSources,dev.cinematv.GlassMaterialSmokeTest"},
+    # Component/compatibility lanes on phone images: API and visual evidence, not TV identity.
+    {"name": "tv29", "target": "default", "api": 29, "size": "1920x1080", "density": 320,
+     "classes": "dev.cinematv.GlassMaterialSmokeTest,dev.cinematv.TvFieldChipTest,dev.cinematv.ui.typography.NotoFontsDeviceTest"},
+    {"name": "tv31", "target": "default", "api": 31, "size": "1920x1080", "density": 320,
+     "classes": "dev.cinematv.GlassMaterialSmokeTest,dev.cinematv.TvStatusDialogTest"},
+    {"name": "tv36", "target": "default", "api": 36, "size": "1920x1080", "density": 320,
+     "classes": "dev.cinematv.GlassMaterialSmokeTest,dev.cinematv.TvHeroTest"},
     # Minimum-supported Android: offline fonts, glass fallback and brand motion,
     # plus short recommendation and current card/control regressions; no duplicate full navigation/player chain.
     {"name": "compat26", "target": "google_apis", "api": 26, "size": "1920x1080", "density": 320,
@@ -22,7 +32,7 @@ def select(target):
         return {"include": DEVICES}
     devices = [device for device in DEVICES if device["name"] == target]
     if not devices:
-        raise ValueError(f"Unknown QA target: {target!r}; expected all, phone, tv1080, tv4k or compat26")
+        raise ValueError(f"Unknown QA target: {target!r}; expected all, phone, tv1080, tv4k, compat26, tvNative, tv29, tv31 or tv36")
     return {"include": devices}
 
 

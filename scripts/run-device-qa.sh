@@ -75,7 +75,7 @@ device_window_ready() {
        "$windows" == *"mScreenOnFully=true"* &&
        "$windows" == *"mWindowManagerDrawComplete=true"* &&
        "$windows" != *"mDisplayFrozen=true"* ]] &&
-    printf '%s\n' "$windows" | grep -E 'mCurrentFocus=Window\{[^}]+ (com.google.android.apps.nexuslauncher|com.android.launcher3)/' > /dev/null
+    printf '%s\n' "$windows" | grep -E 'mCurrentFocus=Window\{[^}]+ (com.google.android.apps.nexuslauncher|com.android.launcher3|com.google.android.tvlauncher|com.android.tvlauncher|com.google.android.apps.tv.launcherx)/' > /dev/null
 }
 
 wait_for_device_window() {

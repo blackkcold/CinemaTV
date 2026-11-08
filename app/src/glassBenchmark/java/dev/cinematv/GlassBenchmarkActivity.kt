@@ -9,7 +9,6 @@ import android.view.KeyEvent
 import android.view.View
 import android.view.Window
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.compose.runtime.CompositionLocalProvider
@@ -112,7 +111,6 @@ class GlassBenchmarkActivity : ComponentActivity() {
                     },
                     LocalProductionSceneDecoded provides { decodedScene = it },
                 ) {
-                    BackHandler(enabled = model.page != Page.HOME) { model.back() }
                     TvRootApp(model)
                 }
             }

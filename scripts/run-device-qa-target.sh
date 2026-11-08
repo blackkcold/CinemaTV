@@ -15,7 +15,7 @@ case "$TARGET" in
       --directory "$RUNNER_TEMP/official-libretv-android" \
       --report qa/official-lifecycle.json -- bash scripts/run-device-qa.sh "$@"
     ;;
-  tv4k|compat26)
+  tv4k|compat26|tvNative|tv29|tv31|tv36)
     exec bash scripts/run-device-qa.sh "$@"
     ;;
   *)

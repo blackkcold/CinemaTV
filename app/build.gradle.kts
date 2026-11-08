@@ -33,6 +33,10 @@ val updatesEnabled = providers.gradleProperty("cinematvUpdatesEnabled").getOrEls
 val unsignedCandidate = providers.gradleProperty("cinematvUnsignedCandidate").getOrElse("false").toBooleanStrict()
 // Explicit test-only source selection. Never pull the debug UI hosts into release tests.
 val updateAcceptance = providers.gradleProperty("cinematvUpdateAcceptance").getOrElse("false").toBooleanStrict()
+val nativeTvAcceptance = providers.gradleProperty("cinematvNativeTvAcceptance").getOrElse("false").toBooleanStrict()
+require(!(updateAcceptance && nativeTvAcceptance)) {
+    "cinematvUpdateAcceptance and cinematvNativeTvAcceptance select different release test roots"
+}
 if (updateAcceptance) {
     require(unsignedCandidate && updatesEnabled && updateChannel == "dev") {
         "Update acceptance requires an unsigned, update-enabled dev release candidate"
@@ -83,7 +87,7 @@ fun javaStringLiteral(value: String): String = "\"" + value
 
 android {
     namespace = "dev.cinematv"
-    if (updateAcceptance) testBuildType = "release"
+    if (updateAcceptance || nativeTvAcceptance) testBuildType = "release"
     compileSdk = 36
     defaultConfig {
         applicationId = "dev.cinematv"
@@ -145,9 +149,15 @@ android {
     sourceSets["main"].assets.srcDir(layout.buildDirectory.dir("generated/tvWebAssets"))
     if (updateAcceptance) {
         sourceSets["androidTest"].setRoot("src/updateAcceptance")
+    } else if (nativeTvAcceptance) {
+        sourceSets["androidTest"].setRoot("src/nativeTvAcceptance")
+        sourceSets["androidTest"].java.srcDir("src/perf")
     } else {
         sourceSets["androidTest"].assets.srcDir("$projectDir/schemas")
     }
+    // Shared recorder: debug target APK and the isolated benchmark; release never ships it.
+    sourceSets["debug"].java.srcDir("src/perf")
+    sourceSets["glassBenchmark"].java.srcDir("src/perf")
     sourceSets["glassBenchmark"].res.srcDir("src/debug/res")
     packaging { resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" } }
 }

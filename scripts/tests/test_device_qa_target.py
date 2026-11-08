@@ -55,7 +55,7 @@ class DeviceQaTargetTest(unittest.TestCase):
                               env=dict(self.env, QA_STATUS=str(status)), capture_output=True, text=True, timeout=5)
 
     def test_all_targets_through_actual_action_shell(self):
-        for target in ('phone', 'tv1080', 'tv4k', 'compat26'):
+        for target in ('phone', 'tv1080', 'tv4k', 'tvNative', 'tv29', 'tv31', 'tv36', 'compat26'):
             with self.subTest(target=target):
                 result = self.invoke(target)
                 self.assertEqual(result.returncode, 0, result.stderr)
@@ -67,7 +67,7 @@ class DeviceQaTargetTest(unittest.TestCase):
                     self.assertEqual(args[:-3], ['normal'])
 
     def test_dispatch_errors_preserve_failure_for_both_paths(self):
-        for target in ('phone', 'tv1080', 'tv4k', 'compat26'):
+        for target in ('phone', 'tv1080', 'tv4k', 'tvNative', 'tv29', 'tv31', 'tv36', 'compat26'):
             with self.subTest(target=target):
                 self.assertEqual(self.invoke(target, status=17).returncode, 17)
 
