@@ -40,8 +40,8 @@ import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import dev.cinematv.CinemaViewModel
 import dev.cinematv.Page
-import dev.cinematv.ui.GlassAction
-import dev.cinematv.ui.TvInput
+import dev.cinematv.ui.tv.components.GlassAction
+import dev.cinematv.ui.tv.components.TvField
 import dev.cinematv.ui.TvPlayerPage
 import dev.cinematv.ui.tv.TvRootApp
 import dev.cinematv.ui.tv.design.CinemaTvTheme
@@ -160,7 +160,8 @@ private fun HybridSearchInput(initial: String, onDismiss: () -> Unit, onSearch: 
                 Column(Modifier.widthIn(max = 620.dp).fillMaxWidth(.8f).background(Color(0xFA161B24), RoundedCornerShape(26.dp))
                     .padding(30.dp).testTag("hybrid-search-input"), verticalArrangement = Arrangement.spacedBy(18.dp)) {
                     Text("搜索影视", color = TvColors.Text, fontSize = 26.sp)
-                    TvInput(query, { query = it.take(120) }, "片名、演员或关键词", Modifier.fillMaxWidth().focusRequester(focus), onSubmit = ::submit)
+                    TvField(query, { query = it.take(120) }, "片名、演员或关键词", Modifier.fillMaxWidth(),
+                        shellModifier = Modifier.focusRequester(focus), onSubmit = ::submit)
                     Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                         GlassAction("搜索", Modifier.width(135.dp).height(44.dp), prominent = true, onClick = ::submit)
                         GlassAction("取消", Modifier.width(135.dp).height(44.dp), onClick = ::dismiss)

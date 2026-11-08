@@ -39,7 +39,7 @@ import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.tv.material3.MaterialTheme
-import dev.cinematv.ui.GlassAction
+import dev.cinematv.ui.tv.components.GlassAction
 import dev.cinematv.ui.icons.CinemaSymbol
 import dev.cinematv.ui.tv.design.LocalTvEffects
 import dev.cinematv.ui.tv.design.TvEffects

@@ -19,8 +19,13 @@ class LazyFocusTargetTest {
         assertEquals(LazyFocusTarget(2, "movies"), resolveLazyFocusTarget(listOf("hero", "continue", "movies", "series"), "movies"))
     }
 
-    @Test fun removedTitleFallsBackToFirstCurrentTitle() {
-        assertEquals(LazyFocusTarget(0, "movie-1"), resolveLazyFocusTarget(listOf("movie-1", "movie-2"), "dropped-movie"))
+    @Test fun removedTitleFallsBackToItsOldPositionWithinTheNewTail() {
+        assertEquals(LazyFocusTarget(1, "movie-2"),
+            resolveLazyFocusTarget(listOf("movie-1", "movie-2"), "dropped-movie", fallbackIndex = 1))
+        assertEquals(LazyFocusTarget(1, "movie-2"),
+            resolveLazyFocusTarget(listOf("movie-1", "movie-2"), "dropped-movie", fallbackIndex = 9))
+        assertEquals(LazyFocusTarget(0, "movie-1"),
+            resolveLazyFocusTarget(listOf("movie-1", "movie-2"), "dropped-movie"))
     }
 
     @Test fun emptyRailHasNoTarget() {

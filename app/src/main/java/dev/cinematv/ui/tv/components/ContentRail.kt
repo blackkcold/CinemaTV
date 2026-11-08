@@ -34,7 +34,7 @@ import dev.cinematv.ui.tv.design.*
 import dev.cinematv.ui.tv.focus.*
 
 @Composable
-fun ContentRail(title: String, items: List<MediaItem>, model: CinemaViewModel, portrait: Boolean = false, continueWatching: Boolean = false, entryRequester: FocusRequester? = null) {
+fun ContentRail(title: String, items: List<MediaItem>, model: CinemaViewModel, portrait: Boolean = false, continueWatching: Boolean = false, entryRequester: FocusRequester? = null, action: (@Composable () -> Unit)? = null) {
     if (items.isEmpty()) return
     val layout = LocalTvLayout.current
     val region = "rail:$title"
@@ -98,8 +98,12 @@ fun ContentRail(title: String, items: List<MediaItem>, model: CinemaViewModel, p
         cancelMovement()
     }
     Column(Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 12.dp)) {
-        Text(title, color = TvColors.Text, fontSize = 22.sp, fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(start = layout.gutter, bottom = 4.dp))
+        Row(Modifier.fillMaxWidth().padding(start = layout.gutter, end = layout.gutter, bottom = 4.dp),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+            Text(title, color = TvColors.Text, fontSize = 22.sp, fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f))
+            action?.invoke()
+        }
         LazyRow(state = state, modifier = Modifier.fillMaxWidth()
                 .bringIntoViewRequester(rowVisibility)
                 .onSizeChanged { rowSize = it }
@@ -112,7 +116,7 @@ fun ContentRail(title: String, items: List<MediaItem>, model: CinemaViewModel, p
                 FocusMediaCard(item, onFocus = {
                     activeKey = item.presentationKey
                     if (!traversal.requestingFocus) cancelMovement()
-                    model.onMediaFocus(item, region)
+                    model.onMediaFocus(item, region, index)
                 }, onClick = { model.open(item) },
                     portrait = portrait, continueWatching = continueWatching,
                     modifier = Modifier.focusRequester(target)

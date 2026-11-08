@@ -1,11 +1,14 @@
 package dev.cinematv.ui
 
+import dev.cinematv.ui.tv.components.GlassAction
+
 import dev.cinematv.ui.icons.CinemaSymbol
 import android.view.ViewGroup
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import dev.cinematv.ui.typography.CinemaTvText as Text
@@ -39,6 +42,7 @@ import dev.cinematv.playback.NativePlaybackSession
 import dev.cinematv.playback.ObservePlaybackLifecycle
 import dev.cinematv.playback.togglePlayPause
 import dev.cinematv.ui.tv.components.CinemaGlassSurface
+import dev.cinematv.ui.tv.components.TvProgressBar
 import dev.cinematv.ui.tv.design.LocalTvLayout
 import dev.cinematv.ui.tv.focus.trackTvContentFocus
 import dev.cinematv.ui.shared.RemoteBackPress
@@ -105,6 +109,7 @@ fun TvPlayerPage(model: CinemaViewModel) {
     var duration by remember(session) { mutableLongStateOf(0L) }
     var error by remember(session) { mutableStateOf("") }
     var isPlaying by remember(session) { mutableStateOf(true) }
+    var buffering by remember(session) { mutableStateOf(player.playbackState == Player.STATE_BUFFERING) }
     var playRequested by remember(session) { mutableStateOf(player.playWhenReady) }
     var controlsVisible by remember(session) { mutableStateOf(true) }
     var panel by remember(session) { mutableStateOf<PlayerPanel?>(null) }
@@ -144,8 +149,10 @@ fun TvPlayerPage(model: CinemaViewModel) {
                 controlsVisible = true
             }
             override fun onPlaybackStateChanged(state: Int) {
+                buffering = state == Player.STATE_BUFFERING
                 if (state == Player.STATE_ENDED) model.playerEnded(player.currentPosition, player.duration.coerceAtLeast(0L), episodeAtCreation, session)
             }
+            override fun onIsLoadingChanged(loading: Boolean) { buffering = loading }
             override fun onIsPlayingChanged(playing: Boolean) { isPlaying = playing }
             override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
                 playRequested = playWhenReady
@@ -280,9 +287,10 @@ fun TvPlayerPage(model: CinemaViewModel) {
                                 else -> false
                             }
                         }.trackTvContentFocus().focusable(), contentAlignment = Alignment.CenterStart) {
-                        Box(Modifier.fillMaxWidth().height(4.dp).background(Color.White.copy(alpha = .23f)))
-                        if (duration > 0) Box(Modifier.fillMaxWidth((position.toDouble() / duration).toFloat().coerceIn(0f, 1f))
-                            .height(4.dp).background(Ivory))
+                        TvProgressBar(
+                            progress = if (duration > 0) (position.toDouble() / duration).toFloat() else 0f,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(9.dp), verticalAlignment = Alignment.CenterVertically) {
                         GlassAction("−10s", Modifier.width(62.dp).height(41.dp), onFocus = { interaction++ }) { seek(-10000) }
@@ -300,6 +308,13 @@ fun TvPlayerPage(model: CinemaViewModel) {
                         if (model.playerReturnPage == Page.DETAIL) GlassAction("选集 / 换源", Modifier.width(110.dp).height(41.dp), onFocus = { interaction++ }) { model.back() }
                     }
                 }
+            }
+        }
+
+        if (buffering) {
+            Box(Modifier.align(Alignment.Center).background(Color(0xCC090A0D), RoundedCornerShape(14.dp))
+                .padding(horizontal = 22.dp, vertical = 14.dp)) {
+                Text("正在缓冲…", color = Ivory, fontSize = 16.sp)
             }
         }
 

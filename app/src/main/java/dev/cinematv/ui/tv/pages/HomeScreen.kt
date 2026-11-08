@@ -16,7 +16,7 @@ import dev.cinematv.ui.tv.components.TvEmptyState
 import dev.cinematv.Page
 import dev.cinematv.isUsable
 import dev.cinematv.ConnectionCopy
-import dev.cinematv.ui.GlassAction
+import dev.cinematv.ui.tv.components.GlassAction
 import dev.cinematv.ui.tv.components.*
 import dev.cinematv.ui.tv.focus.*
 import dev.cinematv.ui.tv.design.LocalTvLayout
@@ -29,10 +29,18 @@ fun HomeScreen(model: CinemaViewModel) {
     val discoveryTitle = "发现 · 搜索「${discovery.query}」"
     val state = rememberTvListState(model, "page")
     val firstRail = remember { FocusRequester() }
+    val entry = LocalContentFocus.current
     val layout = LocalTvLayout.current
     val itemBringIntoViewSpec = LocalBringIntoViewSpec.current
     val hasLocalRails = history.isNotEmpty() || model.featured.isNotEmpty() || model.tvShows.isNotEmpty()
     val hasRail = hasLocalRails || discovery.items.isNotEmpty()
+    // The hero is a manual, independent shelf: a featured set first, then the
+    // bounded discovery result for a LibreTV-only install. It never auto-advances.
+    val heroItems = when {
+        model.featured.isNotEmpty() -> model.featured.take(8)
+        discovery.items.isNotEmpty() -> discovery.items.take(8)
+        else -> emptyList()
+    }
     val bookmark = remember { model.focusCoordinator.last(model.focusRoute) }
     var prepared by remember { mutableStateOf(false) }
     LaunchedEffect(history.size, model.featured.size, model.tvShows.size, discovery.items.size) {
@@ -43,7 +51,6 @@ fun HomeScreen(model: CinemaViewModel) {
             if (model.featured.isNotEmpty()) add("movies" to "rail:为你精选")
             if (model.tvShows.isNotEmpty()) add("series" to "rail:值得追的好故事")
             if (discovery.items.isNotEmpty()) add("discover" to "rail:$discoveryTitle")
-            if (model.featured.size > 6) add("more" to "rail:更多电影")
         }
         // A new continue rail can move the bookmarked row. If the whole region
         // disappeared, compose the hero so the page fallback is still usable.
@@ -52,12 +59,29 @@ fun HomeScreen(model: CinemaViewModel) {
         prepared = true
     }
     RestorePageFocus(model, ready = prepared)
+    // The hero is the HOME landing target. RestorePageFocus owns bookmarked rows;
+    // this only completes the no-bookmark entry after the hero has composed.
+    val homeBookmark = remember(model.focusRoute) { model.focusCoordinator.last(model.focusRoute) }
+    var initialHeroFocusDone by remember(model.focusRoute) { mutableStateOf(false) }
+    LaunchedEffect(prepared, heroItems.isNotEmpty()) {
+        if (!initialHeroFocusDone && prepared && heroItems.isNotEmpty() &&
+            (homeBookmark == null || homeBookmark.region == "hero")) {
+            withFrameNanos { }; withFrameNanos { }
+            runCatching { entry.requestFocus() }
+            initialHeroFocusDone = true
+        }
+    }
     CompositionLocalProvider(LocalBringIntoViewSpec provides RailViewportBringIntoViewSpec) {
         LazyColumn(state = state, modifier = Modifier.fillMaxSize().padding(top = layout.contentTop), contentPadding = PaddingValues(bottom = 45.dp)) {
             item(key = "hero") {
                 CompositionLocalProvider(LocalBringIntoViewSpec provides itemBringIntoViewSpec) {
-                    CinemaHero(model.focused ?: model.featured.firstOrNull() ?: discovery.items.firstOrNull(),
-                        model, belowFocus = firstRail.takeIf { hasRail })
+                    if (heroItems.isEmpty()) {
+                        CinemaHero(null, model, belowFocus = firstRail.takeIf { hasRail })
+                    } else {
+                        TvHero(heroItems.size, Modifier.height(layout.heroHeight)) { page ->
+                            CinemaHero(heroItems[page], model, belowFocus = firstRail.takeIf { hasRail })
+                        }
+                    }
                 }
             }
             if (history.isNotEmpty()) item(key = "continue") {
@@ -68,7 +92,10 @@ fun HomeScreen(model: CinemaViewModel) {
             if (model.featured.isNotEmpty()) item(key = "movies") {
                 CompositionLocalProvider(LocalBringIntoViewSpec provides itemBringIntoViewSpec) {
                     ContentRail("为你精选", model.featured, model, portrait = true,
-                        entryRequester = firstRail.takeIf { history.isEmpty() })
+                        entryRequester = firstRail.takeIf { history.isEmpty() },
+                        action = {
+                            GlassAction("查看全部", Modifier.height(36.dp)) { model.navigate(Page.MOVIES) }
+                        })
                 }
             }
             if (model.tvShows.isNotEmpty()) item(key = "series") {
@@ -83,7 +110,7 @@ fun HomeScreen(model: CinemaViewModel) {
                             entryRequester = firstRail.takeIf { !hasLocalRails })
                         Row(Modifier.padding(start = layout.gutter, top = 2.dp)) {
                             GlassAction(if (discovery.loading) "正在搜索…" else "换一批",
-                                Modifier.width(132.dp).height(40.dp)) { model.rotateDiscovery() }
+                                Modifier.width(132.dp).height(40.dp), enabled = !discovery.loading) { model.rotateDiscovery() }
                         }
                     }
                 }
@@ -116,9 +143,16 @@ fun HomeScreen(model: CinemaViewModel) {
                         modifier = Modifier.padding(horizontal = layout.gutter, vertical = 12.dp))
                 }
             }
-            if (model.featured.size > 6) item(key = "more") {
+            if (discovery.message.isNotBlank()) item(key = "discover-status") {
                 CompositionLocalProvider(LocalBringIntoViewSpec provides itemBringIntoViewSpec) {
-                    ContentRail("更多电影", model.featured.drop(6), model, portrait = true)
+                    if (discovery.items.isEmpty()) {
+                        TvErrorState("推荐暂时不可用", discovery.message,
+                            onRetry = { model.rotateDiscovery() },
+                            modifier = Modifier.padding(horizontal = layout.gutter, vertical = 16.dp))
+                    } else {
+                        TvStatusLine(discovery.message,
+                            Modifier.padding(horizontal = layout.gutter, vertical = 8.dp), error = true)
+                    }
                 }
             }
             if (model.catalogAttribution.isNotBlank()) item(key = "attribution") {

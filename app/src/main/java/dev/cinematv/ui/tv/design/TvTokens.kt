@@ -67,11 +67,12 @@ object TvRadius {
 object TvHeight {
     val chip = 36.dp
     val button = 44.dp
+    val row = 48.dp
     val field = 52.dp
 }
 
 object TvMotion {
-    const val microMs = 120
+    const val microMs = 110
     const val controlMs = 180
     const val sceneMs = 380
     const val toastMs = 6_000L

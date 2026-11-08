@@ -20,11 +20,13 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import dev.cinematv.CinemaViewModel
+import dev.cinematv.Page
 import dev.cinematv.data.MediaItem
-import dev.cinematv.ui.GlassAction
+import dev.cinematv.ui.tv.components.GlassAction
 import dev.cinematv.ui.shared.LibraryProgressReview
 import dev.cinematv.ui.shared.LibraryProgressReviews
 import dev.cinematv.ui.tv.components.CinemaGlassSurface
+import dev.cinematv.ui.tv.design.*
 import dev.cinematv.ui.tv.design.TvColors
 import dev.cinematv.ui.tv.design.LocalTvLayout
 import dev.cinematv.ui.tv.focus.LocalContentFocus
@@ -73,7 +75,7 @@ internal fun LibraryProgressReviewDialog(model: CinemaViewModel, onDismiss: () -
     val close = remember { FocusRequester() }
     val reviews = remember(model.libraryVersion) { LibraryProgressReviews.project(model.repo.library.snapshot) }
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        CinemaGlassSurface(Modifier.fillMaxWidth(.86f).fillMaxHeight(.88f), radius = 26.dp) {
+        CinemaGlassSurface(Modifier.fillMaxWidth(.86f).fillMaxHeight(.88f), radius = 26.dp, level = GlassRenderMode.BASIC) {
             Column(Modifier.padding(26.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 GlassAction("返回资料库", Modifier.focusRequester(close).width(155.dp).height(40.dp), onClick = onDismiss)
                 LazyColumn(Modifier.fillMaxWidth().weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) {

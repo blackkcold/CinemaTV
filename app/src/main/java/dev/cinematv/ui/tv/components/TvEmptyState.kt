@@ -11,12 +11,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import dev.cinematv.ui.tv.design.TvColors
 import dev.cinematv.ui.tv.design.TvRadius
 import dev.cinematv.ui.tv.design.TvSpace
+import dev.cinematv.ui.tv.design.TvText
 import dev.cinematv.ui.tv.design.TvType
-import dev.cinematv.ui.typography.CinemaTvText as Text
 
 /**
  * The one empty state for every route: a quiet tile, one sentence, one optional action.
@@ -40,10 +39,9 @@ fun TvEmptyState(
                     .background(TvColors.Secondary.copy(alpha = .35f), RoundedCornerShape(TvRadius.badge))
             )
         }
-        Text(title, color = TvColors.Text, fontSize = TvType.h3.size.sp, fontWeight = TvType.h3.weight)
+        TvText(title, style = TvType.h3, color = TvColors.Text)
         if (detail.isNotBlank()) {
-            Text(detail, color = TvColors.Secondary, fontSize = TvType.caption.size.sp,
-                lineHeight = TvType.caption.lineHeight.sp)
+            TvText(detail, style = TvType.caption, color = TvColors.Secondary)
         }
         action?.invoke()
     }

@@ -16,7 +16,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import dev.cinematv.BuildConfig
 import dev.cinematv.data.update.UpdateChannel
 import dev.cinematv.data.update.UpdatePolicy
-import dev.cinematv.ui.GlassAction
+import dev.cinematv.ui.tv.components.GlassAction
 import dev.cinematv.ui.mobile.MobileGlassOutlinedButton
 import dev.cinematv.ui.typography.CinemaText
 import dev.cinematv.ui.tv.design.TvColors

@@ -27,7 +27,6 @@ import dev.cinematv.ui.mobile.MobileRootApp
 import dev.cinematv.ui.shared.CinemaBrandSession
 import dev.cinematv.ui.tv.design.GlassQuality
 import dev.cinematv.ui.tv.TvRootApp
-import dev.cinematv.hybrid.HybridTvRootApp
 
 class MainActivity : ComponentActivity() {
     private val model: CinemaViewModel by viewModels()
@@ -73,7 +72,8 @@ class MainActivity : ComponentActivity() {
                         reducedMotion = model.reducedMotion,
                         lowCost = model.glassQuality == GlassQuality.BASIC,
                     ) {
-                        if (isTv) HybridTvRootApp(model) else MobileRootApp(model)
+                        // TV has one native route owner; the phone UI stays independent.
+                        if (isTv) TvRootApp(model) else MobileRootApp(model)
                     }
                 }
             }

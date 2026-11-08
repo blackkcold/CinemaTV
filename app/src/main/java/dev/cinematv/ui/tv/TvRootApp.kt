@@ -1,5 +1,6 @@
 package dev.cinematv.ui.tv
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -9,6 +10,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.cinematv.ui.typography.CinemaTvText as Text
@@ -34,6 +36,11 @@ fun TvRootApp(model: CinemaViewModel, settingsInitialSection: Int = 0, libraryMa
         LaunchedEffect(model.page, imeVisible) {
             if (shouldHideTvIme(model.page, imeVisible)) keyboard?.hide()
         }
+        // The one route owner. HOME with no local state falls through to the system
+        // exit; Dialogs and the player own their local Back windows/handlers.
+        BackHandler(enabled = model.page != Page.HOME || imeVisible) {
+            if (imeVisible) keyboard?.hide() else model.back()
+        }
         val savedPages = rememberSaveableStateHolder()
         val registry = remember { TvFocusRegistry() }
         val navigation = remember { FocusRequester() }
@@ -56,7 +63,7 @@ fun TvRootApp(model: CinemaViewModel, settingsInitialSection: Int = 0, libraryMa
             LocalProductionGlassScene provides glassScene) {
             val layout = LocalTvLayout.current
             if (model.page != Page.PLAYER) ArtworkPrefetch(model.featured + model.tvShows, model.focused)
-            Box(Modifier.fillMaxSize().then(posterInput).background(TvColors.Background)) {
+            Box(Modifier.fillMaxSize().testTag("tv-root").then(posterInput).background(TvColors.Background)) {
                 if (model.page != Page.PLAYER) BackdropLayer(
                     if (model.page == Page.DETAIL) model.selected else model.focused ?: model.featured.firstOrNull(),
                     modifier = Modifier.recordProductionGlass(glassScene)

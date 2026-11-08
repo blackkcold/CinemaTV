@@ -34,7 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import dev.cinematv.data.MediaItem
-import dev.cinematv.ui.GlassAction
+import dev.cinematv.ui.tv.components.GlassAction
 import dev.cinematv.ui.tv.components.FocusMediaCard
 import dev.cinematv.ui.tv.design.CinemaTvTheme
 import dev.cinematv.ui.tv.design.GlassQuality

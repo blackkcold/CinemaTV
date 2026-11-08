@@ -3,7 +3,6 @@ package dev.cinematv
 import android.os.Bundle
 import android.view.View
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.CompositionLocalProvider
@@ -46,7 +45,6 @@ class TvTestActivity : ComponentActivity() {
                         fontLoadFailures = fonts.failedAssets
                         bundledFontsReady = fonts.regional.size == NotoRegion.entries.size && fonts.failedAssets.isEmpty()
                     }
-                    BackHandler(enabled = model.page != Page.HOME) { model.back() }
                     TvRootApp(model) { decodedScene = it }
                 }
             }

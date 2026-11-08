@@ -12,7 +12,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.cinematv.CinemaViewModel
-import dev.cinematv.ui.GlassAction
+import dev.cinematv.ui.tv.components.GlassAction
 import dev.cinematv.ui.mobile.MobileGlassOutlinedButton
 import dev.cinematv.ui.typography.CinemaText as Text
 import dev.cinematv.ui.tv.design.TvColors

@@ -24,7 +24,6 @@ import androidx.compose.ui.unit.sp
 import com.kyant.backdrop.backdrops.rememberCombinedBackdrop
 import dev.cinematv.CinemaViewModel
 import dev.cinematv.Page
-import dev.cinematv.ui.GlassAction
 import dev.cinematv.ui.icons.CinemaSymbol
 import dev.cinematv.ui.shared.CinemaBrandStartup
 import dev.cinematv.ui.tv.design.*

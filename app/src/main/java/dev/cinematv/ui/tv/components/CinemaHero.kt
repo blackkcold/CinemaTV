@@ -17,7 +17,6 @@ import dev.cinematv.ConnectionCopy
 import dev.cinematv.ConnectionAction
 import dev.cinematv.Page
 import dev.cinematv.data.MediaItem
-import dev.cinematv.ui.GlassAction
 import dev.cinematv.ui.shared.metadataLine
 import dev.cinematv.ui.tv.design.*
 import dev.cinematv.ui.tv.focus.*

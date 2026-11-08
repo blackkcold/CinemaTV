@@ -234,6 +234,8 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
     var searchFilters by mutableStateOf(SearchFilters())
         private set
     var searchStage by mutableStateOf("")
+    /** A total search failure, distinct from a successful empty result. */
+    var searchError by mutableStateOf("")
         private set
     var catalogAttribution by mutableStateOf("")
         private set
@@ -804,9 +806,9 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
         }
     }
 
-    fun onMediaFocus(item: MediaItem, region: String = "general") {
+    fun onMediaFocus(item: MediaItem, region: String = "general", position: Int = 0) {
         val route = page
-        focusCoordinator.remember(route.name, region, item.presentationKey)
+        focusCoordinator.remember(route.name, region, item.presentationKey, position)
         backdropJob?.cancel()
         backdropJob = viewModelScope.launch {
             delay(if (reducedMotion) 0 else 210)
@@ -1125,6 +1127,7 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
         movieSearchBrowse = CatalogBrowseState(nextOffset = if (repo.hasMetadataCatalog) 0 else null)
         seriesSearchBrowse = CatalogBrowseState(nextOffset = if (repo.hasMetadataCatalog) 0 else null)
         message = ""
+        searchError = ""
         repo.rememberSearch(wd)
         searchHistory = repo.searchHistory()
         rebuildSearch() // Local matches appear immediately, including while offline.
@@ -1156,6 +1159,7 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
                         } catch (cancelled: CancellationException) { throw cancelled }
                         catch (error: Exception) {
                             if (generation == searchGeneration && repo.isCurrentConnectionError(error, connection)) {
+                                searchError = ConnectionErrors.message(error)
                                 searchStage = ConnectionErrors.message(error) + " · 已保留本地与成功读取的结果"
                                 if (ConnectionErrors.classify(error) == ConnectionFailure.AUTHENTICATION)
                                     connectionError(error, connection)

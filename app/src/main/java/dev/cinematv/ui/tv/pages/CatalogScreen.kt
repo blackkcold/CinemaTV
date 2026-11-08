@@ -15,7 +15,7 @@ import androidx.compose.ui.unit.sp
 import dev.cinematv.ui.typography.CinemaTvText as Text
 import dev.cinematv.CinemaViewModel
 import dev.cinematv.ConnectionCopy
-import dev.cinematv.ui.GlassAction
+import dev.cinematv.ui.tv.components.GlassAction
 import dev.cinematv.ui.shared.*
 import dev.cinematv.ui.tv.components.*
 import dev.cinematv.ui.tv.design.*
@@ -34,24 +34,40 @@ fun CatalogScreen(model: CinemaViewModel, series: Boolean) {
     val grid = rememberLazyGridState(saved.index, saved.offset)
     val route = model.focusRoute
     DisposableEffect(grid) { onDispose { model.focusCoordinator.saveScroll(route, region, grid.firstVisibleItemIndex, grid.firstVisibleItemScrollOffset) } }
+    RegisterLazyFocusGridRegion(model, region, grid, filtered.map { it.presentationKey })
     val entry = LocalContentFocus.current
     val nav = LocalNavigationFocus.current
     RestorePageFocus(model)
+    val entryBookmark = remember(model.focusRoute) { model.focusCoordinator.last(model.focusRoute) }
+    val navigationHasFocus by rememberUpdatedState(LocalNavigationHasFocus.current)
+    var initialFilterFocusDone by remember(model.focusRoute) { mutableStateOf(false) }
+    LaunchedEffect(model.focusRoute, all.isEmpty()) {
+        if (!initialFilterFocusDone && !navigationHasFocus && all.isNotEmpty() &&
+            (entryBookmark == null || entryBookmark.region != region)) {
+            withFrameNanos { }; withFrameNanos { }
+            runCatching { entry.requestFocus() }
+            initialFilterFocusDone = true
+        }
+    }
     Column(Modifier.fillMaxSize().padding(top = layout.contentTop)) {
         Column(Modifier.padding(horizontal = layout.gutter)) {
             Text(if (series) "好故事，慢慢看。" else "为大屏而生。", color = TvColors.Text, fontSize = 34.sp)
             Spacer(Modifier.height(5.dp))
             Text(if (series) "剧集 · 找到下一部想追的故事" else "电影 · 发现值得留出时间的作品", color = TvColors.Secondary, fontSize = 14.sp)
         }
-        LazyRow(contentPadding = PaddingValues(horizontal = layout.gutter, vertical = 18.dp), horizontalArrangement = Arrangement.spacedBy(9.dp)) {
-            item { GlassAction("全部", Modifier.focusRequester(entry).focusProperties { up = nav }.width(80.dp).height(36.dp), selected = category == null && year == null) { category = null; year = null } }
+        LazyRow(contentPadding = PaddingValues(horizontal = layout.gutter, vertical = 18.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            item { TvChip("全部", modifier = Modifier.focusRequester(entry).focusProperties { up = nav }.width(80.dp),
+                selected = category == null && year == null && !rated) { category = null; year = null; rated = false } }
             items(all.map { it.category }.filter(String::isNotBlank).distinct().take(12)) { value ->
-                GlassAction(value, Modifier.widthIn(min = 80.dp, max = 160.dp).height(36.dp).padding(horizontal = 2.dp), selected = category == value) { category = if (category == value) null else value }
+                TvChip(value, modifier = Modifier.widthIn(min = 80.dp, max = 160.dp), selected = category == value) {
+                    category = if (category == value) null else value
+                }
             }
             items(all.map { it.year }.filter(String::isNotBlank).distinct().sortedDescending().take(8)) { value ->
-                GlassAction(value, Modifier.width(80.dp).height(36.dp), selected = year == value) { year = if (year == value) null else value }
+                TvChip(value, modifier = Modifier.width(80.dp), selected = year == value) { year = if (year == value) null else value }
             }
-            item { GlassAction(if (rated) "评分优先 ✓" else "评分优先", Modifier.width(108.dp).height(36.dp), selected = rated) { rated = !rated } }
+            item { TvChip("评分优先", modifier = Modifier.width(108.dp), selected = rated) { rated = !rated } }
         }
         LazyVerticalGrid(state = grid,
             columns = GridCells.Adaptive(if (series) layout.landscapeWidth else layout.posterWidth),
@@ -63,12 +79,15 @@ fun CatalogScreen(model: CinemaViewModel, series: Boolean) {
                     title = if (all.isEmpty()) "还没有可浏览的作品" else "没有符合筛选条件的作品",
                     detail = if (all.isEmpty()) ConnectionCopy.summary(model.connectionState) + " · 搜索以发现内容"
                         else "调整筛选，或换个关键词再试",
-                    modifier = Modifier.padding(vertical = 24.dp)
+                    modifier = Modifier.padding(vertical = 24.dp),
+                    action = if (all.isNotEmpty()) {
+                        { TvChip("清除筛选") { category = null; year = null; rated = false } }
+                    } else null,
                 )
             }
-            items(filtered, key = { it.presentationKey }) { item ->
+            itemsIndexed(filtered, key = { _, item -> item.presentationKey }) { index, item ->
                 val target = rememberFocusTarget(model, region, item.presentationKey)
-                FocusMediaCard(item, { model.onMediaFocus(item, region) }, { model.open(item) },
+                FocusMediaCard(item, { model.onMediaFocus(item, region, index) }, { model.open(item) },
                     modifier = Modifier.focusRequester(target), portrait = !series)
             }
             // Paging belongs after the results. A fixed header would leave portrait

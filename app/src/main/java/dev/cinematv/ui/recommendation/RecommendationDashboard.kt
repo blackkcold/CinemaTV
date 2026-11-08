@@ -19,7 +19,7 @@ import androidx.compose.ui.window.DialogProperties
 import dev.cinematv.data.MediaItem
 import dev.cinematv.data.recommendation.LocalRecommendationSnapshot
 import dev.cinematv.data.recommendation.LocalRecommendationWeights
-import dev.cinematv.ui.GlassAction
+import dev.cinematv.ui.tv.components.GlassAction
 import dev.cinematv.ui.shared.presentationKey
 import dev.cinematv.ui.tv.components.CinemaGlassSurface
 import java.text.DateFormat

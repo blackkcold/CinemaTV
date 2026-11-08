@@ -35,6 +35,7 @@ fun Modifier.cinemaGlassMaterial(
     prominent: Boolean = false,
     dense: Boolean = false,
     backdropOverride: Backdrop? = null,
+    level: GlassRenderMode = GlassRenderMode.FULL,
     layerBlock: (GraphicsLayerScope.() -> Unit)? = null,
 ): Modifier {
     val effects = LocalTvEffects.current
@@ -43,8 +44,17 @@ fun Modifier.cinemaGlassMaterial(
     val diagnostics = LocalGlassDrawDiagnostics.current
     val diagnosticScope = LocalGlassDrawScope.current
     val emphasis = maxOf(focus, if (selected) .4f else 0f)
-    val live = source != null && failure?.failed != true && effects.glass != GlassQuality.BASIC
-    val full = live && effects.glass == GlassQuality.ENHANCED && Build.VERSION.SDK_INT >= 33
+    // The surface level may only lower the platform/user decision. Basic never
+    // creates a scene node; Blur cannot become Full through an optimistic cap.
+    val platformMode = when (effects.glass) {
+        GlassQuality.AUTO -> if (Build.VERSION.SDK_INT >= 31) GlassRenderMode.BLUR else GlassRenderMode.BASIC
+        GlassQuality.BASIC -> GlassRenderMode.BASIC
+        GlassQuality.BACKDROP -> GlassRenderMode.BLUR
+        GlassQuality.ENHANCED -> GlassRenderMode.FULL
+    }
+    val renderLevel = effectiveGlassLevel(platformMode, level)
+    val live = source != null && failure?.failed != true && renderLevel != GlassRenderMode.BASIC
+    val full = live && renderLevel == GlassRenderMode.FULL && Build.VERSION.SDK_INT >= 33
     val safe: DrawScope.() -> Unit = { drawSafeGlass(radius, emphasis, press, prominent) }
     if (!live) return then(if (layerBlock == null) Modifier else Modifier.graphicsLayer(layerBlock))
         .drawWithContent {

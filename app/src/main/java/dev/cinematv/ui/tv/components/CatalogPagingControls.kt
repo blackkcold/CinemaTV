@@ -8,7 +8,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.cinematv.CinemaViewModel
-import dev.cinematv.ui.GlassAction
 import dev.cinematv.ui.tv.design.TvColors
 import dev.cinematv.ui.tv.focus.rememberFocusTarget
 import dev.cinematv.ui.typography.CinemaTvText as Text

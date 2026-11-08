@@ -1,6 +1,7 @@
 package dev.cinematv.ui.tv.focus
 
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -13,14 +14,14 @@ import kotlinx.coroutines.withTimeoutOrNull
 /** Only live composition owns requesters. The ViewModel retains logical keys. */
 class TvFocusRegistry {
     private val targets = mutableMapOf<Triple<String, String, String>, FocusRequester>()
-    private val lazyRegions = mutableMapOf<Pair<String, String>, suspend (String) -> String?>()
+    private val lazyRegions = mutableMapOf<Pair<String, String>, suspend (String, Int) -> String?>()
     fun attach(route: String, region: String, key: String, requester: FocusRequester) {
         targets[Triple(route, region, key)] = requester
     }
     fun detach(route: String, region: String, key: String) { targets.remove(Triple(route, region, key)) }
     fun request(route: String, region: String, key: String): Boolean =
         targets[Triple(route, region, key)]?.let { runCatching { it.requestFocus() }.getOrDefault(false) } ?: false
-    fun attachLazyRegion(route: String, region: String, prepare: suspend (String) -> String?) {
+    fun attachLazyRegion(route: String, region: String, prepare: suspend (String, Int) -> String?) {
         lazyRegions[route to region] = prepare
     }
     fun detachLazyRegion(route: String, region: String) { lazyRegions.remove(route to region) }
@@ -29,7 +30,7 @@ class TvFocusRegistry {
         // Saved scroll offsets belong to the old ordering. Resolve the logical
         // target before requesting focus, including items not yet composed.
         return withTimeoutOrNull(2_000) {
-            restoreFocusTarget(bookmark, bookmark?.let { lazyRegions[route to it.region] },
+            restoreFocusTarget(bookmark, bookmark?.let { book -> lazyRegions[route to book.region]?.let { prepare -> { key -> prepare(key, book.position) } } },
                 awaitFrame = { withFrameNanos { } }, isCurrent = isCurrent,
                 request = { region, key -> beforeRequest(); request(route, region, key) })
         } ?: if (isCurrent()) FocusRestoreResult.Missing else FocusRestoreResult.Aborted
@@ -70,14 +71,36 @@ fun RegisterLazyFocusRegion(model: CinemaViewModel, region: String, state: LazyL
     val registry = LocalTvFocusRegistry.current
     val currentKeys by rememberUpdatedState(itemKeys)
     DisposableEffect(route, region, state, registry) {
-        registry.attachLazyRegion(route, region) { key ->
+        registry.attachLazyRegion(route, region) { key, fallbackIndex ->
             // A removed title (for example, marked not interested) falls back
-            // inside this rail rather than waiting for an impossible target.
-            val target = resolveLazyFocusTarget(currentKeys, key)
+            // to its old position inside this rail rather than waiting forever.
+            val target = resolveLazyFocusTarget(currentKeys, key, fallbackIndex)
             if (target == null) null else {
                 val visible = state.layoutInfo.visibleItemsInfo.firstOrNull { it.key == target.itemKey }
                 if (visible == null || visible.offset < state.layoutInfo.viewportStartOffset ||
                     visible.offset + visible.size > state.layoutInfo.viewportEndOffset) {
+                    state.scrollToItem(target.index)
+                }
+                target.itemKey
+            }
+        }
+        onDispose { registry.detachLazyRegion(route, region) }
+    }
+}
+
+/** The same key-first / old-position-fallback contract for adaptive poster grids. */
+@Composable
+fun RegisterLazyFocusGridRegion(model: CinemaViewModel, region: String, state: LazyGridState, itemKeys: List<String>) {
+    val route = model.focusRoute
+    val registry = LocalTvFocusRegistry.current
+    val currentKeys by rememberUpdatedState(itemKeys)
+    DisposableEffect(route, region, state, registry) {
+        registry.attachLazyRegion(route, region) { key, fallbackIndex ->
+            val target = resolveLazyFocusTarget(currentKeys, key, fallbackIndex)
+            if (target == null) null else {
+                val visible = state.layoutInfo.visibleItemsInfo.firstOrNull { it.key == target.itemKey }
+                if (visible == null || visible.offset.y < state.layoutInfo.viewportStartOffset ||
+                    visible.offset.y + visible.size.height > state.layoutInfo.viewportEndOffset) {
                     state.scrollToItem(target.index)
                 }
                 target.itemKey

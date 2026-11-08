@@ -166,7 +166,7 @@ class LibreTvRepository(context: Context, val library: LocalMediaLibrary = Local
                 if (title.isBlank()) null else MediaItem(
                     id = "catalog:$provider:${item.optString("id")}", title = title,
                     poster = item.optString("poster"), backdrop = item.optString("backdrop"),
-                    year = item.optString("year"), description = item.optString("overview"),
+                    year = item.optString("year"), description = plainProviderText(item.optString("overview")),
                     category = item.optString("category"), isTv = item.optString("type") == "tv",
                     rating = if (validRating) item.optString("rating") else "",
                     ratingSource = if (validRating) ratingSource else "",
@@ -235,7 +235,7 @@ class LibreTvRepository(context: Context, val library: LocalMediaLibrary = Local
         item.copy(
             backdrop = art.backdrop,
             poster = item.poster.ifBlank { art.poster },
-            description = item.description.ifBlank { art.overview }
+            description = (item.description.ifBlank { art.overview }).let(::plainProviderText)
         )
     }
 
@@ -718,7 +718,7 @@ class LibreTvRepository(context: Context, val library: LocalMediaLibrary = Local
             isTv = mediaType(info) ?: if (entry.mediaTypeKnown) entry.isTv else item.isTv,
             mediaTypeKnown = mediaType(info) != null || item.mediaTypeKnown || entry.mediaTypeKnown,
             backdrop = entry.backdrop.ifBlank { item.backdrop },
-            description = info.optString("desc"),
+            description = plainProviderText(info.optString("desc")),
             poster = info.optString("cover").ifBlank { entry.poster },
             category = info.optString("typeName").ifBlank { entry.category },
             year = info.optString("year").ifBlank { entry.year },

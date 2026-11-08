@@ -21,7 +21,11 @@ import dev.cinematv.ui.typography.CinemaTvText as Text
 import dev.cinematv.CinemaViewModel
 import dev.cinematv.Page
 import dev.cinematv.data.LibraryStatus
-import dev.cinematv.ui.GlassAction
+import dev.cinematv.ui.tv.components.GlassAction
+import dev.cinematv.ui.tv.components.TvChip
+import dev.cinematv.ui.tv.components.TvChipRow
+import dev.cinematv.ui.tv.components.TvEmptyState
+import dev.cinematv.ui.tv.components.TvPageHeader
 import dev.cinematv.ui.tv.components.ContentRail
 import dev.cinematv.ui.tv.design.*
 import dev.cinematv.ui.tv.focus.*
@@ -69,9 +73,7 @@ fun LibraryScreen(model: CinemaViewModel) {
             item(key = "heading") {
                 CompositionLocalProvider(LocalBringIntoViewSpec provides itemBringIntoViewSpec) {
                     Column(Modifier.padding(horizontal = layout.gutter)) {
-                        Text("你的观影时光。", color = TvColors.Text, fontSize = 34.sp)
-                        Spacer(Modifier.height(6.dp))
-                        Text("把喜欢的故事留下，把未完的故事继续。", color = TvColors.Secondary, fontSize = 14.sp)
+                        TvPageHeader("你的观影时光。", "把喜欢的故事留下，把未完的故事继续。")
                         Spacer(Modifier.height(12.dp))
                         GlassAction("管理观看记录", Modifier.focusRequester(reviewEntry).width(170.dp).height(40.dp),
                             onFocus = { model.focusCoordinator.remember(model.focusRoute, "actions", "review-progress") }) {
@@ -94,9 +96,10 @@ fun LibraryScreen(model: CinemaViewModel) {
             }
             item(key = "filters") {
                 CompositionLocalProvider(LocalBringIntoViewSpec provides itemBringIntoViewSpec) {
-                    LazyRow(state = filterState, contentPadding = PaddingValues(horizontal = layout.gutter, vertical = 20.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    TvChipRow(state = filterState,
+                        contentPadding = PaddingValues(horizontal = layout.gutter, vertical = 20.dp)) {
                         item {
-                            GlassAction("全部", Modifier.focusRequester(entry).focusProperties { up = nav }
+                            TvChip("全部", modifier = Modifier.focusRequester(entry).focusProperties { up = nav }
                                 .onPreviewKeyEvent { event ->
                                     if (history.isNotEmpty() && event.type == KeyEventType.KeyDown && event.key == Key.DirectionUp) {
                                         // The heading may have left lazy composition; attach it before moving focus.
@@ -107,11 +110,11 @@ fun LibraryScreen(model: CinemaViewModel) {
                                         }
                                         true
                                     } else false
-                                }.width(80.dp).height(36.dp), selected = filter == "all") { filter = "all" }
+                                }.width(80.dp), selected = filter == "all") { filter = "all" }
                         }
-                        item { GlassAction("继续观看", Modifier.width(105.dp).height(36.dp), selected = filter == "history") { filter = "history" } }
+                        item { TvChip("继续观看", modifier = Modifier.width(105.dp), selected = filter == "history") { filter = "history" } }
                         LibraryStatus.entries.forEach { status ->
-                            item(key = status.name) { GlassAction(status.title, Modifier.width(80.dp).height(36.dp), selected = filter == status.name) { filter = status.name } }
+                            item(key = status.name) { TvChip(status.title, modifier = Modifier.width(80.dp), selected = filter == status.name) { filter = status.name } }
                         }
                     }
                 }
@@ -136,11 +139,12 @@ fun LibraryScreen(model: CinemaViewModel) {
             }
             if (isEmpty) item(key = "empty") {
                 CompositionLocalProvider(LocalBringIntoViewSpec provides itemBringIntoViewSpec) {
-                    Column(Modifier.padding(horizontal = layout.gutter, vertical = 35.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-                        Text("这里还没有故事。", color = TvColors.Text, fontSize = 24.sp)
-                        Text("在作品详情页添加，或开始观看后回来继续。", color = TvColors.Secondary, fontSize = 15.sp)
-                        GlassAction("去发现", Modifier.width(135.dp).height(43.dp)) { model.navigate(Page.EXPLORE) }
-                    }
+                    TvEmptyState(
+                        title = "这里还没有故事。",
+                        detail = "在作品详情页添加，或开始观看后回来继续。",
+                        modifier = Modifier.padding(horizontal = layout.gutter, vertical = 24.dp),
+                        action = { TvChip("去发现") { model.navigate(Page.EXPLORE) } },
+                    )
                 }
             }
         }

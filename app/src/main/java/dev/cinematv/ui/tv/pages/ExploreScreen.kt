@@ -26,10 +26,13 @@ import dev.cinematv.ui.typography.CinemaTvText as Text
 import dev.cinematv.CinemaViewModel
 import dev.cinematv.ConnectionAction
 import dev.cinematv.ConnectionCopy
-import dev.cinematv.ui.GlassAction
+import dev.cinematv.ui.tv.components.GlassAction
 import dev.cinematv.ui.shared.*
 import dev.cinematv.ui.tv.components.CatalogPagingControls
-import dev.cinematv.ui.tv.components.CinemaGlassSurface
+import dev.cinematv.ui.tv.components.TvChip
+import dev.cinematv.ui.tv.components.TvDialogFrame
+import dev.cinematv.ui.tv.components.TvEmptyState
+import dev.cinematv.ui.tv.components.TvPageHeader
 import dev.cinematv.ui.tv.components.FocusMediaCard
 import dev.cinematv.ui.tv.design.*
 import dev.cinematv.ui.tv.focus.*
@@ -50,11 +53,22 @@ fun ExploreScreen(model: CinemaViewModel) {
     val entry = LocalContentFocus.current
     val nav = LocalNavigationFocus.current
     val registry = LocalTvFocusRegistry.current
+    RegisterLazyFocusRegion(model, "coverflow", list, items.map { it.presentationKey })
     val pagingOpener = rememberFocusTarget(model, "catalog-panel", "open")
     var pagingOpen by remember { mutableStateOf(false) }
     var pagingWasOpened by remember { mutableStateOf(false) }
     var requestMovement by remember { mutableStateOf(false) }
     RestorePageFocus(model)
+    val coverflowBookmark = remember(model.focusRoute) { model.focusCoordinator.last(model.focusRoute) }
+    var initialCoverflowFocusDone by remember(model.focusRoute) { mutableStateOf(false) }
+    LaunchedEffect(model.focusRoute, items.isEmpty()) {
+        if (!initialCoverflowFocusDone && items.isNotEmpty() &&
+            (coverflowBookmark == null || coverflowBookmark.region != "coverflow")) {
+            withFrameNanos { }; withFrameNanos { }
+            runCatching { entry.requestFocus() }
+            initialCoverflowFocusDone = true
+        }
+    }
     LaunchedEffect(pagingOpen) {
         if (!pagingOpen && pagingWasOpened) { withFrameNanos { }; runCatching { pagingOpener.requestFocus() } }
     }
@@ -69,14 +83,20 @@ fun ExploreScreen(model: CinemaViewModel) {
         }
     }
     Column(Modifier.fillMaxSize().padding(top = layout.contentTop), horizontalAlignment = Alignment.CenterHorizontally) {
-        Text("下一段旅程，随心发现。", color = TvColors.Text, fontSize = 28.sp, fontWeight = FontWeight.SemiBold)
-        Text("左右探索 · 按确认键走进故事", color = TvColors.Secondary, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
+        TvPageHeader("下一段旅程，随心发现。", "左右探索 · 按确认键走进故事", modifier = Modifier.padding(horizontal = layout.gutter))
         if (items.isEmpty()) {
             val action = ConnectionCopy.action(model.connectionState)
-            GlassAction(if (action == ConnectionAction.SEARCH) "开始搜索" else "连接影视服务",
-                Modifier.focusRequester(entry).padding(top = 30.dp).width(160.dp).height(45.dp)) {
-                model.navigate(if (action == ConnectionAction.SEARCH) dev.cinematv.Page.SEARCH else dev.cinematv.Page.SETTINGS)
-            }
+            TvEmptyState(
+                title = "还没有可探索的作品",
+                detail = ConnectionCopy.summary(model.connectionState),
+                modifier = Modifier.padding(horizontal = layout.gutter, vertical = 28.dp),
+                action = {
+                    TvChip(if (action == ConnectionAction.SEARCH) "开始搜索" else "连接影视服务",
+                        modifier = Modifier.focusRequester(entry)) {
+                        model.navigate(if (action == ConnectionAction.SEARCH) dev.cinematv.Page.SEARCH else dev.cinematv.Page.SETTINGS)
+                    }
+                },
+            )
         } else LazyRow(state = list, modifier = Modifier.testTag("discovery-coverflow").fillMaxWidth().weight(1f).focusRestorer(),
             verticalAlignment = Alignment.CenterVertically,
             contentPadding = PaddingValues(horizontal = inset, vertical = 25.dp),
@@ -86,7 +106,7 @@ fun ExploreScreen(model: CinemaViewModel) {
                 val tilt by animateFloatAsState(if (effects.reducedMotion) 0f else when { index < active -> 12f; index > active -> -12f; else -> 0f }, tween(effects.focusMillis), label = "coverflow-tilt")
                 val scale by animateFloatAsState(if (center) 1f else .90f, tween(effects.focusMillis), label = "coverflow-scale")
                 val target = rememberFocusTarget(model, "coverflow", item.presentationKey)
-                FocusMediaCard(item, onFocus = { activeKey = item.presentationKey; model.onMediaFocus(item, "coverflow") }, onClick = { model.open(item) }, portrait = true, showCaption = false,
+                FocusMediaCard(item, onFocus = { activeKey = item.presentationKey; model.onMediaFocus(item, "coverflow", index) }, onClick = { model.open(item) }, portrait = true, showCaption = false,
                     modifier = Modifier.width(cardWidth).focusRequester(target)
                         .then(if (index == active) Modifier.focusRequester(entry) else Modifier)
                         .focusProperties { up = nav; down = pagingOpener }
@@ -119,21 +139,14 @@ fun ExploreScreen(model: CinemaViewModel) {
     }
     if (pagingOpen) {
         val close = remember { FocusRequester() }
-        Dialog(onDismissRequest = { pagingOpen = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-            CinemaGlassSurface(Modifier.width(600.dp), radius = 26.dp) {
-                LazyColumn(Modifier.heightIn(max = layout.height - 80.dp).padding(24.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    item { Text("目录状态与加载", color = TvColors.Text, fontSize = 24.sp, fontWeight = FontWeight.SemiBold) }
-                    item {
-                        GlassAction("关闭", Modifier.testTag("catalog-panel-close").focusRequester(close).width(125.dp).height(36.dp)) {
-                            pagingOpen = false
-                        }
-                    }
-                    item { CatalogPagingControls(model, false) }
-                    item { CatalogPagingControls(model, true) }
-                }
+        TvDialogFrame(onDismissRequest = { pagingOpen = false }, maxWidth = 600.dp) {
+            Text("目录状态与加载", color = TvColors.Text, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+            GlassAction("关闭", Modifier.testTag("catalog-panel-close").focusRequester(close).width(125.dp).height(36.dp)) {
+                pagingOpen = false
             }
-            LaunchedEffect(Unit) { withFrameNanos { }; close.requestFocus() }
+            CatalogPagingControls(model, false)
+            CatalogPagingControls(model, true)
+            LaunchedEffect(Unit) { withFrameNanos { }; runCatching { close.requestFocus() } }
         }
     }
 }

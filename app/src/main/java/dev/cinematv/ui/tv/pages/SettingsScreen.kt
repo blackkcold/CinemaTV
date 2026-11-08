@@ -26,8 +26,9 @@ import dev.cinematv.ui.shared.LibraryProgressReviews
 import dev.cinematv.CinemaViewModel
 import dev.cinematv.ConnectionCopy
 import dev.cinematv.Page
-import dev.cinematv.ui.GlassAction
-import dev.cinematv.ui.TvInput
+import dev.cinematv.ui.tv.components.GlassAction
+import dev.cinematv.ui.tv.components.TvField
+import dev.cinematv.ui.tv.components.TvPageHeader
 import dev.cinematv.ui.tv.components.CinemaGlassSurface
 import dev.cinematv.ui.tv.design.*
 import dev.cinematv.ui.tv.focus.*
@@ -63,11 +64,10 @@ fun SettingsScreen(model: CinemaViewModel, initialSection: Int = 0) {
     }
     RestorePageFocus(model)
     Column(Modifier.fillMaxSize().padding(horizontal = layout.gutter, vertical = 28.dp), verticalArrangement = Arrangement.spacedBy(22.dp)) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("CinemaTV 设置", color = TvColors.Text, fontSize = 30.sp, fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.weight(1f))
-            GlassAction("← 返回首页", Modifier.width(125.dp).height(38.dp), icon = CinemaSymbol.Back) { model.navigate(Page.HOME) }
-        }
+        TvPageHeader("CinemaTV 设置", "连接、片源、画面与资料管理",
+            action = {
+                GlassAction("← 返回首页", Modifier.width(125.dp).height(38.dp), icon = CinemaSymbol.Back) { model.navigate(Page.HOME) }
+            })
         Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(25.dp)) {
             Column(Modifier.weight(.24f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 NativeSettingsSection.entries.forEach { destination ->
@@ -79,7 +79,7 @@ fun SettingsScreen(model: CinemaViewModel, initialSection: Int = 0) {
                         onFocus = { model.focusCoordinator.remember(model.focusRoute, "settings-menu", index.toString()) }) { section = index }
                 }
             }
-            CinemaGlassSurface(Modifier.weight(.76f).fillMaxHeight(), radius = 22.dp) {
+            CinemaGlassSurface(Modifier.weight(.76f).fillMaxHeight(), radius = 22.dp, level = glassLevelFor(Page.SETTINGS, TvGlassRole.PANEL)) {
                 key(section) {
                     val state = rememberTvListState(model, "settings:$section")
                     if (section == NativeSettingsSection.SUBSCRIPTIONS.index) {
@@ -90,24 +90,28 @@ fun SettingsScreen(model: CinemaViewModel, initialSection: Int = 0) {
                             0 -> {
                                 item { dev.cinematv.ui.douban.DoubanDeveloperOptionsEntry(model, tv = true) }
                                 item { SettingTitle("LibreTV 服务器", "连接你的媒体服务，登录后开始浏览。") }
-                                item { TvInput(model.serverAddress, { model.serverAddress = it }, "https://your-libretv.example", Modifier.fillMaxWidth().height(52.dp), onSubmit = model::connect) }
-                                item { GlassAction("连接 / 刷新", Modifier.width(150.dp).height(43.dp), prominent = true) { model.connect() } }
+                                item { TvField(model.serverAddress, { model.serverAddress = it }, "https://your-libretv.example", Modifier.fillMaxWidth(), onSubmit = model::connect) }
+                                item { GlassAction(if (model.busy) "正在连接…" else "连接 / 刷新", Modifier.width(150.dp).height(43.dp),
+                                    prominent = true, enabled = model.serverAddress.isNotBlank() && !model.busy) { model.connect() } }
                                 if (model.passwordRequired && !model.authorized) {
-                                    item { TvInput(model.password, { model.password = it }, "LibreTV 登录密码", Modifier.fillMaxWidth().height(52.dp), isPassword = true, onSubmit = model::login) }
-                                    item { GlassAction("登录", Modifier.width(130.dp).height(43.dp), prominent = true) { model.login() } }
+                                    item { TvField(model.password, { model.password = it }, "LibreTV 登录密码", Modifier.fillMaxWidth(), isPassword = true, onSubmit = model::login) }
+                                    item { GlassAction("登录", Modifier.width(130.dp).height(43.dp), prominent = true,
+                                        enabled = model.password.isNotBlank() && !model.busy) { model.login() } }
                                 }
                                 item { Text(ConnectionCopy.summary(model.connectionState), color = TvColors.Secondary, fontSize = 13.sp) }
                                 item { SettingTitle("高清剧照（可选）", "配置独立元数据服务后，获取匹配作品的横版背景。") }
-                                item { TvInput(model.metadataAddress, { model.metadataAddress = it }, "BFF 服务地址", Modifier.fillMaxWidth().height(52.dp)) }
-                                item { TvInput(model.metadataAccessToken, { model.metadataAccessToken = it }, "BFF 访问令牌（本次会话有效）", Modifier.fillMaxWidth().height(52.dp), isPassword = true) }
-                                item { GlassAction("保存元数据连接", Modifier.width(170.dp).height(43.dp)) { model.configureMetadata() } }
+                                item { TvField(model.metadataAddress, { model.metadataAddress = it }, "BFF 服务地址", Modifier.fillMaxWidth()) }
+                                item { TvField(model.metadataAccessToken, { model.metadataAccessToken = it }, "BFF 访问令牌（本次会话有效）", Modifier.fillMaxWidth(), isPassword = true) }
+                                item { GlassAction("保存元数据连接", Modifier.width(170.dp).height(43.dp),
+                                    enabled = model.metadataAddress.isNotBlank() && !model.busy) { model.configureMetadata() } }
                             }
                             1 -> {
                                 item { GlassAction("管理源列表订阅", Modifier.width(185.dp).height(43.dp)) { openSection(NativeSettingsSection.SUBSCRIPTIONS) } }
                                 item { SettingTitle("添加点播源", "Apple CMS JSON API") }
-                                item { TvInput(model.sourceName, { model.sourceName = it }, "来源名称", Modifier.fillMaxWidth().height(49.dp)) }
-                                item { TvInput(model.sourceAddress, { model.sourceAddress = it }, "https://…/api.php/provide/vod", Modifier.fillMaxWidth().height(49.dp)) }
-                                item { GlassAction("添加点播源", Modifier.width(150.dp).height(41.dp)) { model.addSource(false) } }
+                                item { TvField(model.sourceName, { model.sourceName = it }, "来源名称", Modifier.fillMaxWidth()) }
+                                item { TvField(model.sourceAddress, { model.sourceAddress = it }, "https://…/api.php/provide/vod", Modifier.fillMaxWidth()) }
+                                item { GlassAction("添加点播源", Modifier.width(150.dp).height(41.dp),
+                                    enabled = model.sourceName.isNotBlank() && model.sourceAddress.isNotBlank() && !model.busy) { model.addSource(false) } }
                                 items(model.sources, key = { it.url }) { source ->
                                     Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
                                         val health = model.sourceProbes[source.url]
@@ -121,10 +125,11 @@ fun SettingsScreen(model: CinemaViewModel, initialSection: Int = 0) {
                                     }
                                 }
                                 item { SettingTitle("添加直播订阅", "M3U 频道列表 · XMLTV 节目单") }
-                                item { TvInput(model.liveName, { model.liveName = it }, "订阅名称", Modifier.fillMaxWidth().height(49.dp)) }
-                                item { TvInput(model.liveAddress, { model.liveAddress = it }, "M3U 订阅 URL", Modifier.fillMaxWidth().height(49.dp)) }
-                                item { TvInput(model.liveEpg, { model.liveEpg = it }, "XMLTV URL（可选）", Modifier.fillMaxWidth().height(49.dp)) }
-                                item { GlassAction("添加直播订阅", Modifier.width(150.dp).height(41.dp)) { model.addSource(true) } }
+                                item { TvField(model.liveName, { model.liveName = it }, "订阅名称", Modifier.fillMaxWidth()) }
+                                item { TvField(model.liveAddress, { model.liveAddress = it }, "M3U 订阅 URL", Modifier.fillMaxWidth()) }
+                                item { TvField(model.liveEpg, { model.liveEpg = it }, "XMLTV URL（可选）", Modifier.fillMaxWidth()) }
+                                item { GlassAction("添加直播订阅", Modifier.width(150.dp).height(41.dp),
+                                    enabled = model.liveName.isNotBlank() && model.liveAddress.isNotBlank() && !model.busy) { model.addSource(true) } }
                                 items(model.liveSources, key = { "live:${it.url}" }) { source ->
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Text(source.name, color = TvColors.Text, fontSize = 14.sp, modifier = Modifier.weight(1f))
@@ -147,9 +152,6 @@ fun SettingsScreen(model: CinemaViewModel, initialSection: Int = 0) {
                             3 -> {
                                 item { SettingTitle("CinemaTV", "版本 ${BuildConfig.VERSION_NAME}") }
                                 item { dev.cinematv.ui.update.UpdateSettings(tv = true) }
-                                item { GlassAction("本地推荐看板", Modifier.testTag("recommendation-dashboard-open").focusRequester(recommendationEntry).width(180.dp).height(42.dp)) {
-                                    recommendationWasOpened = true; recommendationOpen = true
-                                } }
                                 item { Text("为大屏与故事而生。", color = TvColors.Text, fontSize = 22.sp) }
                                 if (model.metadataAddress.isNotBlank()) item { TmdbLogo() }
                                 item { GlassAction("TMDB 官网", Modifier.width(140.dp).height(36.dp)) { uriHandler.openUri("https://www.themoviedb.org") } }
@@ -182,7 +184,7 @@ fun SettingsScreen(model: CinemaViewModel, initialSection: Int = 0) {
 @Composable
 private fun SettingTitle(title: String, subtitle: String) {
     Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
-        Text(title, color = TvColors.Text, fontSize = 23.sp, fontWeight = FontWeight.SemiBold)
-        Text(subtitle, color = TvColors.Secondary, fontSize = 13.sp, lineHeight = 20.sp)
+        TvText(title, style = TvType.h2, color = TvColors.Text)
+        TvText(subtitle, style = TvType.caption, color = TvColors.Secondary)
     }
 }

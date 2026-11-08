@@ -24,8 +24,8 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import dev.cinematv.CinemaViewModel
 import dev.cinematv.Page
-import dev.cinematv.ui.GlassAction
-import dev.cinematv.ui.TvInput
+import dev.cinematv.ui.tv.components.GlassAction
+import dev.cinematv.ui.tv.components.TvField
 import dev.cinematv.ui.mobile.MobileGlassOutlinedButton
 import dev.cinematv.ui.tv.design.TvColors
 
@@ -178,7 +178,7 @@ fun SourceSubscriptionsDialog(model: CinemaViewModel, tv: Boolean = false, onDis
 
 @Composable
 private fun SubscriptionField(label: String, value: String, onValueChange: (String) -> Unit, tag: String, tv: Boolean) {
-    if (tv) TvInput(value, onValueChange, label, Modifier.fillMaxWidth().height(52.dp).testTag(tag))
+    if (tv) TvField(value, onValueChange, label, Modifier.fillMaxWidth().testTag(tag))
     else OutlinedTextField(value, onValueChange, modifier = Modifier.fillMaxWidth().testTag(tag),
         label = { Text(label) }, singleLine = true)
 }
