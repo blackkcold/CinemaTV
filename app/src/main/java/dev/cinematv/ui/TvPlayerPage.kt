@@ -16,6 +16,7 @@ import dev.cinematv.ui.typography.CinemaTvText as Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusProperties
@@ -217,7 +218,7 @@ fun TvPlayerPage(model: CinemaViewModel) {
     }
 
     Box(
-        Modifier.fillMaxSize().background(Color.Black)
+        Modifier.fillMaxSize().background(Color.Black).testTag("tv-page-player")
             .focusRequester(rootFocus)
             .onPreviewKeyEvent { event ->
                 if (event.key == Key.Back) {

@@ -6,6 +6,7 @@ import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -72,7 +73,7 @@ fun HomeScreen(model: CinemaViewModel) {
         }
     }
     CompositionLocalProvider(LocalBringIntoViewSpec provides RailViewportBringIntoViewSpec) {
-        LazyColumn(state = state, modifier = Modifier.fillMaxSize().padding(top = layout.contentTop), contentPadding = PaddingValues(bottom = 45.dp)) {
+        LazyColumn(state = state, modifier = Modifier.fillMaxSize().padding(top = layout.contentTop).testTag("tv-page-home"), contentPadding = PaddingValues(bottom = 45.dp)) {
             item(key = "hero") {
                 CompositionLocalProvider(LocalBringIntoViewSpec provides itemBringIntoViewSpec) {
                     if (heroItems.isEmpty()) {

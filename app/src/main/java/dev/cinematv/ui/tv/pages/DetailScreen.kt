@@ -9,6 +9,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.focusProperties
@@ -90,7 +91,7 @@ fun DetailScreen(model: CinemaViewModel) {
     LaunchedEffect(picker) {
         if (!picker && pickerWasOpened) { withFrameNanos { }; runCatching { shelf.requestFocus() } }
     }
-    LazyColumn(state = state, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 45.dp)) {
+    LazyColumn(state = state, modifier = Modifier.fillMaxSize().testTag("tv-page-detail"), contentPadding = PaddingValues(bottom = 45.dp)) {
         item(key = "hero") {
             Column(Modifier.fillMaxWidth().padding(start = layout.gutter, end = layout.gutter, top = 28.dp),
                 verticalArrangement = Arrangement.spacedBy(15.dp)) {

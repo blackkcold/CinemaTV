@@ -63,7 +63,7 @@ fun SettingsScreen(model: CinemaViewModel, initialSection: Int = 0) {
         pendingSectionFocus = null
     }
     RestorePageFocus(model)
-    Column(Modifier.fillMaxSize().padding(horizontal = layout.gutter, vertical = 28.dp), verticalArrangement = Arrangement.spacedBy(22.dp)) {
+    Column(Modifier.fillMaxSize().padding(horizontal = layout.gutter, vertical = 28.dp).testTag("tv-page-settings"), verticalArrangement = Arrangement.spacedBy(22.dp)) {
         TvPageHeader("CinemaTV 设置", "连接、片源、画面与资料管理",
             action = {
                 GlassAction("← 返回首页", Modifier.width(125.dp).height(38.dp), icon = CinemaSymbol.Back) { model.navigate(Page.HOME) }
