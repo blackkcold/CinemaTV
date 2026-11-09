@@ -7,6 +7,7 @@ import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
@@ -50,7 +51,7 @@ fun CatalogScreen(model: CinemaViewModel, series: Boolean) {
             initialFilterFocusDone = true
         }
     }
-    Column(Modifier.fillMaxSize().padding(top = layout.contentTop)) {
+    Column(Modifier.fillMaxSize().padding(top = layout.contentTop).testTag(if (series) "tv-page-series" else "tv-page-movies")) {
         Column(Modifier.padding(horizontal = layout.gutter)) {
             Text(if (series) "好故事，慢慢看。" else "为大屏而生。", color = TvColors.Text, fontSize = 34.sp)
             Spacer(Modifier.height(5.dp))

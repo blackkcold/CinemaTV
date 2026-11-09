@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.key.Key
@@ -69,7 +70,7 @@ fun LibraryScreen(model: CinemaViewModel) {
     }
     if (showProgressReview) LibraryProgressReviewDialog(model) { showProgressReview = false }
     CompositionLocalProvider(LocalBringIntoViewSpec provides RailViewportBringIntoViewSpec) {
-        LazyColumn(state = state, modifier = Modifier.fillMaxSize().padding(top = layout.contentTop), contentPadding = PaddingValues(bottom = 42.dp)) {
+        LazyColumn(state = state, modifier = Modifier.fillMaxSize().padding(top = layout.contentTop).testTag("tv-page-library"), contentPadding = PaddingValues(bottom = 42.dp)) {
             item(key = "heading") {
                 CompositionLocalProvider(LocalBringIntoViewSpec provides itemBringIntoViewSpec) {
                     Column(Modifier.padding(horizontal = layout.gutter)) {

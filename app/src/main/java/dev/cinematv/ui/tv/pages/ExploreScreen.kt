@@ -84,7 +84,7 @@ fun ExploreScreen(model: CinemaViewModel) {
             }
         }
     }
-    Column(Modifier.fillMaxSize().padding(top = layout.contentTop), horizontalAlignment = Alignment.CenterHorizontally) {
+    Column(Modifier.fillMaxSize().padding(top = layout.contentTop).testTag("tv-page-explore"), horizontalAlignment = Alignment.CenterHorizontally) {
         TvPageHeader("下一段旅程，随心发现。", "左右探索 · 按确认键走进故事", modifier = Modifier.padding(horizontal = layout.gutter))
         if (items.isEmpty()) {
             val state = model.connectionState

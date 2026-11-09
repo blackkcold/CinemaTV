@@ -12,6 +12,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
@@ -79,7 +80,7 @@ fun LiveScreen(model: CinemaViewModel) {
             initialChannelFocusDone = true
         }
     }
-    Column(Modifier.fillMaxSize().padding(top = layout.contentTop)) {
+    Column(Modifier.fillMaxSize().padding(top = layout.contentTop).testTag("tv-page-live")) {
         Row(Modifier.padding(horizontal = layout.gutter), verticalAlignment = Alignment.CenterVertically) {
             TvPageHeader("此刻，正在发生。", "直播频道与节目导览", modifier = Modifier.weight(1f))
             Text(clock(now), color = TvColors.Secondary, fontSize = 18.sp)
