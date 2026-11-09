@@ -32,6 +32,8 @@ import dev.cinematv.ui.tv.components.CatalogPagingControls
 import dev.cinematv.ui.tv.components.TvChip
 import dev.cinematv.ui.tv.components.TvDialogFrame
 import dev.cinematv.ui.tv.components.TvEmptyState
+import dev.cinematv.ui.tv.components.TvErrorState
+import dev.cinematv.ui.tv.components.TvLoadingState
 import dev.cinematv.ui.tv.components.TvPageHeader
 import dev.cinematv.ui.tv.components.FocusMediaCard
 import dev.cinematv.ui.tv.design.*
@@ -85,18 +87,33 @@ fun ExploreScreen(model: CinemaViewModel) {
     Column(Modifier.fillMaxSize().padding(top = layout.contentTop), horizontalAlignment = Alignment.CenterHorizontally) {
         TvPageHeader("下一段旅程，随心发现。", "左右探索 · 按确认键走进故事", modifier = Modifier.padding(horizontal = layout.gutter))
         if (items.isEmpty()) {
-            val action = ConnectionCopy.action(model.connectionState)
-            TvEmptyState(
-                title = "还没有可探索的作品",
-                detail = ConnectionCopy.summary(model.connectionState),
-                modifier = Modifier.padding(horizontal = layout.gutter, vertical = 28.dp),
-                action = {
-                    TvChip(if (action == ConnectionAction.SEARCH) "开始搜索" else "连接影视服务",
-                        modifier = Modifier.focusRequester(entry)) {
-                        model.navigate(if (action == ConnectionAction.SEARCH) dev.cinematv.Page.SEARCH else dev.cinematv.Page.SETTINGS)
-                    }
-                },
-            )
+            val state = model.connectionState
+            val action = ConnectionCopy.action(state)
+            val retryable = state is dev.cinematv.ConnectionState.Unreachable ||
+                state is dev.cinematv.ConnectionState.Incompatible
+            when {
+                model.busy -> TvLoadingState(
+                    "正在载入发现…",
+                    Modifier.padding(horizontal = layout.gutter, vertical = 28.dp),
+                )
+                retryable -> TvErrorState(
+                    title = "发现暂时无法载入",
+                    detail = ConnectionCopy.summary(state),
+                    onRetry = { model.refreshCatalog() },
+                    modifier = Modifier.padding(horizontal = layout.gutter, vertical = 28.dp),
+                )
+                else -> TvEmptyState(
+                    title = "还没有可探索的作品",
+                    detail = ConnectionCopy.summary(state),
+                    modifier = Modifier.padding(horizontal = layout.gutter, vertical = 28.dp),
+                    action = {
+                        TvChip(if (action == ConnectionAction.SEARCH) "开始搜索" else "连接影视服务",
+                            modifier = Modifier.focusRequester(entry)) {
+                            model.navigate(if (action == ConnectionAction.SEARCH) dev.cinematv.Page.SEARCH else dev.cinematv.Page.SETTINGS)
+                        }
+                    },
+                )
+            }
         } else LazyRow(state = list, modifier = Modifier.testTag("discovery-coverflow").fillMaxWidth().weight(1f).focusRestorer(),
             verticalAlignment = Alignment.CenterVertically,
             contentPadding = PaddingValues(horizontal = inset, vertical = 25.dp),

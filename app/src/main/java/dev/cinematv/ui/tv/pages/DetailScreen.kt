@@ -28,6 +28,7 @@ import dev.cinematv.ui.shared.*
 import dev.cinematv.ui.tv.components.CinemaGlassSurface
 import dev.cinematv.ui.tv.components.TvAboutSection
 import dev.cinematv.ui.tv.components.TvChip
+import dev.cinematv.ui.tv.components.TvEmptyState
 import dev.cinematv.ui.tv.components.TvDialogFrame
 import dev.cinematv.ui.tv.components.TvEmptyState
 import dev.cinematv.ui.tv.components.TvLoadingState
@@ -37,7 +38,18 @@ import dev.cinematv.ui.tv.focus.*
 @Composable
 fun DetailScreen(model: CinemaViewModel) {
     val libraryVersion = model.libraryVersion
-    val item = model.selected ?: return
+    val item = model.selected
+    if (item == null) {
+        // A restored DETAIL route can outlive its selection; never leave a blank page.
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            TvEmptyState(
+                title = "作品信息未加载",
+                detail = "返回列表并重新选择一部作品",
+                action = { TvChip("返回") { model.back() } },
+            )
+        }
+        return
+    }
     val resumeIndex = item.lastEpisode.coerceIn(0, (item.episodes.size - 1).coerceAtLeast(0))
     val resumeProgress = model.episodeProgress(resumeIndex)
     val layout = LocalTvLayout.current

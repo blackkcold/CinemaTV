@@ -15,6 +15,7 @@ import androidx.compose.ui.unit.sp
 import dev.cinematv.ui.typography.CinemaTvText as Text
 import dev.cinematv.CinemaViewModel
 import dev.cinematv.ConnectionCopy
+import dev.cinematv.isUsable
 import dev.cinematv.ui.tv.components.GlassAction
 import dev.cinematv.ui.shared.*
 import dev.cinematv.ui.tv.components.*
@@ -75,15 +76,28 @@ fun CatalogScreen(model: CinemaViewModel, series: Boolean) {
             contentPadding = PaddingValues(start = layout.gutter, end = layout.gutter, top = 14.dp, bottom = 45.dp),
             horizontalArrangement = Arrangement.spacedBy(20.dp), verticalArrangement = Arrangement.spacedBy(28.dp)) {
             if (filtered.isEmpty()) item(key = "catalog-empty", span = { GridItemSpan(maxLineSpan) }) {
-                TvEmptyState(
-                    title = if (all.isEmpty()) "还没有可浏览的作品" else "没有符合筛选条件的作品",
-                    detail = if (all.isEmpty()) ConnectionCopy.summary(model.connectionState) + " · 搜索以发现内容"
-                        else "调整筛选，或换个关键词再试",
-                    modifier = Modifier.padding(vertical = 24.dp),
-                    action = if (all.isNotEmpty()) {
-                        { TvChip("清除筛选") { category = null; year = null; rated = false } }
-                    } else null,
-                )
+                val state = model.connectionState
+                when {
+                    all.isEmpty() && model.busy -> TvLoadingState(
+                        if (series) "正在载入剧集…" else "正在载入电影…",
+                        Modifier.padding(vertical = 24.dp),
+                    )
+                    all.isEmpty() && !state.isUsable -> TvErrorState(
+                        title = if (series) "剧集暂时无法载入" else "电影暂时无法载入",
+                        detail = ConnectionCopy.summary(state),
+                        onRetry = { model.refreshCatalog() },
+                        modifier = Modifier.padding(vertical = 24.dp),
+                    )
+                    else -> TvEmptyState(
+                        title = if (all.isEmpty()) "还没有可浏览的作品" else "没有符合筛选条件的作品",
+                        detail = if (all.isEmpty()) ConnectionCopy.summary(model.connectionState) + " · 搜索以发现内容"
+                            else "调整筛选，或换个关键词再试",
+                        modifier = Modifier.padding(vertical = 24.dp),
+                        action = if (all.isNotEmpty()) {
+                            { TvChip("清除筛选") { category = null; year = null; rated = false } }
+                        } else null,
+                    )
+                }
             }
             itemsIndexed(filtered, key = { _, item -> item.presentationKey }) { index, item ->
                 val target = rememberFocusTarget(model, region, item.presentationKey)
