@@ -101,7 +101,7 @@ fun TvPlayerPage(model: CinemaViewModel) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val session = model.playbackSession
     if (session == null) {
-        Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
+        Box(Modifier.fillMaxSize().background(Color.Black).testTag("tv-page-player"), contentAlignment = Alignment.Center) {
             TvErrorState(
                 title = "播放会话未就绪",
                 detail = "请返回详情页重新选择剧集",

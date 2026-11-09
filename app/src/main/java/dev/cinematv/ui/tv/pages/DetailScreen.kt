@@ -42,7 +42,7 @@ fun DetailScreen(model: CinemaViewModel) {
     val item = model.selected
     if (item == null) {
         // A restored DETAIL route can outlive its selection; never leave a blank page.
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Box(Modifier.fillMaxSize().testTag("tv-page-detail"), contentAlignment = Alignment.Center) {
             TvEmptyState(
                 title = "作品信息未加载",
                 detail = "返回列表并重新选择一部作品",
