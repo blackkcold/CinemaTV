@@ -264,7 +264,7 @@ class DeviceQaContractTest(unittest.TestCase):
         self.assertNotIn('clearFocus(', root)
         test = (ROOT / 'app/src/androidTest/java/dev/cinematv/TvUiRegressionTest.kt').read_text()
         exit_search = test.split('assertEquals(Page.SEARCH, model.page)', 1)[1].split('screenshot("09-live")', 1)[0]
-        markers = ['rule.onNode(hasSetTextAction()).assertIsFocused()', 'model.navigate(Page.LIVE)',
+        markers = ['rule.onNodeWithTag("search-field-shell").assertIsFocused()', 'model.navigate(Page.LIVE)',
                    'awaitHiddenImeAndFullScreen()', 'assertEquals(Page.LIVE, model.page)',
                    'rule.onNode(hasSetTextAction()).assertDoesNotExist()', 'key(KeyEvent.KEYCODE_DPAD_DOWN)']
         positions = [exit_search.index(marker) for marker in markers]
@@ -274,12 +274,15 @@ class DeviceQaContractTest(unittest.TestCase):
     def test_visible_search_ime_exit_preserves_live_channel_focus(self):
         source = (ROOT / 'app/src/androidTest/java/dev/cinematv/TvUiRegressionTest.kt').read_text()
         exit_visible = source.split('// Also cover a fully visible keyboard exit', 1)[1].split('search-visible-ime-exit-complete', 1)[0]
-        markers = ['model.navigate(Page.SEARCH)', 'rule.onNode(hasSetTextAction()).assertIsFocused()',
+        markers = ['model.navigate(Page.SEARCH)',
+                   'rule.onNodeWithTag("search-field-shell").assertIsFocused()',
+                   'key(KeyEvent.KEYCODE_DPAD_CENTER)',
+                   'rule.onNode(hasSetTextAction()).assertIsFocused()',
                    'awaitPlatformImeVisible("search-exit")', 'model.navigate(Page.LIVE)',
-                   'awaitHiddenImeAndFullScreen()',
-                   'rule.onNode(hasText(model.channels.first().name) and hasClickAction()).assertIsFocused()',
+                   'awaitHiddenImeAndFullScreen()', 'assertEquals(Page.LIVE, model.page)',
+                   'rule.onNode(hasText(model.channels[1].name) and hasClickAction()).assertIsFocused()',
                    'key(KeyEvent.KEYCODE_DPAD_DOWN)',
-                   'rule.onNode(hasText(model.channels[1].name) and hasClickAction()).assertIsFocused()']
+                   'rule.onNode(hasText(model.channels[2].name) and hasClickAction()).assertIsFocused()']
         positions = [exit_visible.index(marker) for marker in markers]
         self.assertEqual(positions, sorted(positions))
         for bypass in ('.hide()', 'clearFocus(', 'closeSoftKeyboard'):
