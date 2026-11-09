@@ -16,7 +16,9 @@ import androidx.compose.ui.unit.sp
 import dev.cinematv.ui.typography.CinemaTvText as Text
 import dev.cinematv.CinemaViewModel
 import dev.cinematv.Page
+import dev.cinematv.perf.NativePerfProbe
 import dev.cinematv.ui.*
+import dev.cinematv.ui.shared.presentationKey
 import dev.cinematv.ui.tv.components.*
 import dev.cinematv.ui.tv.design.*
 import dev.cinematv.ui.tv.focus.*
@@ -49,7 +51,13 @@ fun TvRootApp(model: CinemaViewModel, settingsInitialSection: Int = 0, libraryMa
             TvNavigationFocusOwner { !libraryManagement && model.page !in listOf(Page.DETAIL, Page.PLAYER, Page.SETTINGS) }
         }
         val focusObserver = LocalTvFocusOwnerObserver.current
-        SideEffect { focusObserver?.invoke(navigationFocusOwner) }
+        // Measurement lane only: a volatile read in production, the applied-state timeline
+        // for the acceptance run. See NativePerfProbe.
+        val perfFocusKey = (model.selected ?: model.focused)?.presentationKey
+        SideEffect {
+            focusObserver?.invoke(navigationFocusOwner)
+            NativePerfProbe.record(model.page.name, perfFocusKey)
+        }
         var navigationHasFocus by remember { mutableStateOf(false) }
         var decodedArt by remember { mutableStateOf<String?>(null) }
         val glassScene = rememberProductionGlassScene(model.page != Page.PLAYER)
