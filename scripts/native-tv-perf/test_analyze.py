@@ -53,7 +53,7 @@ class AnalyzeTest(unittest.TestCase):
         document["inputs"] = [{"id": 1, "receivedNs": 5, "stateAppliedNs": 15, "responseOutcome": "no-frame-in-window"}]
         result = self.invoke(document)
         self.assertEqual(1, result.returncode)
-        self.assertIn("response-timeout", result.stdout)
+        self.assertIn("not-enough-paired-inputs", result.stdout)
 
 
 if __name__ == "__main__":

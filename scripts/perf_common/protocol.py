@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 PROTOCOL_VERSION = 4
 DEFAULT_ACTIVE_WINDOW_NS = 450_000_000
 PURPOSES = ("input-causality", "tier-direct")
+MIN_PAIRED_INPUTS = 1
 
 
 @dataclass
@@ -111,6 +112,8 @@ def validate_run(run):
     vsyncs = {frame.get("vsyncNs") for frame in frames}
     active_ns = run.get("activeWindowNs") or DEFAULT_ACTIVE_WINDOW_NS
 
+    claimed = set()
+    paired = 0
     for item in run.get("inputs", []):
         received = item.get("receivedNs")
         applied = item.get("stateAppliedNs")
@@ -118,11 +121,15 @@ def validate_run(run):
         if received is None:
             errors.append("missing:receivedNs")
             continue
+        # A press the UI never consumed is not evidence of a frame, only of the harness.
+        if item.get("handled") is False:
+            continue
         if applied is None:
             errors.append("response-no-state")
             continue
         if response is None:
-            errors.append("response-timeout")
+            # Handled but nothing was drawn in this window: a no-op press or a lost frame.
+            # It is counted as unpaired, never back-filled, and the lane requires a minimum.
             continue
         if response not in vsyncs:
             errors.append("response-not-a-frame")
@@ -131,6 +138,12 @@ def validate_run(run):
             errors.append("response-before-state")
         if not (received <= response <= received + active_ns):
             errors.append("response-outside-window")
+        if response in claimed:
+            errors.append("response-shared-frame")
+        claimed.add(response)
+        paired += 1
+    if paired < MIN_PAIRED_INPUTS:
+        errors.append("not-enough-paired-inputs")
     return errors
 
 

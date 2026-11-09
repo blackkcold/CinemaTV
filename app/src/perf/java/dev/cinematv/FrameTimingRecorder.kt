@@ -57,13 +57,14 @@ internal class FrameTimingRecorder(private val activity: Activity) {
         id
     }
 
-    /** Stamps the state caused by [inputId]; before this call the input is unpaired. */
-    fun attachState(inputId: Long, appliedNs: Long, page: String, focusKey: String?) {
+    /** Stamps the boundary that proves this input was consumed; before it the input is unpaired. */
+    fun attachState(inputId: Long, appliedNs: Long, page: String, focusKey: String?, source: String, handled: Boolean) {
         synchronized(inputs) {
             for (index in 0 until inputs.length()) {
                 val input = inputs.getJSONObject(index)
                 if (input.optLong("id", -1L) != inputId) continue
-                input.put("stateAppliedNs", appliedNs).put("statePage", page)
+                input.put("stateAppliedNs", appliedNs).put("statePage", page).put("stateSource", source)
+                    .put("handled", handled)
                 if (focusKey != null) input.put("stateFocusKey", focusKey)
                 return
             }
