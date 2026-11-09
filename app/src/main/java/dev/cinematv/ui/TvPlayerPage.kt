@@ -1,6 +1,7 @@
 package dev.cinematv.ui
 
 import dev.cinematv.ui.tv.components.GlassAction
+import dev.cinematv.ui.tv.components.TvErrorState
 
 import dev.cinematv.ui.icons.CinemaSymbol
 import android.view.ViewGroup
@@ -97,7 +98,18 @@ private fun applyChoice(player: Player, type: Int, choice: TrackChoice?) {
 @Composable
 fun TvPlayerPage(model: CinemaViewModel) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    val session = model.playbackSession ?: return
+    val session = model.playbackSession
+    if (session == null) {
+        Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
+            TvErrorState(
+                title = "播放会话未就绪",
+                detail = "请返回详情页重新选择剧集",
+                retryLabel = "返回",
+                onRetry = { model.back() },
+            )
+        }
+        return
+    }
     val episodeAtCreation = session.episodeIndex
     val playback = remember(session) {
         NativePlaybackSession(context, mediaId = "playback-${session.generation}", uri = session.url,
