@@ -28,21 +28,23 @@ release main source set; the hash above is the artifact actually installed and m
 
 `scripts/native-tv-perf/analyze.py` returned `valid: true` with no errors.
 
-| Metric | Value |
-|---|---|
-| Frames in run | 13 |
-| Inputs | 6 |
-| Paired inputs | 5 |
-| Unpaired inputs | 1 (first DOWN, `handled=false`) |
-| Callback drops | 0 |
-| Truncated | false |
-| Latency p50 | 11.29 ms |
-| Latency p95 | 15.89 ms |
-| Latency p99 | 15.89 ms |
+| Metric | Run 1 | Run 2 | Run 3 |
+|---|---|---|---|
+| Run document | `b1ad2151-055e-4989-a2a2-a937d37cb02b` | `398bc87e-9d6a-4d8f-98dc-1277ffe51b76` | `531f4341-210e-476a-b543-da6c3d3dda70` |
+| Frames | 13 | 13 | 13 |
+| Paired inputs | 5 of 6 | 6 of 6 | 6 of 6 |
+| Callback drops | 0 | 0 | 0 |
+| Latency p50 | 11.29 ms | 10.66 ms | 14.54 ms |
+| Latency p95 | 15.89 ms | 15.40 ms | 23.10 ms |
+| `valid` | true | true | true |
 
-The unpaired press is the first sample press: the window had no focusable target yet and
+Three consecutive runs from the same installed APK were valid. The first run's single
+unpaired press is the first sample press: the window had no focusable target yet and
 `dispatchKeyEvent` returned false. It is excluded by the protocol, never back-filled. The
 lane requires five of six paired inputs.
+
+These are emulator numbers on one AVD. They are not a frame-rate distribution and not a
+product-performance claim.
 
 ## What each link now proves
 
