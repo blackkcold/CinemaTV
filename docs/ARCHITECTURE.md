@@ -2,20 +2,24 @@
 
 ## Boundaries
 
-CinemaTV is an original MIT-licensed Android client. On the hybrid Dev line, TV
-browsing uses APK-local React/TypeScript/CSS; playback, services and persistence
-remain Kotlin. LibreTV remains a separately deployed service. Source JSON parsing
-stays in `data/`; TV and mobile share the ViewModel, domain identity, repository and
-playback factory. Mobile retains its independent native presentation.
+CinemaTV is an original MIT-licensed Android client. TV and mobile are separate native
+Compose presentations over one shared Kotlin core. LibreTV remains a separately deployed
+service. Source JSON parsing stays in `data/`; TV and mobile share the ViewModel, domain
+identity, repository and playback factory. `MainActivity` dispatches on
+`UI_MODE_TYPE_TELEVISION`; `TvRootApp` is the only TV route owner.
+
+The frozen `hybrid/` host and `frontend/tv-web/` bundle are retained only as historical
+A/B evidence and are scheduled for deletion. They are not a TV mainline and must not be
+extended.
 
 | Layer | Responsibility |
 |---|---|
-| `frontend/tv-web` | Local TV pages, restrained liquid glass, bounded lists and D-pad focus/scroll restoration |
-| `hybrid` | Capability policy, same-origin WebView, bounded presentation DTOs, artwork proxy and explicit native actions |
-| `ui/tv/design` | TV theme, constraint-based dp dimensions, motion and conservative effects policy |
-| `ui/tv/components` | Validated scene, source-owned live glass, focusable cards, rails and floating navigation |
-| `ui/tv/focus` | Live requester registry; no View references escape composition |
-| `ui/tv/pages` | Independent home, discovery, catalogs, search, details, live, library and settings |
+| `ui/tv/TvRootApp.kt` | The only TV route owner: route key, Back ladder, focus restoration and player handoff |
+| `ui/tv/pages` | Native home, catalogs, discovery, search, detail, live, library and settings |
+| `ui/tv/components` | Scene source, glass consumers, focusable cards, rails, fields, dialogs and status states |
+| `ui/tv/design` | Tokens, theme, motion and the platform/role glass policy |
+| `ui/tv/focus` | Live requester registry, lazy region preparation and bounded restoration |
+| `ui/tv/motion` | Poster and navigation motion with reduced-motion variants |
 | `ui/mobile` | Touch Material 3 screens and portrait/landscape video presentation |
 | `CinemaViewModel` | Routes, presentation state, service jobs and library updates |
 | `FocusCoordinator` | Logical item keys and list/grid scroll positions per route/region/title |
@@ -24,70 +28,48 @@ playback factory. Mobile retains its independent native presentation.
 | `ui/TvPlayerPage.kt` | TV video Surface and remote controller/track panel ownership |
 | `backend/tv-bff` | Independently configured TMDB exact-match metadata adapter |
 
-## Hybrid rendering and application boundary
+## TV rendering and application boundary
 
-The app packages one static web bundle under `assets/tv-web/`, served through
-`WebViewAssetLoader` at `https://appassets.androidplatform.net`. There is no runtime
-Node server, remote website shell or JavaScript video decoder. Gradle installs the
-locked frontend dependencies, type-checks/builds the bundle and stages its exact
-bytes before Android packaging. Runtime dependency licenses are included.
+`BackdropLayer` owns the one full-screen artwork scene. It validates landscape aspect and
+decoded size, keeps the previous still during loading, falls back to original Canvas art,
+crossfades between works, and applies the page readability scrim. `ProductionGlassScene`
+records that scene for the duration of one composition owner and exposes it through
+`ProductionGlassProvider`; a consumer never records itself.
 
-The host checks Android API, installed WebView version and message-listener support
-independently. API26 installation remains supported; the hybrid presentation is
-enabled on API29+ with Chromium111+ and the restricted messaging capability. An
-unsupported provider or a renderer failure exposes native recovery. System RAM and
-the user's effects/motion preference bound visual work; a capability check is not
-a measured device-performance certificate.
+Text, icons and controls are later siblings, so glass never samples them. The moving
+navigation lens samples only the scene and the glass container, never labels. Video
+Surfaces, Dialog windows and the glass's own consumers are excluded. `cinemaGlassMaterial`
+draws Basic as constant-cost opaque depth, Blur through API31 RenderEffect, and Full
+through the approved API33 optical shader. Lifecycle, hardware, memory, power, thermal and
+renderer-failure guards select a temporary fallback without rewriting the stored
+preference. Reduced Motion stops animation without changing the static material. See
+[production glass](GLASS_PRODUCTION.md) for exact boundaries.
 
-The Web UI owns focus and scroll, while `CinemaViewModel` owns business navigation.
-Requests use a versioned whitelist and opaque keys. Cookies, account credentials,
-arbitrary playback URLs and provider JSON stay native. Artwork is resized and
-loaded through a bounded native registry. External documents, frames, scripts and
-unrestricted WebView networking are excluded. Search text entry, sensitive settings
-and system installation use native surfaces; playback uses the existing Media3
-factory and TV player. Returning restores the saved route and logical focus.
-
-Glass is confined to navigation and important controls, using CSS background blur,
-translucent layers, highlights and shadows. It does not sample the native video
-Surface or claim physical optical equivalence to Apple's renderer. Basic mode
-removes blur; Reduced Motion removes transitions and card transforms. CSS capability
-fallback and WebView failure recovery are independent mechanisms.
-
-## Native recovery, player and phone rendering
-
-A scene validates landscape aspect and decoded size before swapping; it keeps the
-previous decoded still during loading. Posters remain posters. Missing art uses
-original atmospheric Canvas art. Adjacent still prefetch is bounded and disabled
-in basic mode. A scene-only Compose recording feeds independent glass material
-boxes; text/icons are later siblings. TV owns one non-player background, while
-mobile Home owns a local hero recording. The moving navigation lens samples only
-scene and glass container, never labels. Video Surfaces and separate windows are
-not recorded. Basic is constant-cost opaque depth, Blur uses API31 RenderEffect,
-and explicit Full retains the approved API33 optical shader. Lifecycle, hardware,
-memory, power, thermal and renderer-failure guards choose temporary fallback without
-rewriting preferences. Reduced Motion stops animation without changing static
-material. See [production glass](GLASS_PRODUCTION.md) for exact boundaries.
+Glass evidence keeps four distinct facts: the requested preference, the policy decision,
+the role cap and the tier actually drawn. A policy that resolves to Full is not evidence
+that Full was drawn; a missing source or a failure latch must be reported as Blur or
+Basic.
 
 TV dimensions derive from dp constraints rather than hard-coded 1920px. Five main
-navigation entries and separate tools retain safe screen gutters. Movies and series
-share card behavior but have different compositions.
+navigation entries and separate tools retain safe screen gutters. Movies and series share
+card behavior but have different compositions.
 
 ## Focus and state
 
-Hybrid nodes keep stable geometry while an inner artwork layer animates. Navigation
-remembers focus per group and saves logical bookmarks before detail/native/player
-handoff. Catalog and episode payloads are bounded; the frontend mounts only a
-window of each long rail. Missing or replaced items recover to a reachable control.
-Explicit setters make favorite updates safe if a bridge acknowledgement is lost.
-Native and web state share Room; no web database or `localStorage` library is added.
+`TvRootApp` owns one Back ladder: a visible IME first, then a dialog, then a player panel
+or control layer, then the route, and finally the system home behaviour. Duplicate
+consumers are a defect, not a safety net.
 
-The native recovery root owns a live requester registry. Its focus and scroll bookmarks live
-in the ViewModel's `FocusCoordinator`; title sessions isolate detail state from
-other works. Stable provider/id keys survive progressive search and metadata
-updates. Rails own horizontal key traversal, bringing offscreen targets into the
-lazy viewport before requesting focus. Vertical rows retain their focus groups.
-Dialogs and player panels restore their actual trigger. TV controls remain
-focusable in touch-capable emulator environments; phone UI stays independent.
+Routes are keyed by `model.focusRoute` and wrapped in per-route state providers.
+`FocusCoordinator` stores logical bookmarks per route/region plus scroll positions, while
+`TvFocusRegistry` resolves live requesters and lazy regions. Restoration prefers the
+stable key, falls back to the nearest surviving item in the same region, prepares an
+offscreen Lazy viewport before requesting focus, and abandons a stale request as soon as
+the route, the data or the user's own input changes. No View reference escapes
+composition.
+
+Catalog and episode payloads are bounded. Explicit setters make favorite updates safe when
+a request fails. Room is the single library state source; no web storage is added.
 
 ## LibreTV contract
 
@@ -117,21 +99,25 @@ position; unknown duration never yields a made-up percentage. Main library and p
 
 ## QA and release
 
-CI runs web type/build/browser tests, JVM/BFF tests, AndroidTest compilation, Lint and APK archive/signature
-verification. Full UI QA runs phone and two TV viewports with a local protocol
-fixture, original art, synthetic H.264/AAC media and screenshot/frame evidence.
-UTP's additional-output directory retains files before APK uninstall. Preview
-publishing depends on build and UI jobs for the exact commit.
+CI runs JVM/BFF/protocol tests, AndroidTest compilation, Lint and APK archive/signature
+verification. Device QA lanes are not interchangeable:
 
-The hybrid workflow adds an actual TV WebView lane and API26 recovery lane using
-prebuilt exact-commit APKs. A dedicated unsigned Dev candidate records source/tree,
-web lockfile, complete packaged web bytes and artifact hashes. It is not installable
-until the existing external signing identity finishes it and the final signed bytes
-pass installation/upgrade acceptance. See [hybrid delivery status](HYBRID_TV.md).
+- `tvNative` runs the production `MainActivity` on an Android TV system image, where
+  `isTv` is true.
+- `tv1080` and `tv4k` use phone images at wide viewports. They prove geometry and
+  rendering only, not television device behaviour.
+- `compat26` proves that the API26 install and Basic fallback path still work.
 
-Physical TV, low-end SoC, HDR/codec breadth, long soak, reference fidelity and
-production signing are separately tracked in `RELEASE_CHECKLIST.md`; emulator
-frame timings are evidence, not hardware certification.
+Full UI QA runs phone and TV viewports with a local protocol fixture, original art,
+synthetic H.264/AAC media and screenshot/frame evidence. Performance evidence comes from
+`FrameTimingRecorder` and the native-tv-perf protocol: a sample window is valid only when
+the drawn tier, the source readiness and the input-to-draw pairing are all reported.
+Emulator frame timings are E-gate evidence, not hardware certification. Physical TV,
+low-end SoC, HDR/codec breadth, long soak, reference fidelity and production signing are
+separately tracked in `RELEASE_CHECKLIST.md`.
+
+The frozen hybrid lane and its workflows are historical. They are not TV evidence and
+must not gate a native-TV release.
 
 ## Local discovery and provider provenance
 

@@ -8,7 +8,7 @@ establish a production-grade Android TV release.
 - [ ] 2GB RAM TV box: model / Android version / build fingerprint
 - [ ] Mainstream Google TV: model / Android version / build fingerprint
 - [ ] Physical 4K Android TV: model / Android version / build fingerprint
-- [ ] Full 1080p and 4K screenshot comparisons to original UI reference images
+- [ ] Full 1080p and 4K screenshot comparisons to the current native TV golden images
 - [ ] Full Glass effect performance and low-end fallback verified on hardware
 - [ ] D-pad navigation, keyboard/IME, focus and scroll restoration across routes
 - [ ] 4-hour continuous playback without crash, OOM, or sustained memory growth
@@ -18,7 +18,7 @@ establish a production-grade Android TV release.
 - [ ] Series episode indexing, progress, resume, next episode, library after restart
 - [ ] Live TV channel switch, M3U, XMLTV timezones and EPG now/next
 - [ ] Production signing, fresh install, debug-to-release migration and update paths
-- [ ] Instrumented remote smoke tests and Macrobenchmark frame-time report
+- [ ] Instrumented remote smoke tests and a native-tv-perf report that records the drawn tier and `sourceReady`
 - [ ] Permissions, OSS license notices, metadata credit and lawful asset audit
 
 ## Release record

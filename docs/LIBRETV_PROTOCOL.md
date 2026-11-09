@@ -85,9 +85,9 @@ never falls back to a matching key. Search uses the same URL-first source policy
 
 ## SourceList subscriptions
 
-Settings on both native TV and phone expose **片源列表订阅**. The local hybrid
-frontend opens the native section; raw subscription/source URLs and credentials
-never enter the WebView bridge DTOs.
+Settings on native TV and phone expose **片源列表订阅** directly. Raw
+subscription/source URLs and credentials stay in the native section and never enter
+presentation DTOs, logs or exported diagnostics.
 
 - `defaultSubscriptions` is discovered independently of default VOD/live sources,
   including deployments which advertise only SourceLists. Users may also supply
