@@ -5,11 +5,13 @@ import android.view.Window
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import dev.cinematv.perf.NativeGlassProbe
 import dev.cinematv.perf.NativePerfProbe
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
+import org.junit.BeforeClass
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -30,6 +32,16 @@ import java.util.concurrent.atomic.AtomicReference
 class TvNativePerformanceAcceptanceTest {
     @get:Rule
     val rule = createAndroidComposeRule<MainActivity>()
+
+    companion object {
+        /** Must run before the activity rule composes: MainActivity installs the probes at onCreate. */
+        @JvmStatic
+        @BeforeClass
+        fun enableProbesBeforeTheActivityLaunches() {
+            NativePerfProbe.enabled = true
+            NativeGlassProbe.enabled = true
+        }
+    }
 
     private class ProbeCallback(
         private val delegate: Window.Callback,
@@ -77,6 +89,7 @@ class TvNativePerformanceAcceptanceTest {
         val originalCallback = AtomicReference<Window.Callback?>(null)
         NativePerfProbe.reset()
         NativePerfProbe.enabled = true
+        NativeGlassProbe.reset()
         // Warm-up outside the sample: the first press after launch only establishes focus and
         // may legitimately draw nothing. It is never recorded as evidence.
         InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_DOWN)
@@ -113,16 +126,29 @@ class TvNativePerformanceAcceptanceTest {
             rule.runOnUiThread { originalCallback.get()?.let { rule.activity.window.callback = it } }
         }
 
+        val tierDirect = args.getString("tierDirect").orEmpty().uppercase()
+        val drawnTier = NativeGlassProbe.drawnTier()
+        val policyTier = NativeGlassProbe.observation()?.actualMode?.name
+        val sourcePresent = NativeGlassProbe.sourcePresentDraws() > 0
+        if (tierDirect.isNotBlank()) {
+            assertEquals(
+                "Directed tier $tierDirect was not drawn (policy=$policyTier, counts=${NativeGlassProbe.drawCounts()})",
+                tierDirect,
+                drawnTier,
+            )
+        }
         val out = File(rule.activity.getExternalFilesDir(null), "native-tv-perf/${UUID.randomUUID()}.json")
         recorder.finish("acceptance", JSONObject()
             .put("schema", 4)
-            .put("purpose", "input-causality")
+            .put("purpose", if (tierDirect.isBlank()) "input-causality" else "tier-direct")
             .put("sourceSha", sourceSha)
             .put("apkSha256", apkSha256)
             .put("renderer", renderer)
-            .put("sourceReady", true)
-            .put("requestedTier", args.getString("materialTier").orEmpty())
-            .put("actualTier", JSONObject.NULL), out)
+            .put("sourceReady", sourcePresent)
+            .put("policyTier", policyTier ?: JSONObject.NULL)
+            .put("requestedTier", if (tierDirect.isBlank()) JSONObject.NULL else tierDirect)
+            .put("actualTier", drawnTier ?: JSONObject.NULL)
+            .put("drawnTiers", JSONObject(NativeGlassProbe.drawCounts())), out)
         assertTrue("The lane must write a run document", out.isFile)
 
         val run = JSONObject(out.readText())

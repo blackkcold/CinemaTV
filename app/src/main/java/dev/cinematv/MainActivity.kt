@@ -25,6 +25,10 @@ import dev.cinematv.ui.*
 import dev.cinematv.ui.typography.CinemaNotoProvider
 import dev.cinematv.ui.mobile.MobileRootApp
 import dev.cinematv.ui.shared.CinemaBrandSession
+import dev.cinematv.perf.NativeGlassProbe
+import dev.cinematv.ui.tv.components.LocalGlassDrawDiagnostics
+import dev.cinematv.ui.tv.components.LocalGlassDrawScope
+import dev.cinematv.ui.tv.components.LocalProductionGlassObserver
 import dev.cinematv.ui.tv.design.GlassQuality
 import dev.cinematv.ui.tv.TvRootApp
 
@@ -64,8 +68,15 @@ class MainActivity : ComponentActivity() {
             )
         }
         setContent {
+            val glassProbe = NativeGlassProbe.enabled
             CinemaNotoProvider {
-                CompositionLocalProvider(LocalOpticalGlass provides model.opticalGlassEnabled) {
+                CompositionLocalProvider(
+                    LocalOpticalGlass provides model.opticalGlassEnabled,
+                    LocalProductionGlassObserver provides
+                        if (glassProbe) ({ NativeGlassProbe.onObservation(it) }) else null,
+                    LocalGlassDrawDiagnostics provides if (glassProbe) NativeGlassProbe.diagnostics else null,
+                    LocalGlassDrawScope provides if (glassProbe) "root" else null,
+                ) {
                     // TV hybrid/native detours and playback own their Back order in one host.
                     BackHandler(enabled = !isTv && model.page != Page.HOME) { model.back() }
                     CinemaBrandSession(
