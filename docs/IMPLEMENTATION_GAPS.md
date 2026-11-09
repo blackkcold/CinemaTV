@@ -55,8 +55,9 @@ is not a statement that those gaps remain unchanged.
   existing four-device matrix. It requires rendered frames, clock advancement,
   pause/resume and checkpoint reload. It is prepared, not yet executed.
 
-At the snapshot above, the full integrated phone/TV1080/TV4K/API26 matrix, exact
-source-tree provenance, new UI focus/Back behavior and release artifact verification
+At the snapshot above, the full integrated phone/API26 component matrix plus the
+`tvNative` television lane, exact source-tree provenance, the native UI focus/Back
+behavior and release artifact verification
 were pending. Later successful results must be identified by their actual release
 provenance and CI run rather than inferred from this planning snapshot.
 Prior v0.5 emulator results cannot stand in for these modified paths. No stable

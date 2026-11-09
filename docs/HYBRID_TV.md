@@ -1,6 +1,13 @@
-# Hybrid TV implementation
+# Hybrid TV implementation（历史，已冻结）
 
-CinemaTV's approved TV architecture is **local React/CSS presentation + Kotlin
+> **Status: FROZEN (2026-11-09).** Superseded by the native Compose TV presentation under
+> `app/src/main/java/dev/cinematv/ui/tv/`; `TvRootApp` is the only TV entry. This document
+> describes the retired `frontend/tv-web` + `hybrid/` path, retained only as historical
+> A/B evidence and scheduled for deletion in G4. Do not extend it, do not treat it as the
+> TV mainline, and do not use its CI lanes as television evidence. Current plan:
+> `docs/superpowers/plans/2026-11-07-native-tv-consolidation-reviewed.md`.
+
+CinemaTV's former TV architecture was **local React/CSS presentation + Kotlin
 application services + native Media3 playback**. The project keeps API26 installation
 support, the existing `dev.cinematv` package, Room data, sources and signing identity.
 The phone UI and native compatibility screens remain available.

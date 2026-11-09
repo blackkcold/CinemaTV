@@ -1,13 +1,13 @@
 # TV 原生迁移落版方案（dev-compose）
 
-> 状态：**定稿，待执行**。基于 `dev-compose` @ `5c24360` 的三份独立只读核查（逐页迁移、删除 web 影响面、性能协议）。
+> 状态：**历史迁移输入，已被复核计划取代**。基于 `dev-compose` @ `5c24360` 的三份独立只读核查（逐页迁移、删除 web 影响面、性能协议）。原生入口已切换，余下工作以 `docs/superpowers/plans/2026-11-07-native-tv-consolidation-reviewed.md` 为准。
 > 范围：TV 展示层从 hybrid WebView 全量迁移到原生 Compose，删除 Web 端，并完成一轮性能验收。手机 UI 不在范围内。
 
 ## 0. 基线与约束
 
 | 项 | 值 |
 |---|---|
-| 分支 | `dev-compose`，**不合并到 dev**，不破坏 dev 上的既有测试与成果 |
+| 分支 | `dev-compose` 是唯一开发主线；`dev` 只作为 Dev 通道从主线快进，不破坏 dev 上的既有测试与成果 |
 | 工作区 | 执行前必须干净；每步一个可回滚提交 |
 | 已落地 | W0 CI 修复、W1 连接状态机、W2 发现 rail、W3 token / `GlassAction(enabled)` / `TvEmptyState`、W6 豆瓣隔离、HOME 与 DETAIL 局部重建 |
 | 测试基线 | JVM 496/496；androidTest 编译通过 |
@@ -123,6 +123,8 @@ emulator -avd cinematv-tv -port 5554 \
 | PSS | ≤ 500 MB | ≤ 350 MB |
 | 回调丢失 | 0 | 0 |
 
+> 阈值口径已被复核计划取代：jank 按设备真实刷新率的 frame deadline 计算，不使用固定 16.67 ms；性能声明必须同时记录真实绘制档位与 `sourceReady`。
+
 **不可由模拟器宣称**：真实 60fps、GPU/blur 成本、热降频、4K/HDR、视频解码流畅度、真实遥控/IR 延迟、2 GB LMK 行为、armeabi-v7a 表现。
 
 ## 6. 测试与金标
@@ -181,7 +183,7 @@ Wave0.1 … 0.12
 
 ## 10. 不在本方案内
 
-- 不合并 `dev-compose` 到 `dev`。
+- `dev` 只从 `dev-compose` 快进；发布集成由用户确认后单独审批。
 - 不引入 Haze 库、不复制其源码。
 - 不改手机 UI。
 - 不修改历史发布记录（`docs/releases/v0.9.0-dev.1.md`）。

@@ -1,5 +1,11 @@
 # Dev audit implementation and recovery record
 
+> **Historical record (2026-11-06).** This document describes the retired Hybrid TV
+> line. That line is frozen; `dev-compose` now ships the native Compose TV presentation
+> and `TvRootApp` is the only TV entry. Keep the record for traceability, but do not use
+> its browser/hybrid lanes as current TV evidence. See
+> `docs/superpowers/plans/2026-11-07-native-tv-consolidation-reviewed.md`.
+
 Authorized scope: all fixes and feature packages from the 2026-11-06 review of
 `dev` at `0d4d113e65ac9cf4498133a0b32f7f76a357362e`, followed by the normal Dev release.
 Changes are committed incrementally on `feature/hybrid-tv-liquid-glass-complete`

@@ -140,8 +140,10 @@ A stable label is not certification. Production publication additionally needs:
    stable channel, and no unaccepted personal-account sources.
 2. The fixed externally held production key matching the published certificate
    fingerprint. Disposable debug certificates and retired keys are not that identity.
-3. Build/lint/unit/backend checks plus complete phone/API26/TV1080/TV4K UI evidence
-   for the candidate source. Do not reuse a debug APK hash for a release APK.
+3. Build/lint/unit/backend checks plus complete phone/API26 UI evidence and
+   tvNative/MainActivity television evidence for the candidate source. `tv1080` and
+   `tv4k` use phone system images and are not television lanes. Do not reuse a debug
+   APK hash for a release APK.
 4. Acceptance tied to the **final signed APK bytes and certificate**: explicit
    installer permissions/cancel/return, same-key channel upgrades, real library
    data preservation, API26/current Android and physical TV. Run those checks on
