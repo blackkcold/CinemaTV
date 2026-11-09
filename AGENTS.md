@@ -36,9 +36,9 @@ mainline and must not be made the default again.
 ## Current plan and branch state
 
 - Governing plan: `docs/superpowers/plans/2026-11-07-native-tv-consolidation-reviewed.md` (the reviewed revision; it supersedes the original plan wherever they differ).
-- Branch: `dev-compose` @ `5a68260e` (re-verified 2026-11-09). It is 13 commits ahead of `dev` and 72 ahead / 4 behind `main`. The native TV surfaces, the reviewed plan and the capture protocol are already on this branch; `dev` carries no commits of its own and can fast-forward without history loss.
+- Branch: `dev-compose` @ `8787e1e` (re-verified 2026-11-09). It is 15 commits ahead of `dev` and 74 ahead / 4 behind `main`. The native TV surfaces, the reviewed plan and the capture protocol are already on this branch; `dev` carries no commits of its own and can fast-forward without history loss.
 - Branch roles: `dev-compose` develops and publishes the Dev channel; `dev` is a transitional mirror scheduled for retirement; `main` holds Stable. Dev and Stable share one package name and one signing identity, with a single monotonically increasing versionCode ledger.
-- Baseline tag: `baseline/native-tv-<G0 governance short SHA>` does not exist yet. Create it once after the G0 governance commit; never move it.
+- Baseline tag: `baseline/native-tv-8787e1e` marks the G0 governance state (tested source `6bc1c7f`, identical tree). Never move it.
 - Web archive tag: `archive/tv-web-5c24360` does not exist yet. Create it once before G4 deletion; `5c24360` is the last commit of the TV Web experiment.
 - Gate order: G0 governance + baseline -> G1 components, glass interfaces and capture protocol -> G2 pages + full-surface glass -> G3 real-device lanes + root Back + cutover + short physical smoke + archive -> G4 Web deletion -> G5 feature-complete glass/visual polish -> G6 performance/degradation/T-gate. Do not skip G3.1 lanes, G3.2 root Back/IME, G3.4 pre-delete smoke, or G6.3 post-delete E-gate rerun.
 - G3.4 and the T-gate are owner-run manual runs on a physical Android TV. They produce receipts and are not CI jobs. Emulator lanes cover remote input, focus, Back/IME and the 4K viewport; they never substitute for the owner's run.
@@ -61,7 +61,7 @@ Device QA:
 - Native TV acceptance uses `TvTestActivity` for controlled component/golden tests and a `MainActivity` production-entry smoke test on `tvNative`. `TvTestActivity` alone is not production evidence; a phone image resized to 1080p is not a TV lane.
 - Existing glass frame harness: `scripts/glass-performance/` (glassBenchmark build type, 450 ms windows, three tiers). It checks protocol validity, not product FPS.
 - Native performance harness: `scripts/native-tv-perf/` + `FrameTimingRecorder` + `TvFrameTrace` + `TvNativePerformanceAcceptanceTest`. The protocol and recorder exist, but no device run has yet produced a valid end-to-end sample, `TvFrameTrace` is not wired into acceptance, and the declared material tier is not measured. Do not present any existing run as performance evidence.
-- Local toolchain (verified 2026-11-09): JDK 21 and `local.properties` exist, but `gradle` is not on PATH, the Android SDK directory is absent, no emulator binary is installed and GNU `timeout` is missing. Do not assume a local build; run the exact candidate in CI until a toolchain is provisioned.
+- Local toolchain (verified 2026-11-09): JDK 21; `local.properties` points at `/Users/11169285/android-sdk` (platforms 34/35/36/37.0, build-tools 35/36/37, `platform-tools` and `emulator`). AVDs: `cinematv-tv` (Google TV API34, arm64, 1920x1080 @320, 2048 MB), `livis34`, `livisdiy`. Gradle 8.13 is unpacked at `$TMPDIR/opencode/gradle2/gradle-8.13`, is not on `PATH`, and the repository has no `gradlew`; call it by absolute path with `--no-daemon`. GNU `timeout` is absent, so device-harness steps that require it run in CI only.
 
 ## Folder layout
 
