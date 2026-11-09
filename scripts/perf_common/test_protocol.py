@@ -104,6 +104,21 @@ class ProtocolTest(unittest.TestCase):
         run["windows"] = [{"startNs": 5, "endNs": 500}, {"startNs": 400, "endNs": 900}]
         self.assertIn("window-overlap", protocol.summarize(run).errors)
 
+    def test_one_frame_cannot_serve_two_inputs(self):
+        run = base_run()
+        run["inputs"] = [dict(run["inputs"][0], id=1), dict(run["inputs"][0], id=2)]
+        self.assertIn("response-shared-frame", protocol.summarize(run).errors)
+
+    def test_unhandled_input_is_not_evidence(self):
+        run = base_run()
+        run["inputs"] = [dict(run["inputs"][0], handled=False)]
+        self.assertIn("not-enough-paired-inputs", protocol.summarize(run).errors)
+        # An unhandled press next to a proven one is excluded, not a hard failure.
+        run = base_run()
+        run["inputs"] = [run["inputs"][0], dict(run["inputs"][0], id=2, handled=False,
+                                               stateAppliedNs=16, responseDrawNs=30, latencyNs=25)]
+        self.assertNotIn("not-enough-paired-inputs", protocol.summarize(run).errors)
+
     def test_old_schema_is_rejected(self):
         run = base_run()
         run["schema"] = 3

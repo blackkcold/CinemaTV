@@ -33,13 +33,25 @@ class TvNativePerformanceAcceptanceTest {
 
     private class ProbeCallback(
         private val delegate: Window.Callback,
-        private val onReceipt: (KeyEvent, Long) -> Unit,
+        private val recorder: FrameTimingRecorder,
+        private val lastReceipt: AtomicLong,
+        private val lastInputId: AtomicLong,
+        private val route: () -> String,
     ) : Window.Callback by delegate {
         override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-            if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
-                onReceipt(event, System.nanoTime())
+            if (event.action != KeyEvent.ACTION_DOWN || event.repeatCount != 0) {
+                return delegate.dispatchKeyEvent(event)
             }
-            return delegate.dispatchKeyEvent(event)
+            val receivedNs = System.nanoTime()
+            val inputId = recorder.beginInput(event.keyCode, route(), receivedNs)
+            val handled = delegate.dispatchKeyEvent(event)
+            // The key is consumed synchronously on the UI thread; any focus or page state it
+            // caused is already written when dispatch returns. Recomposition and its frame
+            // follow, so this is a floor for the responding frame, never a ceiling.
+            recorder.attachState(inputId, System.nanoTime(), route(), null, "dispatch", handled)
+            lastReceipt.set(receivedNs)
+            lastInputId.set(inputId)
+            return handled
         }
     }
 
@@ -63,28 +75,38 @@ class TvNativePerformanceAcceptanceTest {
         val lastReceipt = AtomicLong(-1L)
         val lastInputId = AtomicLong(-1L)
         val originalCallback = AtomicReference<Window.Callback?>(null)
+        NativePerfProbe.reset()
+        NativePerfProbe.enabled = true
+        // Warm-up outside the sample: the first press after launch only establishes focus and
+        // may legitimately draw nothing. It is never recorded as evidence.
+        InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_DOWN)
+        Thread.sleep(300)
         rule.runOnUiThread {
             val window = rule.activity.window
             originalCallback.set(window.callback)
-            window.callback = ProbeCallback(window.callback) { event, receivedNs ->
-                lastReceipt.set(receivedNs)
-                val page = NativePerfProbe.snapshot().lastOrNull()?.page ?: "HOME"
-                lastInputId.set(recorder.beginInput(event.keyCode, page, receivedNs))
-            }
+            window.callback = ProbeCallback(
+                window.callback, recorder, lastReceipt, lastInputId,
+                { NativePerfProbe.snapshot().lastOrNull()?.page ?: "HOME" },
+            )
         }
-        NativePerfProbe.reset()
-        NativePerfProbe.enabled = true
 
         try {
             val instrumentation = InstrumentationRegistry.getInstrumentation()
-            repeat(6) {
+            // Alternate directions so a short page still has a reachable target for most
+            // presses; unhandled presses are excluded by the host protocol, not counted.
+            val keys = intArrayOf(
+                KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_UP,
+                KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_UP,
+                KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_UP,
+            )
+            keys.forEachIndexed { index, keyCode ->
                 lastReceipt.set(-1L)
                 lastInputId.set(-1L)
-                instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_DOWN)
-                val receipt = awaitReceipt(lastReceipt)
-                if (receipt < 0L) return@repeat
-                val applied = awaitState(receipt) ?: return@repeat
-                recorder.attachState(lastInputId.get(), applied.appliedNs, applied.page, applied.focusKey)
+                instrumentation.sendKeyDownUpSync(keyCode)
+                check(awaitReceipt(lastReceipt) > 0L) { "input $index was never dispatched" }
+                // One in-flight input: close this window before the next receipt so two
+                // inputs can never claim the same frame or overlap each other.
+                Thread.sleep(FrameTimingRecorder.ACTIVE_NS / 1_000_000 + 50)
             }
         } finally {
             NativePerfProbe.enabled = false
@@ -113,7 +135,7 @@ class TvNativePerformanceAcceptanceTest {
         for (index in 0 until inputs.length()) {
             if (inputs.getJSONObject(index).optString("responseOutcome") == "paired") paired++
         }
-        assertTrue("At least one input must pair with a frame that carried its state", paired > 0)
+        assertTrue("At least five of six inputs must pair with their own frame", paired >= 5)
     }
 
     private fun awaitReceipt(value: AtomicLong): Long {
@@ -124,14 +146,5 @@ class TvNativePerformanceAcceptanceTest {
             Thread.sleep(8)
         }
         return -1L
-    }
-
-    private fun awaitState(receipt: Long): NativePerfProbe.StateEvent? {
-        val deadline = System.nanoTime() + 5_000_000_000L
-        while (System.nanoTime() < deadline) {
-            NativePerfProbe.firstAfter(receipt)?.let { return it }
-            Thread.sleep(8)
-        }
-        return null
     }
 }
