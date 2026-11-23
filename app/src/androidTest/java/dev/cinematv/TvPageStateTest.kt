@@ -35,8 +35,14 @@ class TvPageStateTest {
             rule.runOnIdle { model.loadMoreCatalog(false) }
             rule.waitUntil(20_000) { model.browseState(false).retryableFailure }
             rule.onNodeWithTag("tv-page-movies").assertExists()
-            rule.onNodeWithText("电影目录暂时无法载入").assertExists()
-            rule.onNodeWithText("重试").assertExists()
+            // An earlier suite can leave local records, in which case the page keeps them and
+            // reports the failure in the paging notice; an empty grid must show the page error.
+            if (model.browseMovies.isEmpty()) {
+                rule.onNodeWithText("电影目录暂时无法载入").assertExists()
+                rule.onNodeWithText("重试").assertExists()
+            } else {
+                rule.onNodeWithText("目录加载失败，已保留结果；可重试。", substring = true).assertExists()
+            }
         }
     }
 
