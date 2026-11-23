@@ -86,3 +86,27 @@ Raw CI captures remain untouched. Both new PNGs use the existing comparator's `n
 
 - `tv1080/11-settings.png`: commit `80a91e3ae7605a96717c7a238b37cefd81264104`, run `41993059313`, artifact `13398969985`, raw size 1920×1080, reviewed `2026-11-05`. Raw SHA-256 `2574fa628d8fb3f3baceba7aaed604d5c439fa72dc4f6948cb564bf894dfa8cd`; baseline SHA-256 `e63a35a868615d95b9c0f0cd924e37882ad4047a3aa0146c00a952e5e49ad2cd`.
 - `tv4k/11-settings.png`: commit `80a91e3ae7605a96717c7a238b37cefd81264104`, run `41993059313`, artifact `13400124111`, raw size 3840×2160, reviewed `2026-11-05`. Raw SHA-256 `be69fd0bc6fad07f2d9fb19d44a3fbf1a8ba06d830f9eee46f10d457dfe3eb2c`; baseline SHA-256 `d86173e19bafc82bb9a6230ae6cd2f605df71df0bf3923082e88ba738f4bec36`.
+
+## Reading scrim refresh · 2026-11-23
+
+All six screens in both viewports are refreshed after the reading-scrim change: HOME now protects only the hero text column, text-dense routes use a stronger reading scrim, and the BLUR glass surface moved to 9 dp with a brighter face and highlight. Source commit `ee2b76d068447f85c273dc2e115e271b28f33d16`, which also lands the confirm-dialog default focus — without that fix the TV lanes abort at instrumentation and never reach the golden stage.
+
+| viewport | run | artifact | size | instrumentation |
+|---|---|---|---|---|
+| tv1080 | 45134791580 | 14800510394 | 1920×1080 | 62 tests, 0 failed |
+| tv4k | 45137482702 | 14802210389 | 3840×2160 | 18 tests, 0 failed |
+
+Old baseline versus these captures, with both limits unchanged (mean 0.020, changed 0.08):
+
+| screen | tv1080 mean / changed | tv4k mean / changed |
+|---|---|---|
+| `01-home.png` | 0.15032 / 0.32530 | 0.15004 / 0.32674 |
+| `03-detail.png` | 0.06175 / 0.11822 | 0.06060 / 0.11304 |
+| `05-movies.png` | 0.02081 / 0.00689 | 0.02070 / 0.00643 |
+| `06-series.png` | 0.02091 / 0.00689 | 0.02079 / 0.00643 |
+| `07-discovery.png` | 0.03079 / 0.02349 | 0.03077 / 0.02330 |
+| `11-settings.png` | 0.10431 / 0.27353 | 0.10293 / 0.26830 |
+
+Every screen was already outside the baseline before this change on the same branch: the untouched base measured 0.130 on `01-home` and 0.095 on `11-settings` at tv1080. This refresh accepts the current rendered state; it does not move a limit. Masks are unchanged, no mask is baked into a PNG, and normalization stays the existing 960×540 RGB/LANCZOS path.
+
+Reviewed at both resolutions: the hero title, metadata and description keep their reading bed; the movie and series filter rows and the detail meta rows sit on a darker bed than before; the settings sidebar and the discovery cover flow keep their focus rings and are not clipped. Per-screen raw and normalized hashes are recorded in each `manifest.json`.
