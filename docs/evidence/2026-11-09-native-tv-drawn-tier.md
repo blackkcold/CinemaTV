@@ -46,6 +46,40 @@ back must be rejected, not recorded as a Full result.
 ## Not covered (BLOCKED)
 
 - Physical Android TV, 4K viewport, thermal and low-RAM behaviour.
-- A device that can actually draw FULL; this emulator never does, so the Full path is
-  still unproven on hardware.
+- ~~A device that can actually draw FULL; this emulator never does~~ — superseded by the
+  2026-11-23 correction below: the earlier run never requested FULL.
 - Frame-rate, jank distribution, long soak, playback, signing and upgrade gates.
+
+
+## Correction · 2026-11-23: FULL does draw on a host-GPU emulator
+
+The earlier `tier_full` result above is a **setup error**, not a capability finding: the
+acceptance lane asserted `tierDirect=FULL` but never changed the persisted quality, so the app
+resolved `AUTO → BLUR` and the assertion correctly rejected a tier that had never been
+requested.
+
+Re-run on the same AVD with hardware acceleration and an explicit quality:
+
+```sh
+emulator -avd cinematv-tv -no-snapshot-save -no-boot-anim -gpu host -no-audio
+# SurfaceFlinger: Android Emulator OpenGL ES Translator (Apple M4), GLES 3.0 (Metal)
+am instrument ... -e glassQuality ENHANCED -e tierDirect FULL
+```
+
+| Run | Purpose | Policy | Drawn tier | Draw counts | Paired | Result |
+|---|---|---|---|---|---|---|
+| tier-direct FULL | tier-direct | FULL | FULL | full 14 / blur 0 / basic 0 | 4/6 | **failed: pairing** |
+| input-causality #1 | input-causality | FULL | FULL | full 14 / blur 0 / basic 0 | 6/6 | valid, p50 9.91 ms, p95 16.64 ms |
+| input-causality #2 | input-causality | FULL | FULL | full 14 / blur 0 / basic 0 | 5/6 | valid, p50 12.02 ms, p95 16.63 ms |
+
+The Full optical path renders on API34 with a host GPU when `ENHANCED` is actually requested.
+The tier-direct run that paired only 4/6 is reported as a failed sample: two presses produced
+no frame inside their 450 ms window. Two input-causality runs on the same build were valid, so
+this is a sampling flake to watch, not a reason to relax the gate.
+
+Still not proven: Full on physical TV hardware, and any frame-rate or jank claim (seven frames
+are not a distribution). The emulator's host GPU is not a TV SoC.
+
+Source: `95cebef05ae03a13aaa67450f43f69942126e08d`; installed APK SHA-256
+`44569a2f64b9765510aaa929d2573c9f237f9a2fee43c236322dfb9f1bb12598`; AVD `cinematv-tv`
+(Google TV API34, arm64, 1920x1080@320, 2048 MB); renderer Apple M4 Metal.

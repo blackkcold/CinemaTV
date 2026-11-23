@@ -60,8 +60,8 @@ Device QA:
 - `scripts/qa-device-matrix.py` / `.github/workflows/tv-smoke.yml`: phone API30, `tvNative` API33 (Android TV image), `tv1080` API33, `tv4k` API33, `tv29`, `tv31`, `tv36` and `compat26` API26. `tv1080`/`tv4k` use phone system images, so `isTv` is false; treat them as component/visual lanes only. Only `tvNative` proves the production television entry.
 - Native TV acceptance uses `TvTestActivity` for controlled component/golden tests and a `MainActivity` production-entry smoke test on `tvNative`. `TvTestActivity` alone is not production evidence; a phone image resized to 1080p is not a TV lane.
 - Existing glass frame harness: `scripts/glass-performance/` (glassBenchmark build type, 450 ms windows, three tiers). It checks protocol validity, not product FPS.
-- Native performance harness: `scripts/native-tv-perf/` + `FrameTimingRecorder` + `TvFrameTrace` + `TvNativePerformanceAcceptanceTest`. The protocol and recorder exist, but no device run has yet produced a valid end-to-end sample, `TvFrameTrace` is not wired into acceptance, and the declared material tier is not measured. Do not present any existing run as performance evidence.
-- Local toolchain (verified 2026-11-09): JDK 21; `local.properties` points at `/Users/11169285/android-sdk` (platforms 34/35/36/37.0, build-tools 35/36/37, `platform-tools` and `emulator`). AVDs: `cinematv-tv` (Google TV API34, arm64, 1920x1080 @320, 2048 MB), `livis34`, `livisdiy`. Gradle 8.13 is unpacked at `$TMPDIR/opencode/gradle2/gradle-8.13`, is not on `PATH`, and the repository has no `gradlew`; call it by absolute path with `--no-daemon`. GNU `timeout` is absent, so device-harness steps that require it run in CI only.
+- Native performance harness: `scripts/native-tv-perf/` + `FrameTimingRecorder` + `NativePerfProbe` + `TvNativePerformanceAcceptanceTest`. Valid runs exist on the TV AVD (input → state → drawn frame, measured drawn tier). Always pass `-e glassQuality AUTO|BASIC|BACKDROP|ENHANCED` before `-e tierDirect`; without it the app stays on AUTO and a FULL assertion tests nothing. FULL does draw on an API34 AVD booted with `-gpu host` and `ENHANCED`. `TvFrameTrace` is still unwired. Emulator numbers are E-gate only, never a frame-rate or TV claim.
+- Local toolchain (verified 2026-11-09): JDK 21; `local.properties` points at `/Users/11169285/android-sdk` (platforms 34/35/36/37.0, build-tools 35/36/37, `platform-tools` and `emulator`). AVDs: `cinematv-tv` (Google TV API34, arm64, 1920x1080 @320, 2048 MB), `livis34`, `livisdiy`. Boot `cinematv-tv` with `-gpu host`: an explicit `-gpu swiftshader_indirect` overrides the AVD's `hw.gpu.mode=host` and silently falls back to software rendering (verify with `adb shell dumpsys SurfaceFlinger | grep GLES`). `cmd uimode` has no `television` subcommand on API34, so a phone cannot be switched into TV mode through adb. Gradle 8.13 is unpacked at `$TMPDIR/opencode/gradle2/gradle-8.13`, is not on `PATH`, and the repository has no `gradlew`; call it by absolute path with `--no-daemon`. GNU `timeout` is absent, so device-harness steps that require it run in CI only.
 
 ## Folder layout
 
@@ -77,6 +77,7 @@ Device QA:
 - `docs/superpowers/plans/2026-11-07-native-tv-consolidation-reviewed.md`: current plan; the unreviewed original is retained beside it as history.
 - `docs/GLASS_PRODUCTION.md`: current glass doc; `docs/GLASS_V4.md`: V4 depth/lens contract, reconciled in G6.4.
 - `docs/UPDATE_CHANNELS.md`: external signing, versionCode ledger and channel safety.
+- `docs/TEST_PLAN.md`: the single test-plan entry point (layers, TV AVD, E-gate/T-gate boundaries, triage).
 
 ## Completion gate
 

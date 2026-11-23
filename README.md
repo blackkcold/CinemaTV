@@ -139,6 +139,7 @@ npm --prefix backend/tv-bff test
 - [架构](docs/ARCHITECTURE.md)：共享数据与播放逻辑，独立 TV / 手机原生界面。
 - [构建与测试](https://github.com/blackkcold/CinemaTV/actions/workflows/android.yml)：编译、Lint、单元与协议测试。
 - [验收与发布边界](docs/RELEASE_CHECKLIST.md)：模拟器 UI、真实播放协议、硬件覆盖与签名要求。
+- [测试计划](docs/TEST_PLAN.md)：分层测试、TV 模拟器（宿主 GPU）与 E-gate / T-gate 的边界。
 
 欢迎提交可复现的问题或改进建议。反馈时请附上版本、设备型号、Android 版本与操作步骤，并移除密码、令牌、私有地址和播放链接。
 
