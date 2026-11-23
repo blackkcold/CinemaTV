@@ -1,8 +1,11 @@
 package dev.cinematv
 
+import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performScrollToNode
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Rule
 import org.junit.Test
@@ -41,6 +44,10 @@ class TvPageStateTest {
                 rule.onNodeWithText("电影目录暂时无法载入").assertExists()
                 rule.onNodeWithText("重试").assertExists()
             } else {
+                // Paging controls sit after the results; a failure that keeps content is
+                // reported there, so the page must still expose the notice in its grid.
+                rule.onNode(hasScrollAction())
+                    .performScrollToNode(hasTestTag("catalog-refresh:false"))
                 rule.onNodeWithText("目录加载失败，已保留结果；可重试。", substring = true).assertExists()
             }
         }
