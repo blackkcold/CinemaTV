@@ -31,6 +31,10 @@ class UiFixtureServer(private val context: Context) : AutoCloseable {
     @Volatile var catalogFilteredPages = false
     @Volatile var homeCatalog = false
     @Volatile var duplicateLiveIds = false
+    /** Opt-in failures: a 5xx response lets a test exercise a real page error state. */
+    @Volatile var catalogFails = false
+    @Volatile var channelsFail = false
+    @Volatile var epgFails = false
     val requests = CopyOnWriteArrayList<String>()
     val catalogRequests = CopyOnWriteArrayList<String>()
 
@@ -135,9 +139,11 @@ class UiFixtureServer(private val context: Context) : AutoCloseable {
         while (read < bytes.size) { val count = input.read(bytes, read, bytes.size - read); if (count < 0) break; read += count }
         val body = runCatching { JSONObject(String(bytes, Charsets.UTF_8)) }.getOrDefault(JSONObject())
         var type = "application/json; charset=utf-8"
+        var status = "200 OK"
+        val unavailable: () -> ByteArray = { status = "503 Service Unavailable"; "{}".toByteArray() }
         val now = System.currentTimeMillis()
         val response: ByteArray = when (uri.path) {
-            "/v1/catalog" -> catalog(uri).toByteArray()
+            "/v1/catalog" -> if (catalogFails) unavailable() else catalog(uri).toByteArray()
             "/api/status" -> JSONObject().put("passwordRequired", false).put("verified", true)
                 .put("defaultSources", JSONArray().put(JSONObject().put("key", "fixture").put("name", "测试片库").put("url", "$base/provider")))
                 .put("defaultLiveSources", JSONArray().put(JSONObject().put("key", "live").put("name", "电影频道").put("url", "$base/live.m3u").put("epg", "$base/epg.xml")))
@@ -157,14 +163,14 @@ class UiFixtureServer(private val context: Context) : AutoCloseable {
                 (details[key] ?: JSONObject().put("videoInfo", JSONObject().put("desc", "穿过辽阔的原野，听见风与时间的回响。一段关于远行、重逢与自我发现的故事。").put("cover", poster).put("typeName", "剧情"))
                 .put("episodes", JSONArray((0 until 36).map { "$base/stream.mp4?episode=$it" })).toString()).toByteArray()
             }
-            "/api/live/playlist" -> JSONObject().put("channels", JSONArray((0 until 18).map { i ->
+            "/api/live/playlist" -> if (channelsFail) unavailable() else JSONObject().put("channels", JSONArray((0 until 18).map { i ->
                 JSONObject().put("id", if (duplicateLiveIds && i < 2) "shared-epg-id" else "channel-$i")
                     .put("name", if (duplicateLiveIds && i < 2) "同一频道 ${if (i == 0) "HD" else "SD"}"
                         else listOf("电影精选", "世界纪录", "自然之声")[i % 3] + if (i > 2) " ${i + 1}" else "")
                     .put("url", "$base/stream.mp4?live=$i").put("group", if (i < 6) "精选" else "更多")
                     .put("tvgId", if (duplicateLiveIds && i < 2) "shared-epg-id" else "channel-$i")
             })).toString().toByteArray()
-            "/api/live/epg" -> JSONObject().put("programs", JSONArray((0 until 12).map { i ->
+            "/api/live/epg" -> if (epgFails) unavailable() else JSONObject().put("programs", JSONArray((0 until 12).map { i ->
                 JSONObject().put("title", listOf("山海之间", "远方的故事", "光影时刻")[i % 3])
                     .put("start", now - 900000 + i * 1800000L).put("stop", now + 900000 + i * 1800000L)
             })).toString().toByteArray()
@@ -172,7 +178,7 @@ class UiFixtureServer(private val context: Context) : AutoCloseable {
             else -> "{}".toByteArray()
         }
         val output = socket.getOutputStream()
-        output.write("HTTP/1.1 200 OK\r\nContent-Type: $type\r\nContent-Length: ${response.size}\r\nConnection: close\r\n\r\n".toByteArray())
+        output.write("HTTP/1.1 $status\r\nContent-Type: $type\r\nContent-Length: ${response.size}\r\nConnection: close\r\n\r\n".toByteArray())
         output.write(response); output.flush()
     }
     override fun close() { running = false; server.close(); workers.shutdownNow() }

@@ -36,7 +36,7 @@ mainline and must not be made the default again.
 ## Current plan and branch state
 
 - Governing plan: `docs/superpowers/plans/2026-11-07-native-tv-consolidation-reviewed.md` (the reviewed revision; it supersedes the original plan wherever they differ).
-- Branch: `dev-compose` @ `8787e1e` (re-verified 2026-11-09). It is 15 commits ahead of `dev` and 74 ahead / 4 behind `main`. The native TV surfaces, the reviewed plan and the capture protocol are already on this branch; `dev` carries no commits of its own and can fast-forward without history loss.
+- Branch: `dev-compose` @ `7e2d831` (re-verified 2026-11-23). Ahead/behind counts change on every merge, so read them from git rather than from this file. The native TV surfaces, the reviewed plan, the capture protocol and the refreshed goldens are on this branch; `dev` carries no commits of its own and can fast-forward without history loss.
 - Branch roles: `dev-compose` develops and publishes the Dev channel; `dev` is a transitional mirror scheduled for retirement; `main` holds Stable. Dev and Stable share one package name and one signing identity, with a single monotonically increasing versionCode ledger.
 - Baseline tag: `baseline/native-tv-8787e1e` marks the G0 governance state (tested source `6bc1c7f`, identical tree). Never move it.
 - Web archive tag: `archive/tv-web-5c24360` does not exist yet. Create it once before G4 deletion; `5c24360` is the last commit of the TV Web experiment.
