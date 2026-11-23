@@ -1,12 +1,11 @@
 package dev.cinematv
 
-import androidx.compose.ui.test.hasScrollAction
-import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.performScrollToNode
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import kotlinx.coroutines.runBlocking
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -28,6 +27,16 @@ class TvPageStateTest {
 
     @Test fun moviesCatalogFailureShowsAnErrorNotAnEmptyCatalog() {
         UiFixtureServer(rule.activity).use { server ->
+            // An earlier suite can leave local records, and those would keep the grid non-empty.
+            // Clearing them makes "empty grid + failed catalog" a deterministic state.
+            runBlocking {
+                model.repo.library.initialize()
+                model.repo.library.clearHistory()
+                model.repo.library.snapshot.records.forEach { record ->
+                    model.repo.library.setFavorite(record.item, false)
+                    model.repo.library.setStatus(record.item, null)
+                }
+            }
             server.catalogFails = true
             connect(server)
             rule.waitUntil(20_000) { model.authorized }
@@ -37,19 +46,10 @@ class TvPageStateTest {
             }
             rule.runOnIdle { model.loadMoreCatalog(false) }
             rule.waitUntil(20_000) { model.browseState(false).retryableFailure }
+            rule.runOnIdle { assertTrue("Fixture must leave the grid empty", model.browseMovies.isEmpty()) }
             rule.onNodeWithTag("tv-page-movies").assertExists()
-            // An earlier suite can leave local records, in which case the page keeps them and
-            // reports the failure in the paging notice; an empty grid must show the page error.
-            if (model.browseMovies.isEmpty()) {
-                rule.onNodeWithText("电影目录暂时无法载入").assertExists()
-                rule.onNodeWithText("重试").assertExists()
-            } else {
-                // Paging controls sit after the results; a failure that keeps content is
-                // reported there, so the page must still expose the notice in its grid.
-                rule.onNode(hasScrollAction())
-                    .performScrollToNode(hasTestTag("catalog-refresh:false"))
-                rule.onNodeWithText("目录加载失败，已保留结果；可重试。", substring = true).assertExists()
-            }
+            rule.onNodeWithText("电影目录暂时无法载入").assertExists()
+            rule.onNodeWithText("重试").assertExists()
         }
     }
 
