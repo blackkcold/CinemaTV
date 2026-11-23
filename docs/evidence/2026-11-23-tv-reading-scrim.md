@@ -83,3 +83,36 @@ put body text directly on artwork are darker.
    `design/ui/goldens/REVIEW.md` entry.
 6. Re-run both lanes and require the `goldens` stage to pass before the change is treated
    as visually certified.
+
+## Golden and device state measured after this change (tv1080)
+
+Two dispatches of the same lane: this branch (run `45124710574`) and the untouched base
+branch `dev-compose` (run `45126725800`). Both fail the same two instrumentation tests, so
+the `goldens` stage never runs and no golden refresh can be produced from either run:
+
+- `TvLibraryCatalogControlsTest.cleanupCancelBackConfirmAndStatusRemoval` — the dialog's
+  `取消` action is not focused (62 tests, 2 failed).
+- `TvRecommendationDashboardTest.showsLiveSnapshotAndReturnsDpadFocus` — no node with
+  `recommendation-dashboard-open`.
+
+Both reproduce on `dev-compose` without this change, so they are pre-existing on the base
+branch and outside this change's scope.
+
+Running the comparator by hand on the captured screenshots shows the baseline was already
+stale before this change, and isolates the increment this change adds:
+
+| screen | base branch vs golden | this branch vs golden | increment |
+|---|---|---|---|
+| `01-home.png` | 0.13036 | 0.15032 | +0.01997 |
+| `03-detail.png` | 0.03589 | 0.06175 | +0.02586 |
+| `05-movies.png` | 0.00225 | 0.02081 | +0.01856 |
+| `06-series.png` | 0.00225 | 0.02091 | +0.01866 |
+| `07-discovery.png` | 0.01172 | 0.03079 | +0.01907 |
+| `11-settings.png` | 0.09497 | 0.10434 | +0.00937 |
+
+`05-movies`, `06-series` and `07-discovery` were still inside both limits on the base
+branch; this change pushes their mean just past 0.020, which is why the refresh must be a
+recapture rather than a threshold change.
+
+Order of work for the follow-up: fix the two failing tests, get a lane through
+instrumentation, then refresh `design/ui/goldens/{tv1080,tv4k}` with the procedure above.
