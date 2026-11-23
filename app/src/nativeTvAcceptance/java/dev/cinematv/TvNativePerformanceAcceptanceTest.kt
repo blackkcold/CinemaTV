@@ -3,10 +3,12 @@ package dev.cinematv
 import android.view.KeyEvent
 import android.view.Window
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.lifecycle.ViewModelProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import dev.cinematv.perf.NativeGlassProbe
 import dev.cinematv.perf.NativePerfProbe
+import dev.cinematv.ui.tv.design.GlassQuality
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -82,6 +84,19 @@ class TvNativePerformanceAcceptanceTest {
         assertTrue("The lane requires the exact source SHA", sourceSha.matches(Regex("[0-9a-f]{40}")))
         assertTrue("The lane requires the installed APK SHA-256", apkSha256.matches(Regex("[0-9a-f]{64}")))
         assertTrue("The lane requires the actual renderer", renderer.isNotBlank())
+
+        // The persisted quality decides which tier is requested. Without this the run only ever
+        // exercises AUTO -> BLUR, so a tier-direct FULL assertion would prove nothing.
+        val requestedQuality = args.getString("glassQuality").orEmpty().uppercase()
+        if (requestedQuality.isNotBlank()) {
+            val quality = runCatching { GlassQuality.valueOf(requestedQuality) }
+                .getOrElse { error("Unknown glassQuality=$requestedQuality") }
+            rule.runOnIdle {
+                ViewModelProvider(rule.activity)[CinemaViewModel::class.java].updateGlassQuality(quality)
+            }
+            rule.waitUntil(10_000) { NativeGlassProbe.observation()?.requested == quality }
+            rule.waitForIdle()
+        }
 
         val recorder = FrameTimingRecorder(rule.activity)
         val lastReceipt = AtomicLong(-1L)
