@@ -116,3 +116,14 @@ recapture rather than a threshold change.
 
 Order of work for the follow-up: fix the two failing tests, get a lane through
 instrumentation, then refresh `design/ui/goldens/{tv1080,tv4k}` with the procedure above.
+
+## Update: the golden refresh landed
+
+The two blocking tests were fixed in `ee2b76d` (`fix(tv): land the confirm dialog's default
+focus and unify the entry tag`), so the lanes reach the golden stage again. Both viewports
+were then recaptured on that commit: tv1080 run `45134791580` (62 tests, 0 failed) and tv4k
+run `45137482702` (18 tests, 0 failed). The refresh commit is `8f2a2da`;
+`design/ui/goldens/REVIEW.md` records the old-versus-new per-screen errors, and the limits,
+masks and normalization are unchanged.
+
+The `BLOCKED` note above is kept as the state before that fix, not as the current status.
