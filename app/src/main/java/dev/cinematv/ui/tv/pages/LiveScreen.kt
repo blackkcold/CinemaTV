@@ -34,6 +34,7 @@ import dev.cinematv.ui.tv.components.GlassAction
 import dev.cinematv.ui.tv.components.CinemaGlassSurface
 import dev.cinematv.ui.tv.components.TvChip
 import dev.cinematv.ui.tv.components.TvEmptyState
+import dev.cinematv.ui.tv.components.TvErrorState
 import dev.cinematv.ui.tv.components.TvLoadingState
 import dev.cinematv.ui.tv.components.TvPageHeader
 import dev.cinematv.ui.tv.components.TvProgressBar
@@ -104,9 +105,17 @@ fun LiveScreen(model: CinemaViewModel) {
                 LazyColumn(state = list, modifier = Modifier.weight(1f).fillMaxHeight().focusRestorer(),
                     verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(vertical = 10.dp)) {
                     if (channels.isEmpty()) item {
-                        if (model.busy) TvLoadingState("正在载入频道…", Modifier.padding(vertical = 16.dp))
-                        else TvEmptyState("暂无可用频道", "当前订阅没有返回频道。",
-                            modifier = Modifier.padding(vertical = 16.dp))
+                        when {
+                            model.channelsLoading -> TvLoadingState("正在载入频道…", Modifier.padding(vertical = 16.dp))
+                            model.channelsError.isNotBlank() -> TvErrorState(
+                                title = "频道列表加载失败",
+                                detail = model.channelsError,
+                                onRetry = { model.activeLiveSource?.let { model.loadChannels(it) } },
+                                modifier = Modifier.padding(vertical = 16.dp),
+                            )
+                            else -> TvEmptyState("暂无可用频道", "当前订阅没有返回频道。",
+                                modifier = Modifier.padding(vertical = 16.dp))
+                        }
                     }
                     itemsIndexed(channels, key = { _, channel -> ChannelIdentity.key(model.activeLiveSource, channel) }) { index, channel ->
                         val key = ChannelIdentity.key(model.activeLiveSource, channel)
@@ -125,7 +134,16 @@ fun LiveScreen(model: CinemaViewModel) {
                         item {
                             Text(model.activeChannel?.name ?: "节目导览", color = TvColors.Text, fontSize = 25.sp, fontWeight = FontWeight.SemiBold)
                             Spacer(Modifier.height(7.dp))
-                            Text(if (model.activeChannel == null) "选择左侧频道查看节目。" else if (programs.isEmpty()) "当前频道暂无节目单。" else "当前节目与后续播出安排", color = TvColors.Secondary, fontSize = 13.sp)
+                            Text(
+                                when {
+                                    model.activeChannel == null -> "选择左侧频道查看节目。"
+                                    programs.isEmpty() && model.epgLoading -> "正在载入节目单…"
+                                    programs.isEmpty() && model.epgError.isNotBlank() -> "节目单暂时无法载入。"
+                                    programs.isEmpty() -> "当前频道暂无节目单。"
+                                    else -> "当前节目与后续播出安排"
+                                },
+                                color = TvColors.Secondary, fontSize = 13.sp,
+                            )
                         }
                         if (current != null) item(key = "now-playing") {
                             Text("正在播出", color = TvColors.Accent, fontSize = 12.sp)
@@ -136,12 +154,27 @@ fun LiveScreen(model: CinemaViewModel) {
                             TvProgressBar(progress)
                         }
                         if (programs.isEmpty()) item(key = "guide-empty") {
-                            TvEmptyState(
-                                title = if (model.activeChannel == null) "选择一个频道" else "暂无节目单",
-                                detail = if (model.activeChannel == null) "从左侧频道开始，右侧会显示当前与后续节目。"
-                                    else "当前频道没有可用的 EPG 数据。",
-                                modifier = Modifier.padding(vertical = 18.dp),
-                            )
+                            // A failed refresh keeps an already loaded guide on screen; only an
+                            // empty guide shows the real failure instead of "no guide".
+                            when {
+                                model.activeChannel == null -> TvEmptyState(
+                                    title = "选择一个频道",
+                                    detail = "从左侧频道开始，右侧会显示当前与后续节目。",
+                                    modifier = Modifier.padding(vertical = 18.dp),
+                                )
+                                model.epgLoading -> TvLoadingState("正在载入节目单…", Modifier.padding(vertical = 18.dp))
+                                model.epgError.isNotBlank() -> TvErrorState(
+                                    title = "节目单加载失败",
+                                    detail = model.epgError,
+                                    onRetry = { model.retryEpg() },
+                                    modifier = Modifier.padding(vertical = 18.dp),
+                                )
+                                else -> TvEmptyState(
+                                    title = "暂无节目单",
+                                    detail = "当前频道没有可用的 EPG 数据。",
+                                    modifier = Modifier.padding(vertical = 18.dp),
+                                )
+                            }
                         }
                         items(programs.filter { it != current }, key = { "${it.start}:${it.stop}:${it.title}" }) { program ->
                             GuideProgram(program, current = false)

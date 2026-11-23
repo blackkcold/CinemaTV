@@ -78,10 +78,19 @@ fun CatalogScreen(model: CinemaViewModel, series: Boolean) {
             horizontalArrangement = Arrangement.spacedBy(20.dp), verticalArrangement = Arrangement.spacedBy(28.dp)) {
             if (filtered.isEmpty()) item(key = "catalog-empty", span = { GridItemSpan(maxLineSpan) }) {
                 val state = model.connectionState
+                val browse = model.browseState(series)
                 when {
-                    all.isEmpty() && model.busy -> TvLoadingState(
+                    // The paging state owns this page's request; the global busy flag would also
+                    // fire for unrelated work and invent a loading state here.
+                    all.isEmpty() && browse.loading -> TvLoadingState(
                         if (series) "正在载入剧集…" else "正在载入电影…",
                         Modifier.padding(vertical = 24.dp),
+                    )
+                    all.isEmpty() && browse.retryableFailure -> TvErrorState(
+                        title = if (series) "剧集目录暂时无法载入" else "电影目录暂时无法载入",
+                        detail = browse.notice.ifBlank { ConnectionCopy.summary(state) },
+                        onRetry = { model.refreshCatalog() },
+                        modifier = Modifier.padding(vertical = 24.dp),
                     )
                     all.isEmpty() && !state.isUsable -> TvErrorState(
                         title = if (series) "剧集暂时无法载入" else "电影暂时无法载入",

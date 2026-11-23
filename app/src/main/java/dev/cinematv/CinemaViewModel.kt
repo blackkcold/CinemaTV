@@ -137,8 +137,20 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
         private set
     var epgPrograms by mutableStateOf<List<TvProgram>>(emptyList())
         private set
+    /** Channel state is page state; the global busy flag must never stand in for it. */
+    var channelsLoading by mutableStateOf(false)
+        private set
+    var channelsError by mutableStateOf("")
+        private set
+    /** EPG loading and failure stay separate so a failed request is not drawn as "no guide". */
+    var epgLoading by mutableStateOf(false)
+        private set
+    var epgError by mutableStateOf("")
+        private set
     private var epgJob: Job? = null
     private var epgRequestedAt = 0L
+    private var channelsGeneration = 0
+    private var epgGeneration = 0
     private var connectionJob: Job? = null
     private var connectionAttempt = 0L
     private var defaultLoginAttempted = false
@@ -443,8 +455,14 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
         alternatives = emptyList()
         activeChannel = null
         activeLiveSource = null
+        channelsGeneration++
+        epgGeneration++
         channels = emptyList()
+        channelsLoading = false
+        channelsError = ""
         epgPrograms = emptyList()
+        epgLoading = false
+        epgError = ""
         epgRequestedAt = 0L
         sourceProbes = emptyMap()
         defaultSourceSubscriptions = emptyList()
@@ -960,22 +978,36 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
     private fun requestEpg(channel: TvChannel, debounce: Boolean, nowMs: Long = System.currentTimeMillis()) {
         epgJob?.cancel()
         val source = activeLiveSource ?: return
-        if (source.epg.isBlank()) return
+        if (source.epg.isBlank()) { epgLoading = false; epgError = ""; return }
         epgRequestedAt = nowMs
+        val generation = ++epgGeneration
         val connection = repo.connectionContext()
         val key = ChannelIdentity.key(source, channel)
+        epgLoading = true
+        epgError = ""
         epgJob = viewModelScope.launch {
             if (debounce) delay(350)
             try {
                 val programs = repo.epg(source, channel, connection)
                 ensureActive()
-                if (repo.isCurrentConnection(connection) && activeChannel?.let { ChannelIdentity.key(activeLiveSource, it) } == key)
+                if (generation == epgGeneration && repo.isCurrentConnection(connection) &&
+                    activeChannel?.let { ChannelIdentity.key(activeLiveSource, it) } == key)
                     epgPrograms = programs
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (error: Exception) {
+                if (generation == epgGeneration) epgError = ConnectionErrors.message(error)
                 if (ConnectionErrors.classify(error) == ConnectionFailure.AUTHENTICATION) connectionError(error, connection)
+            } finally {
+                if (generation == epgGeneration) epgLoading = false
             }
         }
+    }
+
+    /** In-place retry: the guide's 15-minute throttle must not swallow a failure. */
+    fun retryEpg() {
+        val channel = activeChannel ?: return
+        epgRequestedAt = 0L
+        requestEpg(channel, debounce = false)
     }
 
     fun updateSearchFilters(filters: SearchFilters) {
@@ -1353,10 +1385,16 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
     fun loadChannels(source: LiveSource) {
         channelsJob?.cancel()
         epgJob?.cancel()
+        val generation = ++channelsGeneration
+        epgGeneration++
         activeLiveSource = source
         activeChannel = null
         channels = emptyList()
+        channelsError = ""
+        channelsLoading = true
         epgPrograms = emptyList()
+        epgError = ""
+        epgLoading = false
         epgRequestedAt = 0L
         val connection = repo.connectionContext()
         channelsJob = viewModelScope.launch {
@@ -1364,12 +1402,21 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
             try {
                 val loaded = repo.channels(source, connection)
                 ensureActive()
-                if (repo.isCurrentConnection(connection) && activeLiveSource?.url == source.url) channels = loaded
+                if (generation == channelsGeneration && repo.isCurrentConnection(connection) && activeLiveSource?.url == source.url) channels = loaded
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
-                if (activeLiveSource?.url == source.url) connectionError(error, connection)
-            } finally { if (repo.isCurrentConnection(connection) && activeLiveSource?.url == source.url) busy = false }
+                if (generation == channelsGeneration && activeLiveSource?.url == source.url) {
+                    // A failed fetch is a recoverable page state, not an empty subscription.
+                    channelsError = ConnectionErrors.message(error)
+                    connectionError(error, connection)
+                }
+            } finally {
+                if (generation == channelsGeneration) {
+                    busy = false
+                    channelsLoading = false
+                }
+            }
         }
     }
 
