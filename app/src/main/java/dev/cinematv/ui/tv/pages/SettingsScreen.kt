@@ -165,7 +165,7 @@ fun SettingsScreen(model: CinemaViewModel, initialSection: Int = 0) {
                             }
                             5 -> {
                                 item { SettingTitle("本地推荐", "查看推荐理由、已使用的本地信号与推荐偏好。") }
-                                item { GlassAction("打开推荐看板", Modifier.testTag("recommendations-open").focusRequester(recommendationEntry).width(180.dp).height(42.dp)) {
+                                item { GlassAction("打开推荐看板", Modifier.testTag("recommendation-dashboard-open").focusRequester(recommendationEntry).width(180.dp).height(42.dp)) {
                                     recommendationWasOpened = true; recommendationOpen = true
                                 } }
                             }

@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -57,8 +58,19 @@ fun TvConfirmDialog(
     destructive: Boolean = false,
 ) {
     val cancelFocus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { runCatching { cancelFocus.requestFocus() } }
     TvDialogFrame(onDismissRequest = onDismiss, modifier = modifier) {
+        // The dialog is its own window and composes after the page, so a request made by the
+        // caller can run before the button exists. Ask from inside this content and retry
+        // across frames; the old one-shot request was swallowed by runCatching, which left a
+        // slow device focused on the page behind instead of the safe action.
+        LaunchedEffect(cancelFocus) {
+            var attempts = 0
+            while (attempts < 6) {
+                if (runCatching { cancelFocus.requestFocus() }.isSuccess) break
+                withFrameNanos { }
+                attempts++
+            }
+        }
         TvText(title, style = TvType.h2, color = TvColors.Text)
         TvText(message, style = TvType.body, color = TvColors.Secondary)
         TvActionRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(TvSpace.sm, Alignment.End)) {
