@@ -40,7 +40,12 @@ fun AmbientArtwork(modifier: Modifier = Modifier, seed: Int = 0) {
 
 /** Decode before swapping; a failed or portrait-sized image resolves to fallback. */
 @Composable
-fun BackdropLayer(item: MediaItem?, modifier: Modifier = Modifier, onDecodedArt: (String?) -> Unit = {}) {
+fun BackdropLayer(
+    item: MediaItem?,
+    modifier: Modifier = Modifier,
+    denseText: Boolean = false,
+    onDecodedArt: (String?) -> Unit = {},
+) {
     val context = LocalContext.current
     val effects = LocalTvEffects.current
     val decodeWidth = if (effects.glass == GlassQuality.BASIC) 960 else 1600
@@ -52,6 +57,29 @@ fun BackdropLayer(item: MediaItem?, modifier: Modifier = Modifier, onDecodedArt:
     var decoded by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(requested) {
         if (requested == null) { decoded = null; notify(null) }
+    }
+    // One scrim policy, two profiles. HOME protects only the text column so the artwork keeps
+    // its light on the right; routes that put body text over the artwork get a stronger
+    // reading scrim. Pages never invent their own overlay.
+    val horizontalScrim = remember(denseText) {
+        if (denseText) Brush.horizontalGradient(
+            0f to TvColors.Background.copy(alpha = .97f),
+            .40f to TvColors.Background.copy(alpha = .56f),
+            1f to Color.Transparent,
+        ) else Brush.horizontalGradient(
+            0f to TvColors.Background.copy(alpha = .96f),
+            .28f to TvColors.Background.copy(alpha = .60f),
+            .50f to TvColors.Background.copy(alpha = .30f),
+            1f to Color.Transparent,
+        )
+    }
+    val verticalScrim = remember(denseText) {
+        Brush.verticalGradient(
+            0f to TvColors.Background.copy(alpha = if (denseText) .62f else .28f),
+            (if (denseText) .32f else .30f) to Color.Transparent,
+            (if (denseText) .66f else .63f) to TvColors.Background.copy(alpha = if (denseText) .48f else .30f),
+            1f to TvColors.Background,
+        )
     }
     Box(modifier.fillMaxSize()) {
         AmbientArtwork(Modifier.matchParentSize(), item?.title?.hashCode() ?: 0)
@@ -79,12 +107,7 @@ fun BackdropLayer(item: MediaItem?, modifier: Modifier = Modifier, onDecodedArt:
                 modifier = Modifier.fillMaxSize()
             )
         }
-        Box(Modifier.matchParentSize().background(Brush.horizontalGradient(
-            0f to TvColors.Background.copy(alpha = .94f), .46f to TvColors.Background.copy(alpha = .42f), 1f to Color.Transparent
-        )))
-        Box(Modifier.matchParentSize().background(Brush.verticalGradient(
-            0f to TvColors.Background.copy(alpha = .46f), .30f to Color.Transparent,
-            .63f to TvColors.Background.copy(alpha = .32f), 1f to TvColors.Background
-        )))
+        Box(Modifier.matchParentSize().background(horizontalScrim))
+        Box(Modifier.matchParentSize().background(verticalScrim))
     }
 }

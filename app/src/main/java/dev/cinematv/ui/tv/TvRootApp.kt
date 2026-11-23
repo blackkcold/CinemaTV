@@ -74,7 +74,8 @@ fun TvRootApp(model: CinemaViewModel, settingsInitialSection: Int = 0, libraryMa
             Box(Modifier.fillMaxSize().testTag("tv-root").then(posterInput).background(TvColors.Background)) {
                 if (model.page != Page.PLAYER) BackdropLayer(
                     if (model.page == Page.DETAIL) model.selected else model.focused ?: model.featured.firstOrNull(),
-                    modifier = Modifier.recordProductionGlass(glassScene)
+                    modifier = Modifier.recordProductionGlass(glassScene),
+                    denseText = model.page != Page.HOME,
                 ) { decodedArt = it; onSceneDecoded(it) }
                 savedPages.SaveableStateProvider(model.focusRoute) {
                   key(model.focusRoute) {

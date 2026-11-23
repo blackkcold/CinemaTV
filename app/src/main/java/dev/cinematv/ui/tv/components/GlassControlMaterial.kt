@@ -74,7 +74,7 @@ fun Modifier.cinemaGlassMaterial(
         shape = { RoundedCornerShape(radius) },
         effects = {
             vibrancy()
-            blur((if (!full) 12f else if (dense) 6f else 1.6f).dp.toPx())
+            blur((if (!full) 9f else if (dense) 6f else 1.6f).dp.toPx())
             if (full) lens((18f + 5f * emphasis + 3f * press).dp.toPx(),
                 (26f + 9f * emphasis + 10f * press).dp.toPx(),
                 depthEffect = true, chromaticAberration = true)
@@ -83,21 +83,21 @@ fun Modifier.cinemaGlassMaterial(
             if (full) Highlight(width = (.65f + .20f * emphasis).dp, blurRadius = .8.dp, alpha = .72f,
                 style = HighlightStyle.Default(color = Color.White.copy(.46f + .12f * emphasis),
                     angle = 45f + press * 32f, falloff = 1.5f))
-            else Highlight(width = (.6f + .15f * emphasis).dp, blurRadius = .6.dp, alpha = .7f,
-                style = HighlightStyle.Plain(color = Color.White.copy(.27f + .12f * emphasis), blendMode = BlendMode.SrcOver))
+            else Highlight(width = (.72f + .18f * emphasis).dp, blurRadius = .7.dp, alpha = .72f,
+                style = HighlightStyle.Plain(color = Color.White.copy(.36f + .14f * emphasis), blendMode = BlendMode.SrcOver))
         },
-        shadow = { Shadow(radius = 20.dp, offset = DpOffset(0.dp, 8.dp), color = Color.Black.copy(.18f)) },
+        shadow = { Shadow(radius = 20.dp, offset = DpOffset(0.dp, 8.dp), color = Color.Black.copy(.14f)) },
         innerShadow = { InnerShadow(radius = if (full) 8.dp else 3.dp,
-            offset = DpOffset(0.dp, if (full) 3.dp else 1.dp), color = Color(0xFF021425).copy(if (full) .22f else .12f)) },
+            offset = DpOffset(0.dp, if (full) 3.dp else 1.dp), color = Color(0xFF021425).copy(if (full) .22f else .07f)) },
         layerBlock = layerBlock,
         failureState = failure,
         onDrawBehind = safe,
         onDrawFallback = safe,
         onDrawSurface = {
-            drawRect(Brush.verticalGradient(listOf(Color.White.copy(.09f + emphasis * .035f),
+            drawRect(Brush.verticalGradient(listOf(Color.White.copy(.13f + emphasis * .04f),
                 Color(0xFFB9DDF5).copy(.035f), Color.White.copy(.025f))))
-            if (!full) drawRect(Color(0xFF6E9DBB).copy(.08f))
-            if (dense) drawRect(Color(0xFF06111D).copy(.14f))
+            if (!full) drawRect(Color(0xFF6E9DBB).copy(.10f))
+            if (dense) drawRect(Color(0xFF06111D).copy(.10f))
             if (press > 0f) drawRect(Color.White.copy(.07f * press))
         },
     )
