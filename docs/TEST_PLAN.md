@@ -105,7 +105,7 @@ conclusion. Full is still unproven on TV hardware until a physical run draws it.
 | Surface | Where | Gate |
 |---|---|---|
 | Three-state pages (loading / error / empty), page tags | `TvPageStateTest` on `tv1080`/`tv4k` | CI |
-| D-pad, OK, Back, IME, focus restoration | `TvUiRegressionTest`, `TvRouteBackTest`, `TvImeBackTest`, `TvLaunchSmokeTest` | CI |
+| D-pad, OK, Back, IME, focus restoration | `TvUiRegressionTest`, `TvRouteBackTest`, `TvImeBackTest`, `TvPlayerBackLadderTest`, `TvStatusDialogTest`, `TvLaunchSmokeTest` | CI |
 | Catalog, library, work association, dashboard | `TvLibraryCatalogControlsTest`, `TvWorkNavigationTest`, `TvRecommendationDashboardTest` | CI |
 | Glass material invariants | `GlassMaterialSmokeTest`, `GlassActionLayoutTest` | CI |
 | Golden screenshots (6 screens × 1080p/4K) | `TvUiRegressionTest` + `compare-ui-goldens.py` | CI, human review on change |
@@ -136,6 +136,36 @@ composition only through a debug-only entry, and that is never TV certification.
   latency sample; investigate the 450 ms window under FULL before tightening anything.
 - `TvFrameTrace` is not wired; `FrameTimingRecorder` is the only frame source.
 - Physical TV T-gate, 4K/HDR and thermal coverage remain owner-run.
+
+## T-gate receipt (owner-run)
+
+The T-gate is a manual run on a physical Android TV. Collect the surrounding facts first;
+the script installs nothing and changes no device setting:
+
+```sh
+scripts/t-gate-receipt.sh app-release-debug.apk > /tmp/t-gate-receipt.md
+```
+
+It records the model, vendor, Android release, build fingerprint, `ro.build.characteristics`,
+the current configuration, the foreground window, the source commit, the APK SHA-256 and the
+signer SHA-256. A receipt without a television identity (`characteristics` contains `tv`)
+cannot serve as T-gate evidence.
+
+Fill the checklist by hand and keep the result in `docs/evidence/<date>-t-gate.md`:
+
+| Step | Expected |
+|---|---|
+| Cold start | `MainActivity` reaches HOME |
+| D-pad | Every rail is reachable; no focus trap, no lost focus |
+| DETAIL | Back returns to the section that opened it |
+| Dialog | Cancel is focused by default; one Back closes it and returns focus to its trigger |
+| SEARCH | First Back hides the keyboard and keeps the page; the next follows the page rule |
+| Playback | Panel → controls → previous route, in that order |
+| Browsing routes | Back returns HOME; HOME Back leaves the app |
+| Stability | No crash, ANR or visible stall during the run |
+
+A signature mismatch stops the run: never uninstall or clear data to work around it, and never
+relabel a phone or emulator result as TV evidence.
 
 ## Failure triage
 

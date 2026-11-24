@@ -12,7 +12,7 @@ DEVICES = [
      "classes": "dev.cinematv.TvUiRegressionTest,dev.cinematv.TvWorkNavigationTest,dev.cinematv.TvManualWorkAssociationTest,dev.cinematv.TvLibraryCatalogControlsTest,dev.cinematv.TvRecommendationDashboardTest,dev.cinematv.GlassMaterialSmokeTest,dev.cinematv.ui.typography.NotoFontsDeviceTest,dev.cinematv.TvPageStateTest"},
     # The only production-entry TV lane: a real Android TV image, not a resized phone.
     {"name": "tvNative", "target": "google-tv", "api": 33, "size": "1920x1080", "density": 320,
-     "classes": "dev.cinematv.TvLaunchSmokeTest,dev.cinematv.MainActivityPathSmokeTest,dev.cinematv.TvRouteBackTest,dev.cinematv.TvImeBackTest,dev.cinematv.playback.NativePlaybackSessionTest,dev.cinematv.SourceSubscriptionsUiTest#nativeTvRemoteCanReadLongPreviewAndFailedRefreshKeepsImportedSources,dev.cinematv.GlassMaterialSmokeTest"},
+     "classes": "dev.cinematv.TvLaunchSmokeTest,dev.cinematv.MainActivityPathSmokeTest,dev.cinematv.TvRouteBackTest,dev.cinematv.TvImeBackTest,dev.cinematv.TvPlayerBackLadderTest,dev.cinematv.TvStatusDialogTest,dev.cinematv.playback.NativePlaybackSessionTest,dev.cinematv.SourceSubscriptionsUiTest#nativeTvRemoteCanReadLongPreviewAndFailedRefreshKeepsImportedSources,dev.cinematv.GlassMaterialSmokeTest"},
     # Component/compatibility lanes on phone images: API and visual evidence, not TV identity.
     {"name": "tv29", "target": "default", "api": 29, "size": "1920x1080", "density": 320,
      "classes": "dev.cinematv.GlassMaterialSmokeTest,dev.cinematv.TvFieldChipTest,dev.cinematv.ui.typography.NotoFontsDeviceTest"},

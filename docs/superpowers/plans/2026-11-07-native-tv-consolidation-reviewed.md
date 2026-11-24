@@ -12,6 +12,18 @@
 
 **复核基线：** `dev-compose @ 5c24360493ac5486d9cedd7c890f2877a018b695`，2026-11-07。本文件单独保存，原方案不改。
 
+> **状态索引（2026-11-24 核对）**
+>
+> | 门禁 | 状态 | 证据 |
+> |---|---|---|
+> | G0 | 完成，`G0.4` 部分 | `docs/evidence/2026-11-09-g0-governance.md`；`baseline/native-tv-8787e1e`；`archive/tv-web-5c24360`（2026-11-24 创建，原 hybrid APK 未归档） |
+> | G1 | 完成 | PR #43–#45；`docs/evidence/2026-11-09-native-tv-drawn-tier.md`、`2026-11-09-native-tv-input-causality.md`；采集协议 v4 |
+> | G2 | 完成 | PR #46–#51；`TvPageStateTest`；`ui/tv/focus/` 与焦点恢复用例 |
+> | G3 | 代码完成，`G3.4` 待 owner | `TvRouteBackTest`、`TvImeBackTest`、`TvPlayerBackLadderTest`、`TvStatusDialogTest`、`MainActivityPathSmokeTest`；`archive/tv-web-5c24360` |
+> | G4–G6 | 未开始 | G4 等 `G3.4` 真机短冒烟 |
+>
+> 勾选框按上述核对结果更新；未勾项表示该项仍未完成或未按原类名落地，不代表门禁整体未推进。
+
 ## 1. 本次修正
 
 以下问题均对照实现和第二处调用方、测试或官方定义复核。
@@ -62,11 +74,11 @@ G0 治理与基线
 
 **涉及：** `AGENTS.md`、本方案、`docs/evidence/native-tv-baseline-2026-11-07.md`。
 
-- [ ] **G0.1 整理治理输入。** 逐个确认当前 modified/untracked 文件归属，只纳入认可的文件。采用本复核稿后，将 `AGENTS.md` 的 governing plan 指向本文件，并统一为“G3 冒烟后 G4 删除”；不要求清空或提交无关工作。
-- [ ] **G0.2 核对本机工具链。** Android Studio 已安装是输入条件；实际 SDK 路径、JDK、Gradle 8.13、platform/build-tools 36、adb、emulator、cmdline-tools 和可用 TV 镜像逐项记录。安装另行确认；CI 使用现有 Java17/Gradle8.13 配置。
-- [ ] **G0.3 跑精确源码基线。** 治理内容形成可检出的提交后，分别触发 `android.yml` 和 `tv-smoke.yml`。记录两者实际 checkout SHA、run URL、APK hash 和失败项；`android.yml` 的普通 dispatch 不会自动执行完整 UI job。
-- [ ] **G0.4 固定归档。** `archive/tv-web-5c24360` 指向原始 `5c24360`，只创建一次；原始 hybrid APK 与 hash 同时归档。基线 tag `baseline/native-tv-<实际短SHA>` 指向含新治理且完成验证的提交。已存在 tag 先核对，不移动覆盖。
-- [ ] **G0.5 记录实际基线。** JVM 数来自 `TEST-*.xml`，device lane 来自实际执行结果；本地 ref 不当作最新远端或 Actions 状态。记录已有失败，先处理阻断本轮的回归。
+- [x] **G0.1 整理治理输入。** 逐个确认当前 modified/untracked 文件归属，只纳入认可的文件。采用本复核稿后，将 `AGENTS.md` 的 governing plan 指向本文件，并统一为“G3 冒烟后 G4 删除”；不要求清空或提交无关工作。
+- [x] **G0.2 核对本机工具链。** Android Studio 已安装是输入条件；实际 SDK 路径、JDK、Gradle 8.13、platform/build-tools 36、adb、emulator、cmdline-tools 和可用 TV 镜像逐项记录。安装另行确认；CI 使用现有 Java17/Gradle8.13 配置。
+- [x] **G0.3 跑精确源码基线。** 治理内容形成可检出的提交后，分别触发 `android.yml` 和 `tv-smoke.yml`。记录两者实际 checkout SHA、run URL、APK hash 和失败项；`android.yml` 的普通 dispatch 不会自动执行完整 UI job。
+- [ ] **G0.4 固定归档。**（2026-11-24：`archive/tv-web-5c24360` 已创建并推送；原 hybrid APK 与 hash 归档未执行。） `archive/tv-web-5c24360` 指向原始 `5c24360`，只创建一次；原始 hybrid APK 与 hash 同时归档。基线 tag `baseline/native-tv-<实际短SHA>` 指向含新治理且完成验证的提交。已存在 tag 先核对，不移动覆盖。
+- [x] **G0.5 记录实际基线。** JVM 数来自 `TEST-*.xml`，device lane 来自实际执行结果；本地 ref 不当作最新远端或 Actions 状态。记录已有失败，先处理阻断本轮的回归。
 
 **Gate 0：** 基线提交、归档、CI 结果和工具链缺口明确；不再沿用旧文档的测试数或“环境已就绪”结论。
 
@@ -90,11 +102,11 @@ G0 治理与基线
 
 **G1.9 具体交付：**
 
-- [ ] 将 `FrameTimingRecorder.kt` 移到 `app/src/perf/java/dev/cinematv/`，作为共享源码分别编入 **debug 目标 APK** 与 `glassBenchmark`，不是只编入测试 APK。`finish` 接收输出位置；普通 release 不携带测试宿主/fixture。
-- [ ] 新增 `app/src/androidTest/java/dev/cinematv/TvFrameTrace.kt`、`TvNativePerformanceAcceptanceTest.kt`，用原生测试宿主驱动受控场景；生产入口验证仍由 G3 的 `MainActivity` 测试承担。
-- [ ] 为T-gate新增隔离测试根 `app/src/nativeTvAcceptance/`。Gradle参数 `cinematvNativeTvAcceptance=true` 选择release测试，与现有updateAcceptance互斥；只改变测试源码选择，不更改目标app行为、版本或签名策略。该测试APK仅启动 `MainActivity`、驱动合成服务与采集，不引用debug宿主。共享recorder在此编入测试APK并接收目标APK元数据，普通release不增加采集代码。CI增加该模式的 `:app:assembleReleaseAndroidTest` 编译检查。
-- [ ] 新建 `scripts/perf_common/` 与 `scripts/native-tv-perf/` 的采集、分析和协议测试，以及 `.github/workflows/native-tv-perf.yml` 的手动入口。路径/字段协议按 §7；保留原 glass-performance profile 与测试，不直接套用旧 analyzer 的固定限制。
-- [ ] 新协议覆盖无帧、重复帧、callback 丢失、容量截断、场景未就绪、真实生效档不符和响应超时。先有有效协议基线，不在此阶段设置玻璃面积限制或产品 FPS 门槛。
+- [x] 将 `FrameTimingRecorder.kt` 移到 `app/src/perf/java/dev/cinematv/`，作为共享源码分别编入 **debug 目标 APK** 与 `glassBenchmark`，不是只编入测试 APK。`finish` 接收输出位置；普通 release 不携带测试宿主/fixture。
+- [ ] 新增 `app/src/androidTest/java/dev/cinematv/TvFrameTrace.kt`（2026-11-24：实际落在 `app/src/perf/java/dev/cinematv/` 与 `app/src/nativeTvAcceptance/`，未按原路径建文件。）、`TvNativePerformanceAcceptanceTest.kt`，用原生测试宿主驱动受控场景；生产入口验证仍由 G3 的 `MainActivity` 测试承担。
+- [x] 为T-gate新增隔离测试根 `app/src/nativeTvAcceptance/`。Gradle参数 `cinematvNativeTvAcceptance=true` 选择release测试，与现有updateAcceptance互斥；只改变测试源码选择，不更改目标app行为、版本或签名策略。该测试APK仅启动 `MainActivity`、驱动合成服务与采集，不引用debug宿主。共享recorder在此编入测试APK并接收目标APK元数据，普通release不增加采集代码。CI增加该模式的 `:app:assembleReleaseAndroidTest` 编译检查。
+- [x] 新建 `scripts/perf_common/` 与 `scripts/native-tv-perf/` 的采集、分析和协议测试，以及 `.github/workflows/native-tv-perf.yml` 的手动入口。路径/字段协议按 §7；保留原 glass-performance profile 与测试，不直接套用旧 analyzer 的固定限制。
+- [x] 新协议覆盖无帧、重复帧、callback 丢失、容量截断、场景未就绪、真实生效档不符和响应超时。先有有效协议基线，不在此阶段设置玻璃面积限制或产品 FPS 门槛。
 
 **Gate 1：** 新组件有针对性测试；玻璃与采集接口可编译；原采集 profile 未退化；涉及共享代码的 phone lane 通过。
 
@@ -114,33 +126,33 @@ G0 治理与基线
 | SETTINGS | 8个 section 的 index/wireName 不变；推荐看板只留 section5；订阅区统一分支；连接、登录、保存、添加源按各自请求状态禁用 | `SourceSubscriptionsUiTest`、`UpdateSettingsUiTest`、`DiagnosticsUiTest`；订阅长预览；敏感字段不进日志 |
 | PLAYER | 整理覆盖层与颜色令牌；新增 buffering 态；track panel 保持 Basic | `dev.cinematv.playback.NativePlaybackSessionTest`；保留缓存、进度、切源/集身份、释放；缓冲/错误也可返回 |
 
-- [ ] **G2.1 焦点扩展。** 修改 `FocusCoordinator.kt`、`TvFocusRegistry.kt`、`LazyFocusTarget.kt` 及 Catalog/Search/Live/Detail 调用：保存稳定 key，并补充同 region 的旧位置作为缺失 key 的回退。存在 key 时按新顺序定位；删除时选 `min(旧位置, 新末项)`；空列表回可用页内动作或导航。
-- [ ] 为 LazyGrid 与频道/剧集列表提供离屏准备，保留现有 ownership/cancellation guard。新增 `TvFocusRestorationTest`：重排、删除、离屏、列表清空、快速反向输入、新导航打断旧恢复。
-- [ ] **G2.2 面板玻璃。** Settings/LIVE/DETAIL/LIBRARY 的实际面板按 §4 接入背景采样。大面积玻璃正常实现，不提前加入面积或每屏单块限制；不存在的面板不为“敷玻璃”额外造容器。
+- [x] **G2.1 焦点扩展。** 修改 `FocusCoordinator.kt`、`TvFocusRegistry.kt`、`LazyFocusTarget.kt` 及 Catalog/Search/Live/Detail 调用：保存稳定 key，并补充同 region 的旧位置作为缺失 key 的回退。存在 key 时按新顺序定位；删除时选 `min(旧位置, 新末项)`；空列表回可用页内动作或导航。
+- [ ] 为 LazyGrid 与频道/剧集列表提供离屏准备（2026-11-24：覆盖已落在 `InterruptedFocusRestorationTest`、`FocusBoundRelocationTest`，未按原类名新建 `TvFocusRestorationTest`。），保留现有 ownership/cancellation guard。新增 `TvFocusRestorationTest`：重排、删除、离屏、列表清空、快速反向输入、新导航打断旧恢复。
+- [x] **G2.2 面板玻璃。** Settings/LIVE/DETAIL/LIBRARY 的实际面板按 §4 接入背景采样。大面积玻璃正常实现，不提前加入面积或每屏单块限制；不存在的面板不为“敷玻璃”额外造容器。
 
 **Gate 2：** 九类页面的状态与局部交互通过；稳定焦点覆盖 list/grid；本阶段金标评审落地；不声称生产 TV 入口已完成。
 
 ### G3 — 真 TV lane、根 Back、入口切换与删前冒烟
 
-- [ ] **G3.1 先建 lane。** 新增 `tvNative`，优先可获得的 API33 Android TV 镜像；同时补 API29/31/36 组件/兼容 lane。镜像坐标以 SDK 实际列表为准。`tvNative` 必须证明 characteristics 含 tv、UI mode 为 television，且测试中 `isTv=true`。
-- [ ] 迁移 `scripts/hybrid/run-tv-emulator.sh` 的 TV 启动与就绪屏障到非 hybrid 路径。检查启动器 target/profile/arch、超时、日志、退出清理与 matrix 一致；普通 default/pixel 手机镜像仅作组件 lane。
-- [ ] 同步 `qa-device-matrix.py`、`run-device-qa-target.sh`、`tv-smoke.yml`、`preview-release.py`、`test_device_qa_harness.py`、`test_device_qa_target.py`、`test_preview_release.py`。完整矩阵须包含新增目标；缺任一要求的 lane/receipt/class 都拒绝晋升，未知 target 继续失败。
-- [ ] 将 `dev.cinematv.playback.NativePlaybackSessionTest` 与 `SourceSubscriptionsUiTest#nativeTvRemoteCanReadLongPreviewAndFailedRefreshKeepsImportedSources` 注册进原生 lane。类存在、编译或 assumption skip 均不算执行通过。
-- [ ] **G3.2 根 Back 与切入口同批交付。** `MainActivity` 的 TV 分支改 `TvRootApp(model)`，手机分支原样。根 handler 放在页面组合之前，仅处理 IME/路由；移除 `TvTestActivity`、`ProductionGlassTestActivity`、`GlassBenchmarkActivity` 的重复路由 handler。
-- [ ] `TvPlayerPage` 保留面板 → 控制条 → returnPage 的局部阶梯；IME 可见时不得被根路由或播放器 handler 抢先导航。测试实际系统 Back，包括 KEY_DOWN/UP 和按住重复，不只调用 `model.back()`。保留 `TvImePolicy` 对跨路由迟到 IME 的处理。
-- [ ] 增加 `tv-root` 标记；重写 `TvLaunchSmokeTest` 去掉 HybridDom/WebKit，进入 `tvNative`；phone lane 用现有 `MobileNavigationSmokeTest` 承接原生手机启动检查，不新增重复 smoke 类。
-- [ ] **G3.3 生产入口回归。** 用 `MainActivityPathSmokeTest` 在真实 TV 镜像启动 MainActivity，覆盖下表。未配置时允许起于 SETTINGS；先测试初始页，再用合成内容进入其他路由，最后验证 HOME 退出。
-- [ ] 切换前迁走仍需的 hybrid 覆盖；切换时将过时 hybrid 设备断言退出自动主线，仅保留手动归档入口。编译和候选安全检查继续运行；不采用 expected-red、全局 continue-on-error 或失败伪装绿色。
-- [ ] **G3.4 真机短冒烟。** 真实 TV/盒子运行本阶段精确 APK，15–30分钟完成启动、D-pad、Dialog、SEARCH IME、一次播放及逐层返回。记录型号、系统、源码、APK hash、签名和结果。已有安装若签名不匹配则停止，不卸载/清数据替代升级。
+- [x] **G3.1 先建 lane。** 新增 `tvNative`，优先可获得的 API33 Android TV 镜像；同时补 API29/31/36 组件/兼容 lane。镜像坐标以 SDK 实际列表为准。`tvNative` 必须证明 characteristics 含 tv、UI mode 为 television，且测试中 `isTv=true`。
+- [x] 迁移 `scripts/hybrid/run-tv-emulator.sh` 的 TV 启动与就绪屏障到非 hybrid 路径。检查启动器 target/profile/arch、超时、日志、退出清理与 matrix 一致；普通 default/pixel 手机镜像仅作组件 lane。
+- [x] 同步 `qa-device-matrix.py`、`run-device-qa-target.sh`、`tv-smoke.yml`、`preview-release.py`、`test_device_qa_harness.py`、`test_device_qa_target.py`、`test_preview_release.py`。完整矩阵须包含新增目标；缺任一要求的 lane/receipt/class 都拒绝晋升，未知 target 继续失败。
+- [x] 将 `dev.cinematv.playback.NativePlaybackSessionTest` 与 `SourceSubscriptionsUiTest#nativeTvRemoteCanReadLongPreviewAndFailedRefreshKeepsImportedSources` 注册进原生 lane。类存在、编译或 assumption skip 均不算执行通过。
+- [x] **G3.2 根 Back 与切入口同批交付。** `MainActivity` 的 TV 分支改 `TvRootApp(model)`，手机分支原样。根 handler 放在页面组合之前，仅处理 IME/路由；移除 `TvTestActivity`、`ProductionGlassTestActivity`、`GlassBenchmarkActivity` 的重复路由 handler。
+- [x] `TvPlayerPage` 保留面板 → 控制条 → returnPage 的局部阶梯；IME 可见时不得被根路由或播放器 handler 抢先导航。测试实际系统 Back，包括 KEY_DOWN/UP 和按住重复，不只调用 `model.back()`。保留 `TvImePolicy` 对跨路由迟到 IME 的处理。
+- [x] 增加 `tv-root` 标记；重写 `TvLaunchSmokeTest` 去掉 HybridDom/WebKit，进入 `tvNative`；phone lane 用现有 `MobileNavigationSmokeTest` 承接原生手机启动检查，不新增重复 smoke 类。
+- [x] **G3.3 生产入口回归。** 用 `MainActivityPathSmokeTest` 在真实 TV 镜像启动 MainActivity，覆盖下表。未配置时允许起于 SETTINGS；先测试初始页，再用合成内容进入其他路由，最后验证 HOME 退出。
+- [x] 切换前迁走仍需的 hybrid 覆盖；切换时将过时 hybrid 设备断言退出自动主线，仅保留手动归档入口。编译和候选安全检查继续运行；不采用 expected-red、全局 continue-on-error 或失败伪装绿色。
+- [ ] **G3.4 真机短冒烟。**（owner-pending：按定义由设备owner手动执行，收据模板见 `docs/TEST_PLAN.md`。） 真实 TV/盒子运行本阶段精确 APK，15–30分钟完成启动、D-pad、Dialog、SEARCH IME、一次播放及逐层返回。记录型号、系统、源码、APK hash、签名和结果。已有安装若签名不匹配则停止，不卸载/清数据替代升级。
 
 | 情况 | Back 期望 | 新增测试 |
 |---|---|---|
 | HOME，无局部状态 | 系统退出 Activity | `MainActivityPathSmokeTest` |
 | MOVIES/SERIES/SEARCH/EXPLORE/LIVE/LIBRARY/SETTINGS | 回 HOME | `TvRouteBackTest` 参数化7路由 |
-| DETAIL | 回打开详情的 section | `TvDetailBackTest` |
+| DETAIL | 回打开详情的 section | `TvRouteBackTest`（原表写作 `TvDetailBackTest`，未单独建类） |
 | PLAYER | 面板 → 控制条 → returnPage；错误态按现有行为返回 | `TvPlayerBackLadderTest` |
 | SEARCH/SETTINGS，IME可见 | 第一次只隐藏键盘；第二次才按页面规则返回 | `TvImeBackTest` |
-| Dialog | 只关自己并恢复触发器；再按一次执行页面返回 | `TvDialogFocusTest` |
+| Dialog | 只关自己并恢复触发器；再按一次执行页面返回 | `TvStatusDialogTest`（原表写作 `TvDialogFocusTest`） |
 
 **Gate 3：** `tvNative` 生产入口和上述回归通过；真机短冒烟通过；归档 tag/APK 可取回。随后直接进入 G4。
 

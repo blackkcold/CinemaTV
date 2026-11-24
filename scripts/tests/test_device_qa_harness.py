@@ -60,7 +60,7 @@ class DeviceMatrixTest(unittest.TestCase):
             {"name": 'tv4k', "target": 'default', "api": 33, "size": '3840x2160', "density": 640,
              "classes": 'dev.cinematv.TvUiRegressionTest,dev.cinematv.TvWorkNavigationTest,dev.cinematv.TvManualWorkAssociationTest,dev.cinematv.TvLibraryCatalogControlsTest,dev.cinematv.TvRecommendationDashboardTest,dev.cinematv.GlassMaterialSmokeTest,dev.cinematv.ui.typography.NotoFontsDeviceTest,dev.cinematv.TvPageStateTest'},
             {"name": 'tvNative', "target": 'google-tv', "api": 33, "size": '1920x1080', "density": 320,
-             "classes": 'dev.cinematv.TvLaunchSmokeTest,dev.cinematv.MainActivityPathSmokeTest,dev.cinematv.TvRouteBackTest,dev.cinematv.TvImeBackTest,dev.cinematv.playback.NativePlaybackSessionTest,dev.cinematv.SourceSubscriptionsUiTest#nativeTvRemoteCanReadLongPreviewAndFailedRefreshKeepsImportedSources,dev.cinematv.GlassMaterialSmokeTest'},
+             "classes": 'dev.cinematv.TvLaunchSmokeTest,dev.cinematv.MainActivityPathSmokeTest,dev.cinematv.TvRouteBackTest,dev.cinematv.TvImeBackTest,dev.cinematv.TvPlayerBackLadderTest,dev.cinematv.TvStatusDialogTest,dev.cinematv.playback.NativePlaybackSessionTest,dev.cinematv.SourceSubscriptionsUiTest#nativeTvRemoteCanReadLongPreviewAndFailedRefreshKeepsImportedSources,dev.cinematv.GlassMaterialSmokeTest'},
             {"name": 'tv29', "target": 'default', "api": 29, "size": '1920x1080', "density": 320,
              "classes": 'dev.cinematv.GlassMaterialSmokeTest,dev.cinematv.TvFieldChipTest,dev.cinematv.ui.typography.NotoFontsDeviceTest'},
             {"name": 'tv31', "target": 'default', "api": 31, "size": '1920x1080', "density": 320,

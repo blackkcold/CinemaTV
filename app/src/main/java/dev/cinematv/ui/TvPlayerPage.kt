@@ -54,6 +54,21 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 
 private enum class PlayerPanel { QUALITY, AUDIO, SUBTITLE, SPEED }
+
+/**
+ * The player owns a local Back ladder: close its panel, then hide its controls, then
+ * leave the route. A playback error skips the ladder because there is nothing left to
+ * control. Kept pure so the order is tested without a decoding session.
+ */
+internal enum class PlayerBackStep { CLOSE_PANEL, HIDE_CONTROLS, EXIT }
+
+internal fun playerBackStep(panelOpen: Boolean, controlsVisible: Boolean, hasError: Boolean): PlayerBackStep =
+    when {
+        panelOpen -> PlayerBackStep.CLOSE_PANEL
+        hasError -> PlayerBackStep.EXIT
+        controlsVisible -> PlayerBackStep.HIDE_CONTROLS
+        else -> PlayerBackStep.EXIT
+    }
 private data class TrackChoice(val title: String, val group: Tracks.Group, val trackIndex: Int)
 
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
@@ -139,11 +154,10 @@ fun TvPlayerPage(model: CinemaViewModel) {
     val backPress = remember(session) { RemoteBackPress() }
     val layout = LocalTvLayout.current
     val handleBack: () -> Unit = {
-        when {
-            panel != null -> { panel = null; controlsVisible = true; interaction++ }
-            error.isNotBlank() -> model.back()
-            controlsVisible -> controlsVisible = false
-            else -> model.back()
+        when (playerBackStep(panel != null, controlsVisible, error.isNotBlank())) {
+            PlayerBackStep.CLOSE_PANEL -> { panel = null; controlsVisible = true; interaction++ }
+            PlayerBackStep.HIDE_CONTROLS -> controlsVisible = false
+            PlayerBackStep.EXIT -> model.back()
         }
     }
     BackHandler { backPress.reset(); handleBack() }
