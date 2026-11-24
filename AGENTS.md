@@ -62,6 +62,10 @@ Device QA:
 - Existing glass frame harness: `scripts/glass-performance/` (glassBenchmark build type, 450 ms windows, three tiers). It checks protocol validity, not product FPS.
 - Native performance harness: `scripts/native-tv-perf/` + `FrameTimingRecorder` + `NativePerfProbe` + `TvNativePerformanceAcceptanceTest`. Valid runs exist on the TV AVD (input → state → drawn frame, measured drawn tier). Always pass `-e glassQuality AUTO|BASIC|BACKDROP|ENHANCED` before `-e tierDirect`; without it the app stays on AUTO and a FULL assertion tests nothing. FULL does draw on an API34 AVD booted with `-gpu host` and `ENHANCED`. `TvFrameTrace` is still unwired. Emulator numbers are E-gate only, never a frame-rate or TV claim.
 - Local toolchain (verified 2026-11-09): JDK 21; `local.properties` points at `/Users/11169285/android-sdk` (platforms 34/35/36/37.0, build-tools 35/36/37, `platform-tools` and `emulator`). AVDs: `cinematv-tv` (Google TV API34, arm64, 1920x1080 @320, 2048 MB), `livis34`, `livisdiy`. Boot `cinematv-tv` with `-gpu host`: an explicit `-gpu swiftshader_indirect` overrides the AVD's `hw.gpu.mode=host` and silently falls back to software rendering (verify with `adb shell dumpsys SurfaceFlinger | grep GLES`). `cmd uimode` has no `television` subcommand on API34, so a phone cannot be switched into TV mode through adb. Gradle 8.13 is unpacked at `$TMPDIR/opencode/gradle2/gradle-8.13`, is not on `PATH`, and the repository has no `gradlew`; call it by absolute path with `--no-daemon`. GNU `timeout` is absent, so device-harness steps that require it run in CI only.
+- Local run hygiene: stop the AVD after every local run (`adb emu kill`, then confirm no
+  `qemu-system-aarch64 -avd cinematv-tv` process remains) and leave no Gradle/Kotlin daemons.
+  The emulator is a shared local resource, not a background service; only an explicit user
+  request keeps it running past the task that started it.
 
 ## Folder layout
 
