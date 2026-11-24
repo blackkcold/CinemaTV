@@ -47,7 +47,7 @@ def prepare(apk, channel, url, fingerprint, notes, now, apksigner, apkanalyzer):
     if channel == "stable" and not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", name):
         raise ValueError("Stable feeds require a non-prerelease version name")
     with apk.open("rb") as source:
-        digest = hashlib.file_digest(source, "sha256").hexdigest()
+        digest = hashlib.sha256(source.read()).hexdigest()
     return dict(schema=1, channel=channel, versionCode=version, versionName=name,
                 applicationId="dev.cinematv", minSdk=minimum, apkUrl=url,
                 apkBytes=apk.stat().st_size, sha256=digest,

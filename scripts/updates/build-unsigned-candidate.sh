@@ -15,7 +15,8 @@ fi
 CHANNEL=${1:-stable}
 case "$CHANNEL" in
   stable) VERSION_NAME=0.8.0; VERSION_CODE=10; OUTPUT=candidate ;;
-  dev) VERSION_NAME=0.8.0-dev.1; VERSION_CODE=11; OUTPUT=candidate-dev ;;
+  # Codes 12 (v0.8.0-dev.2) and 13 (archived TV Web build) are already public.
+  dev) VERSION_NAME=0.9.0-dev.2; VERSION_CODE=14; OUTPUT=candidate-dev ;;
   *) echo 'Usage: build-unsigned-candidate.sh [stable|dev]'; exit 2 ;;
 esac
 if [ -e "$OUTPUT" ]; then
@@ -28,12 +29,15 @@ fi
 if [ -n "$(git ls-files --others --ignored --exclude-standard app/src backdrop/src)" ]; then
   echo 'Candidate refuses untracked ignored files in source/resource inputs'; exit 1
 fi
-# These two first candidates use main's accepted app payload, not the account experiment.
-for source_root in app/src/main/java/dev/cinematv/data/douban app/src/main/java/dev/cinematv/ui/douban; do
-  if [ -d "$source_root" ] && [ -n "$(find "$source_root" -type f -name '*.kt' -print -quit)" ]; then
-    echo 'Candidate refuses unaccepted Douban personal-account sources'; exit 1
-  fi
-done
+# Stable candidates must never carry the unaccepted account experiment. Gradle enforces
+# the same channel split and AGENTS keeps that code dev-only; a dev candidate may carry it.
+if [ "$CHANNEL" = stable ]; then
+  for source_root in app/src/main/java/dev/cinematv/data/douban app/src/main/java/dev/cinematv/ui/douban; do
+    if [ -d "$source_root" ] && [ -n "$(find "$source_root" -type f -name '*.kt' -print -quit)" ]; then
+      echo 'Candidate refuses unaccepted Douban personal-account sources'; exit 1
+    fi
+  done
+fi
 SOURCE_COMMIT=$(git rev-parse HEAD)
 SOURCE_TREE=$(git rev-parse 'HEAD^{tree}')
 export SOURCE_COMMIT SOURCE_TREE CHANNEL VERSION_NAME VERSION_CODE OUTPUT
@@ -89,7 +93,7 @@ receipt = dict(schema=1, status='unsigned-not-installable-not-certified', channe
     applicationSourceTree=git_object('HEAD:app/src'),
     backdropSourceTree=git_object('HEAD:backdrop/src'),
     applicationBuildBlob=git_object('HEAD:app/build.gradle.kts'),
-    apkBytes=apk.stat().st_size, unsignedApkSha256=hashlib.file_digest(apk.open('rb'), 'sha256').hexdigest())
+    apkBytes=apk.stat().st_size, unsignedApkSha256=hashlib.sha256(apk.read_bytes()).hexdigest())
 if os.environ.get('GITHUB_ACTIONS') == 'true':
     receipt['workflow'] = {key: os.environ.get(variable, '') for key, variable in (
         ('repository', 'GITHUB_REPOSITORY'), ('runId', 'GITHUB_RUN_ID'),
