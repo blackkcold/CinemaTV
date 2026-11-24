@@ -2,7 +2,7 @@
 from pathlib import Path
 import re
 import unittest
-from run_device import MOTION, FOCUS_RESTORE, ACTION_LAYOUT, RAIL_TRAVERSAL, RAIL_VISIBILITY, FOCUS_RELOCATION, MATERIAL, PRODUCTION, BUTTON, BUTTON_EDGE, expected_for
+from run_device import MOTION, FOCUS_RESTORE, ACTION_LAYOUT, RAIL_TRAVERSAL, RAIL_VISIBILITY, FOCUS_RELOCATION, MATERIAL, PRODUCTION, PRODUCTION_PANELS, BUTTON, BUTTON_EDGE, expected_for
 
 class MotionInstrumentationContract(unittest.TestCase):
     def test_all_real_motion_methods_are_required_on_each_tv_api(self):
@@ -11,8 +11,8 @@ class MotionInstrumentationContract(unittest.TestCase):
         methods = re.findall(r"@Test\s+fun\s+(\w+)\(", source)
         self.assertEqual(10, len(methods))
         self.assertEqual(set(methods), {method for _, method in MOTION})
-        self.assertEqual(48, len(expected_for("tv")))
-        for pair in [PRODUCTION, BUTTON, BUTTON_EDGE, MATERIAL, *MOTION, *FOCUS_RESTORE, *ACTION_LAYOUT, *RAIL_TRAVERSAL, *RAIL_VISIBILITY, *FOCUS_RELOCATION]:
+        self.assertEqual(49, len(expected_for("tv")))
+        for pair in [PRODUCTION, PRODUCTION_PANELS, BUTTON, BUTTON_EDGE, MATERIAL, *MOTION, *FOCUS_RESTORE, *ACTION_LAYOUT, *RAIL_TRAVERSAL, *RAIL_VISIBILITY, *FOCUS_RELOCATION]:
             self.assertEqual(1, expected_for("tv").count(pair))
 
     def test_interrupted_focus_restore_methods_are_required_on_each_tv_api(self):
