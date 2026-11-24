@@ -135,9 +135,12 @@ CINEMA_INSTRUMENTATION_BUDGET=12m
 CINEMA_TRACE_BUDGET=14m
 CINEMA_HEARTBEAT_BUDGET=18m
 if [ "$1" = 3840x2160 ]; then
-  CINEMA_INSTRUMENTATION_BUDGET=24m
-  CINEMA_TRACE_BUDGET=26m
-  CINEMA_HEARTBEAT_BUDGET=28m
+  # The 4K lane grew from 18 to 21 suites with the page-state coverage; 24m measured
+  # 14/21 with zero failures before the deadline. The extra time only lets the same
+  # assertions finish, so no gate and no threshold changes.
+  CINEMA_INSTRUMENTATION_BUDGET=40m
+  CINEMA_TRACE_BUDGET=42m
+  CINEMA_HEARTBEAT_BUDGET=44m
 fi
 
 # Keep main's continuously captured trace, with a finite lifetime and cleanup.
