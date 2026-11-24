@@ -29,13 +29,14 @@ EXPECTED_MASKS = {
 # Current reviewed baseline: both viewports were recaptured after the reading-scrim
 # change. Each row keeps the raw capture SHA and the normalized baseline SHA.
 BASELINES = {
-    "tv1080": {
-        "source": "ee2b76d068447f85c273dc2e115e271b28f33d16",
-        "run": 45134791580,
-        "artifact": 14800510394,
-        "date": "2026-11-23",
+        "tv1080": {
+        "source": "8532f98a9d44fbac9b1e0f6eee97dfb4d5d1aa09",
+        "run": 45314161245,
+        "artifact": 14885387790,
+        "date": "2026-11-24",
         "size": [1920, 1080],
     },
+
     "tv4k": {
         "source": "ee2b76d068447f85c273dc2e115e271b28f33d16",
         "run": 45137482702,
@@ -46,20 +47,21 @@ BASELINES = {
 }
 
 CAPTURES = {
-    "tv1080": {
-        "01-home.png": ("5c788543b7d7ee7dba96a86835ece257e65ee4421fce3d0970420d54cf9201e9",
-                        "a2830719388173b36a6e4cf4ab067333d7308d334c2bb53ee3eee4271829d21b"),
+        "tv1080": {
+        "01-home.png": ("23cf4aa6d06ed1c0afb43aa7cf5ab9b88be91e98f1e4e1adaad80421d3c3aa7b",
+                        "623cdb2a5e0a1043d19694a905d42596517ba31dbeb2ea6b14ac2145a0844d63"),
         "03-detail.png": ("c839961a450c4d41a7fb1b57a24f167908a3554df2db7e43a3ad3950590f8c01",
-                          "c1bff5f28ddf8cbbad47eced5317ccc995c60522599e733816554a1faa725905"),
-        "05-movies.png": ("0d888530afa441d2e28e5fa188ff6630a340cb8aaf7bf2a6120a04c78bfe7fae",
-                          "3275aa6daff443a740ce4be068b98b97357a5a8af5b41f8268c8f5c3b8fc365c"),
-        "06-series.png": ("79c94cd7c8a4aac1b22d504b188527f166e76ef8e382a8438d7fb0e85edb249d",
-                          "5b293ac7ea4add45648cb9146c0d9add3b46f57d93e043a4a27f61818ba875b5"),
-        "07-discovery.png": ("84df440d3b9a882f7405932dda30d9c919aeac4e17757a2276e630541dfb07b3",
-                             "bc5af48faf6599ab46e77bab8ea4a03e993c5e82903338017303d1905c0befbd"),
-        "11-settings.png": ("53ed2a5f1acb9eff20e829297b022570e77a99120d7ce8df609596fa6d715e9d",
-                            "a2fe6700b9b2371c60dd555b90d5f768ad51bfc76a924729165ce7e4ba6a7bca"),
+                        "c1bff5f28ddf8cbbad47eced5317ccc995c60522599e733816554a1faa725905"),
+        "05-movies.png": ("98c1c46091a2a3b820d0da0395720179ebf7b502a49a570a53f30a3f906a9e31",
+                        "2e4c81ec0f0c200bb746aeadd5da4892d31a6cc93b8ddaf99c0136e5c602a518"),
+        "06-series.png": ("660bbb5b37da21bee7eecf7a04fb0ddf45a70f93a6d5d6dabd09574affc5b026",
+                        "5fb5362e0d893824d5adf0ed487eddf89fc701dd1a951d1d5cdef4abb3012784"),
+        "07-discovery.png": ("399763ba433cf2e0ad0c20a1f4272465fcef7477d4b8f30feec63433dca9fd8d",
+                        "045152253d6e5b67a3a6441c4e3ea3e7578e6d1c6a688e217460744aa6bc471b"),
+        "11-settings.png": ("fe8f22905f593711961f3a702078e2d0cde627622c97ff87797a05863fcbe72b",
+                        "dbbed3132fead147017704f7764b74180af9b5ade2c167ecac9b0444202cfb5f"),
     },
+
     "tv4k": {
         "01-home.png": ("845d72777b2134ecd7e4f544ceb6ce9430d03ec2f907ee722c2728fb70b34ed4",
                         "204d5dd7ab00ff243dc8255554dd0fc03fd6907d771b3a796464a5e6db09b764"),
