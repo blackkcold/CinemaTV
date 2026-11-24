@@ -39,10 +39,9 @@ adb shell dumpsys SurfaceFlinger | grep -i GLES
 
 Software rendering is acceptable for layout/focus checks and never for timing.
 
-Stop the AVD when the run ends: `adb emu kill`, then confirm the
-`qemu-system-aarch64 -avd cinematv-tv` process is gone and no Gradle/Kotlin daemon is left.
-Local runs must not leave the emulator behind; it is a shared resource, not a background
-service.
+When the run ends, stop the AVD and any test container it used (`adb emu kill`, then
+confirm no qemu process; `docker stop` or `rm` for the container), and leave no
+Gradle/Kotlin daemon. These are shared local resources, not background services.
 
 ## Acceptance lane on the emulator
 
