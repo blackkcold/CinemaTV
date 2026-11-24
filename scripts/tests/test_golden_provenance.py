@@ -37,13 +37,14 @@ BASELINES = {
         "size": [1920, 1080],
     },
 
-    "tv4k": {
-        "source": "ee2b76d068447f85c273dc2e115e271b28f33d16",
-        "run": 45137482702,
-        "artifact": 14802210389,
-        "date": "2026-11-23",
+        "tv4k": {
+        "source": "5034b64649dae2caae460826efaaa89f03ee451a",
+        "run": 45324367460,
+        "artifact": 14889319771,
+        "date": "2026-11-24",
         "size": [3840, 2160],
     },
+
 }
 
 CAPTURES = {
@@ -62,20 +63,21 @@ CAPTURES = {
                         "dbbed3132fead147017704f7764b74180af9b5ade2c167ecac9b0444202cfb5f"),
     },
 
-    "tv4k": {
-        "01-home.png": ("845d72777b2134ecd7e4f544ceb6ce9430d03ec2f907ee722c2728fb70b34ed4",
-                        "204d5dd7ab00ff243dc8255554dd0fc03fd6907d771b3a796464a5e6db09b764"),
+        "tv4k": {
+        "01-home.png": ("9e257f07157cb34a8fd2270844053629134ac0514160a5117aaa00773455f529",
+                        "1bc173beaa04d353167c17e412fe679f3c5443a95d322177be59b00fad50dcaa"),
         "03-detail.png": ("d645aadc731bc0418a42e07cb1160b446c15533d2a775fb2a11a7fe829d96c7e",
-                          "ece633be82403ec24867521498642706c13e12280ddd650ae8aa1b8df6a0a5ce"),
-        "05-movies.png": ("f89634e8db3891d3a85a46325c6a89d0d889f96a59921695397f7246118c97a6",
-                          "cec04c5fc5f0c074a42f98f4f4952bef5d05936183930d05afe7e437ab278ba8"),
-        "06-series.png": ("17a221bb6ad5fe7ffb3f296a5b16ed81a2e4cad5480338b750b101e3437c5809",
-                          "6f77a1cfddc0ff5f50cccfea60e0d8ceb45126f565506a9375d3d43e3c91f134"),
-        "07-discovery.png": ("7fb28b08320b618671bbe92a94a2b590bc86f9068b3cfa4bc3fbe091c4322f62",
-                             "2a8658e02be1b45f9514862a4384eca4aa50676d26963f9b8454e4b3e7f74848"),
-        "11-settings.png": ("e87766e8353ba3e38ea6590ac3f72e908ccb6ce7913e50b852279d8ab7d68866",
-                            "362e40b09237f991191d2b1a3eef9b6d011216d10310ffe589701be18d2f0e9b"),
+                        "ece633be82403ec24867521498642706c13e12280ddd650ae8aa1b8df6a0a5ce"),
+        "05-movies.png": ("615bfae4d72bb71aaef002c3ecbdf0ec3945206625c147022ff602b0aadaf065",
+                        "df290ae49b411889af160a95f125e613197fe61301915524524dfdbd32fb1bfe"),
+        "06-series.png": ("9a3a814aca47437e17bb1bb76110f0fd8462e086dfae907fe1f9bfc10575f9e2",
+                        "0234bc0bc937f1edecc107c1b99d02561f3c414b75bff70ae3d63cc7d2fe8414"),
+        "07-discovery.png": ("caddf5fe463c808cd89cc0d31614721d80ef1be0e6500b647d17ed9fd7e5a9e8",
+                        "87a38efa7fd77f4dc041decdb4ea94cb3aece6e42ee8ec6df7915bc9784d53ca"),
+        "11-settings.png": ("9bfd85dd0c61ca12caf38a24945879b5b3cdaf895ac477c25e75ae426480102c",
+                        "64f735fb15327e567aa32614af9dcb81c4b3980b89aec33798fe927c5583ee25"),
     },
+
 }
 
 # The 2026-11-05 settings bytes, kept only because REVIEW.md's superseded ledger

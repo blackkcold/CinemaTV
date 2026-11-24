@@ -121,18 +121,24 @@ screen does not show the floating navigation.
 | viewport | run | artifact | size | result |
 |---|---|---|---|---|
 | tv1080 | 45314161245 | 14885387790 | 1920×1080 | lane passed |
-| tv4k | 45316867405 | pending | 3840×2160 | capture pending |
+| tv4k | 45324367460 | 14889319771 | 3840×2160 | lane passed (21 suites, 40m budget) |
 
 Old baseline versus these captures, with both limits unchanged (mean 0.020, changed 0.08):
 
 | screen | tv1080 mean / changed | tv4k mean / changed |
 |---|---|---|
-| `01-home.png` | 0.00430 / 0.02534 | pending |
-| `03-detail.png` | 0.00000 / 0.00000 | pending |
-| `05-movies.png` | 0.00356 / 0.02040 | pending |
-| `06-series.png` | 0.00355 / 0.01960 | pending |
-| `07-discovery.png` | 0.00405 / 0.02071 | pending |
-| `11-settings.png` | 0.00029 / 0.00053 | pending |
+| `01-home.png` | 0.00430 / 0.02534 | 0.00433 / 0.02548 |
+| `03-detail.png` | 0.00000 / 0.00000 | 0.00000 / 0.00000 |
+| `05-movies.png` | 0.00356 / 0.02040 | 0.00361 / 0.02067 |
+| `06-series.png` | 0.00355 / 0.01960 | 0.00357 / 0.01976 |
+| `07-discovery.png` | 0.00405 / 0.02071 | 0.00409 / 0.02157 |
+| `11-settings.png` | 0.00029 / 0.00053 | 0.00028 / 0.00053 |
+
+The tv1080 baseline came from `8532f98`; the tv4k baseline came from `5034b64` because the
+intermediate 4K runs either hit a Maven Central 429 during dependency resolution or the
+old 24m instrumentation budget after the lane grew to 21 suites. `03-detail.png` is
+byte-identical at both viewports, so the change is exactly the navigation pill and the
+poster focus ring.
 
 Reviewed at tv1080: the pill keeps the artwork's warmth and shows the sky through it, every
 tab label is legible, the selected lens stays distinct, and the filter row keeps its focus
