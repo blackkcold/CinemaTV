@@ -489,7 +489,7 @@ class DeviceRunnerTest(unittest.TestCase):
         self.assertIn('kill "$QA_HEARTBEAT_PID"', source)
         self.assertIn('wait "$QA_HEARTBEAT_PID"', source)
         workflow = (SCRIPTS.parent / ".github/workflows/tv-smoke.yml").read_text()
-        self.assertIn("timeout-minutes: ${{ (matrix.name == 'tv4k' || matrix.name == 'tvNative') && 30 || 25 }}", workflow)
+        self.assertIn("timeout-minutes: ${{ matrix.name == 'tv4k' && 55 || (matrix.name == 'tvNative' && 30 || 25) }}", workflow)
         self.assertIn('timeout-minutes: 45', workflow)
 
     def test_process_budgets_keep_kill_grace_and_stage_limits(self):
