@@ -16,13 +16,13 @@
 >
 > | 门禁 | 状态 | 证据 |
 > |---|---|---|
-> | G0 | 完成 | `docs/evidence/2026-11-09-g0-governance.md`；`baseline/native-tv-8787e1e`；`archive/tv-web-5c24360`（2026-11-24 创建，原 hybrid APK 未归档） |
+> | G0 | 完成 | `docs/evidence/2026-11-09-g0-governance.md`；`baseline/native-tv-8787e1e`；`archive/tv-web-5c24360`（2026-11-24 创建；原 hybrid APK 与指纹见同名 release） |
 > | G1 | 完成 | PR #43–#45；`docs/evidence/2026-11-09-native-tv-drawn-tier.md`、`2026-11-09-native-tv-input-causality.md`；采集协议 v4 |
 > | G2 | 完成 | PR #46–#51；`TvPageStateTest`；`ui/tv/focus/` 与焦点恢复用例 |
 > | G3 | 代码完成，`G3.4` 待 owner | `TvRouteBackTest`、`TvImeBackTest`、`TvPlayerBackLadderTest`、`TvStatusDialogTest`、`MainActivityPathSmokeTest`；`archive/tv-web-5c24360` |
 > | G4 | 未开始 | 等 `G3.4` 真机短冒烟；owner 指示先完成 G5，本轮未触碰 TV Web 代码 |
 > | G5 | 完成（先于 G4，见下） | `docs/evidence/2026-11-24-g5-surface-audit.md`；tv1080 与 tv4k 金标均重录并复跑通过（PR #54） |
-> | G6 | 未开始 | 等 G5 定稿 |
+> | G6 | 未开始 | G5 已定稿；等 G4 删除后在同一源码上测完整效果 |
 >
 > 勾选框按上述核对结果更新；未勾项表示该项仍未完成或未按原类名落地，不代表门禁整体未推进。
 
