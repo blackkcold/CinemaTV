@@ -20,8 +20,8 @@
 > | G1 | 完成 | PR #43–#45；`docs/evidence/2026-11-09-native-tv-drawn-tier.md`、`2026-11-09-native-tv-input-causality.md`；采集协议 v4 |
 > | G2 | 完成 | PR #46–#51；`TvPageStateTest`；`ui/tv/focus/` 与焦点恢复用例 |
 > | G3 | 代码完成，`G3.4` 待 owner | `TvRouteBackTest`、`TvImeBackTest`、`TvPlayerBackLadderTest`、`TvStatusDialogTest`、`MainActivityPathSmokeTest`；`archive/tv-web-5c24360` |
-> | G4 | 未开始 | 等 `G3.4` 真机短冒烟 |
-> | G5 | 进行中：G5.1–G5.3 完成，G5.4 待金标回填 | `docs/evidence/2026-11-24-g5-surface-audit.md` |
+> | G4 | 未开始 | 等 `G3.4` 真机短冒烟；owner 指示先完成 G5，本轮未触碰 TV Web 代码 |
+> | G5 | 完成（先于 G4，见下） | `docs/evidence/2026-11-24-g5-surface-audit.md`；tv1080 与 tv4k 金标均重录并复跑通过（PR #54） |
 > | G6 | 未开始 | 等 G5 定稿 |
 >
 > 勾选框按上述核对结果更新；未勾项表示该项仍未完成或未按原类名落地，不代表门禁整体未推进。
@@ -183,7 +183,7 @@ G0 治理与基线
 - [x] **G5.2 复用玻璃测试宿主。** 扩展 `ProductionGlassTestActivity` 的受控场景，增加同背景三档及大面板样本；复用 G1 采集协议。已有宿主能承载时不另建 GlassLabActivity；视图排版比较与性能采集分开运行。
 - [x] **G5.3 Haze预检。** 独立实验目录/获准worktree中先确认官方模块坐标、版本、AAR metadata 和依赖解析。强制 compileSdk>36 或升级现有Compose/Kotlin/AGP即结束预检。通过才做相同导航/面板PoC，沿用 §7 测量；半天为预检时间盒。
 - [ ] PoC 比较 vendored `896a94a`+本地修改与候选库的视觉、p95、jank、峰值PSS。非劣预算为 p95+1ms、jank+0.3pp、PSS+20MB；噪声不足以判定时不下迁库结论。PoC通过不自动授权生产换库；本轮完成条件仍是backdrop方案。
-- [ ] **G5.4 视觉定稿。** 活跃文字4.5:1、焦点指示3:1；黑白背景均可辨识焦点与selected；弹窗/播放器不采样；检查三档交互目标、Back和切源/收藏行为相同。更新本阶段受影响金标。
+- [x] **G5.4 视觉定稿。** 活跃文字4.5:1、焦点指示3:1；黑白背景均可辨识焦点与selected；弹窗/播放器不采样；检查三档交互目标、Back和切源/收藏行为相同。更新本阶段受影响金标。
 
 **Gate 5：** 全表面功能与视觉完成，评审截图可追溯，Haze评估有结论；需要优化的场景明确进入G6。
 
