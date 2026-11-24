@@ -16,11 +16,13 @@
 >
 > | 门禁 | 状态 | 证据 |
 > |---|---|---|
-> | G0 | 完成，`G0.4` 部分 | `docs/evidence/2026-11-09-g0-governance.md`；`baseline/native-tv-8787e1e`；`archive/tv-web-5c24360`（2026-11-24 创建，原 hybrid APK 未归档） |
+> | G0 | 完成 | `docs/evidence/2026-11-09-g0-governance.md`；`baseline/native-tv-8787e1e`；`archive/tv-web-5c24360`（2026-11-24 创建，原 hybrid APK 未归档） |
 > | G1 | 完成 | PR #43–#45；`docs/evidence/2026-11-09-native-tv-drawn-tier.md`、`2026-11-09-native-tv-input-causality.md`；采集协议 v4 |
 > | G2 | 完成 | PR #46–#51；`TvPageStateTest`；`ui/tv/focus/` 与焦点恢复用例 |
 > | G3 | 代码完成，`G3.4` 待 owner | `TvRouteBackTest`、`TvImeBackTest`、`TvPlayerBackLadderTest`、`TvStatusDialogTest`、`MainActivityPathSmokeTest`；`archive/tv-web-5c24360` |
-> | G4–G6 | 未开始 | G4 等 `G3.4` 真机短冒烟 |
+> | G4 | 未开始 | 等 `G3.4` 真机短冒烟 |
+> | G5 | 进行中：G5.1–G5.3 完成，G5.4 待金标回填 | `docs/evidence/2026-11-24-g5-surface-audit.md` |
+> | G6 | 未开始 | 等 G5 定稿 |
 >
 > 勾选框按上述核对结果更新；未勾项表示该项仍未完成或未按原类名落地，不代表门禁整体未推进。
 
@@ -77,7 +79,7 @@ G0 治理与基线
 - [x] **G0.1 整理治理输入。** 逐个确认当前 modified/untracked 文件归属，只纳入认可的文件。采用本复核稿后，将 `AGENTS.md` 的 governing plan 指向本文件，并统一为“G3 冒烟后 G4 删除”；不要求清空或提交无关工作。
 - [x] **G0.2 核对本机工具链。** Android Studio 已安装是输入条件；实际 SDK 路径、JDK、Gradle 8.13、platform/build-tools 36、adb、emulator、cmdline-tools 和可用 TV 镜像逐项记录。安装另行确认；CI 使用现有 Java17/Gradle8.13 配置。
 - [x] **G0.3 跑精确源码基线。** 治理内容形成可检出的提交后，分别触发 `android.yml` 和 `tv-smoke.yml`。记录两者实际 checkout SHA、run URL、APK hash 和失败项；`android.yml` 的普通 dispatch 不会自动执行完整 UI job。
-- [ ] **G0.4 固定归档。**（2026-11-24：`archive/tv-web-5c24360` 已创建并推送；原 hybrid APK 与 hash 归档未执行。） `archive/tv-web-5c24360` 指向原始 `5c24360`，只创建一次；原始 hybrid APK 与 hash 同时归档。基线 tag `baseline/native-tv-<实际短SHA>` 指向含新治理且完成验证的提交。已存在 tag 先核对，不移动覆盖。
+- [x] **G0.4 固定归档。**（2026-11-24：tag 已创建；原始 hybrid APK 与指纹发布到 GitHub release `archive/tv-web-5c24360`，APK SHA-256 `40cd1a72…24fc6187`，签名者 `eb8d950c…a683770`。） `archive/tv-web-5c24360` 指向原始 `5c24360`，只创建一次；原始 hybrid APK 与 hash 同时归档。基线 tag `baseline/native-tv-<实际短SHA>` 指向含新治理且完成验证的提交。已存在 tag 先核对，不移动覆盖。
 - [x] **G0.5 记录实际基线。** JVM 数来自 `TEST-*.xml`，device lane 来自实际执行结果；本地 ref 不当作最新远端或 Actions 状态。记录已有失败，先处理阻断本轮的回归。
 
 **Gate 0：** 基线提交、归档、CI 结果和工具链缺口明确；不再沿用旧文档的测试数或“环境已就绪”结论。
@@ -177,9 +179,9 @@ G0 治理与基线
 
 ### G5 — 完整玻璃与视觉定稿
 
-- [ ] **G5.1 检查全表面。** 导航、动作、Settings/LIVE/DETAIL/LIBRARY面板按 §4 呈现；检查大面积Blur/Full、无图、切背景、滚动、白海报、Reduce Motion。修光学/可读性，不提前设每屏一块等性能限制。
-- [ ] **G5.2 复用玻璃测试宿主。** 扩展 `ProductionGlassTestActivity` 的受控场景，增加同背景三档及大面板样本；复用 G1 采集协议。已有宿主能承载时不另建 GlassLabActivity；视图排版比较与性能采集分开运行。
-- [ ] **G5.3 Haze预检。** 独立实验目录/获准worktree中先确认官方模块坐标、版本、AAR metadata 和依赖解析。强制 compileSdk>36 或升级现有Compose/Kotlin/AGP即结束预检。通过才做相同导航/面板PoC，沿用 §7 测量；半天为预检时间盒。
+- [x] **G5.1 检查全表面。** 导航、动作、Settings/LIVE/DETAIL/LIBRARY面板按 §4 呈现；检查大面积Blur/Full、无图、切背景、滚动、白海报、Reduce Motion。修光学/可读性，不提前设每屏一块等性能限制。
+- [x] **G5.2 复用玻璃测试宿主。** 扩展 `ProductionGlassTestActivity` 的受控场景，增加同背景三档及大面板样本；复用 G1 采集协议。已有宿主能承载时不另建 GlassLabActivity；视图排版比较与性能采集分开运行。
+- [x] **G5.3 Haze预检。** 独立实验目录/获准worktree中先确认官方模块坐标、版本、AAR metadata 和依赖解析。强制 compileSdk>36 或升级现有Compose/Kotlin/AGP即结束预检。通过才做相同导航/面板PoC，沿用 §7 测量；半天为预检时间盒。
 - [ ] PoC 比较 vendored `896a94a`+本地修改与候选库的视觉、p95、jank、峰值PSS。非劣预算为 p95+1ms、jank+0.3pp、PSS+20MB；噪声不足以判定时不下迁库结论。PoC通过不自动授权生产换库；本轮完成条件仍是backdrop方案。
 - [ ] **G5.4 视觉定稿。** 活跃文字4.5:1、焦点指示3:1；黑白背景均可辨识焦点与selected；弹窗/播放器不采样；检查三档交互目标、Back和切源/收藏行为相同。更新本阶段受影响金标。
 

@@ -77,6 +77,8 @@ fun GlassAction(
     iconSelected: Boolean = selected,
     /** A disabled action keeps its layout, is skipped by the remote and dims to 40%. */
     enabled: Boolean = true,
+    /** Navigation actions use the darker floating-navigation face; panels and actions keep theirs. */
+    role: dev.cinematv.ui.tv.design.TvGlassRole = dev.cinematv.ui.tv.design.TvGlassRole.ACTION,
     onClick: () -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
@@ -104,7 +106,7 @@ fun GlassAction(
         // never scale a shared ancestor whose coordinates the source cannot invert.
         Box(Modifier.matchParentSize().cinemaGlassMaterial(focus = focus, press = press,
             selected = selected, prominent = prominent, level = dev.cinematv.ui.tv.design.GlassRenderMode.FULL,
-            layerBlock = { scaleX = scale; scaleY = scale }))
+            role = role, layerBlock = { scaleX = scale; scaleY = scale }))
         Row((if (label.isEmpty()) GlassActionIconPadding else GlassActionLabelPadding)
             .graphicsLayer { scaleX = scale; scaleY = scale },
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {

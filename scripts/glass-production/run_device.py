@@ -13,6 +13,7 @@ from test_log import TestLogBoundary
 PACKAGE = "dev.cinematv"
 RUNNER = "dev.cinematv.test/androidx.test.runner.AndroidJUnitRunner"
 PRODUCTION = ("dev.cinematv.ProductionGlassUiTest", "actualProductionRootsRenderRequestedTiersAndKeepNativeInput")
+PRODUCTION_PANELS = ("dev.cinematv.ProductionGlassUiTest", "largePanelsRenderTheRequestedTierOnOneBackground")
 BUTTON = ("dev.cinematv.MobileGlassButtonTest", "primaryAndSecondaryKeepNativeTouchTargetsRolesAndDisabledState")
 BUTTON_EDGE = ("dev.cinematv.MobileGlassButtonTest", "pressedEdgeKeepsStableTouchTargetAndSingleClick")
 MATERIAL = ("dev.cinematv.GlassMaterialSmokeTest", "materialSurvivesFocusPressReducedMotionMissingArtAndFailure")
@@ -83,7 +84,7 @@ FOCUS_RELOCATION = [("dev.cinematv.FocusBoundRelocationTest", method) for method
 
 
 def expected_for(layout):
-    return [PRODUCTION, BUTTON, BUTTON_EDGE] + ([MATERIAL, *MOTION, *FOCUS_RESTORE, *ACTION_LAYOUT, *RAIL_TRAVERSAL, *RAIL_VISIBILITY, *FOCUS_RELOCATION] if layout == "tv" else [])
+    return [PRODUCTION, PRODUCTION_PANELS, BUTTON, BUTTON_EDGE] + ([MATERIAL, *MOTION, *FOCUS_RESTORE, *ACTION_LAYOUT, *RAIL_TRAVERSAL, *RAIL_VISIBILITY, *FOCUS_RELOCATION] if layout == "tv" else [])
 
 
 ERROR_MARKERS = ("ANR in dev.cinematv", "ANR in com.android", "FATAL EXCEPTION", "Application Not Responding:",

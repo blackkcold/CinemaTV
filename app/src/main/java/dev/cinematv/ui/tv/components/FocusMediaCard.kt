@@ -10,10 +10,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.Role
@@ -29,6 +34,8 @@ import androidx.compose.ui.zIndex
 import dev.cinematv.ui.typography.CinemaTvText as Text
 import coil3.compose.AsyncImage
 import dev.cinematv.data.MediaItem
+import dev.cinematv.ui.Ink
+import dev.cinematv.ui.Ivory
 import dev.cinematv.ui.shared.*
 import dev.cinematv.ui.tv.design.*
 import dev.cinematv.ui.tv.motion.*
@@ -118,8 +125,23 @@ fun FocusMediaCard(
                     Box(Modifier.fillMaxWidth(item.watchProgress!!).fillMaxHeight().background(TvColors.Text))
                 }
             }
-            Box(Modifier.matchParentSize().border(if (focused) 2.dp else .5.dp,
-                if (focused) TvColors.Text else Color.White.copy(alpha = if (selected) .6f else .08f), shape))
+            Box(Modifier.matchParentSize().drawBehind {
+                val radius = 12.dp.toPx()
+                if (focused) {
+                    // Same pair as the action buttons: the dark rim survives a white poster,
+                    // the bright core survives dark artwork. Native focus, not animation.
+                    val inset = 1.dp.toPx()
+                    val outlineSize = Size((size.width - 2 * inset).coerceAtLeast(0f),
+                        (size.height - 2 * inset).coerceAtLeast(0f))
+                    drawRoundRect(Ink, Offset(inset, inset), outlineSize,
+                        CornerRadius(radius), style = Stroke(4.dp.toPx()))
+                    drawRoundRect(Ivory, Offset(inset, inset), outlineSize,
+                        CornerRadius(radius), style = Stroke(2.dp.toPx()))
+                } else {
+                    drawRoundRect(Color.White.copy(alpha = if (selected) .6f else .08f),
+                        cornerRadius = CornerRadius(radius), style = Stroke(.5.dp.toPx()))
+                }
+            })
         }
         if (showCaption) {
           Text(item.title, color = TvColors.Text, fontSize = 15.sp, lineHeight = 20.sp, fontWeight = FontWeight.Medium,

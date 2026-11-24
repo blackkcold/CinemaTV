@@ -146,6 +146,80 @@ class ProductionGlassUiTest {
         android.util.Log.i("CinemaTVGlassQa", snapshot.toString())
     }
 
+    @Test fun largePanelsRenderTheRequestedTierOnOneBackground() {
+        writeManifest(false)
+        for (requested in modes) {
+            rule.runOnIdle { model.updateGlassQuality(requested) }
+            awaitPolicy(requested)
+            val effective = observation().actualMode
+
+            // SETTINGS is the no-artwork case: only AmbientArtwork feeds the scene, and the
+            // panel is the full-height surface. Clear its scope before the route composes.
+            rule.runOnUiThread { rule.activity.glassDraws.clearScope(Page.SETTINGS.name) }
+            rule.runOnIdle { model.navigate(Page.SETTINGS) }
+            rule.waitUntil(15_000) { model.page == Page.SETTINGS }
+            try {
+                rule.waitUntil(10_000) { scopedCounts(Page.SETTINGS.name).let {
+                    it.fullDraws + it.blurDraws + it.basicDraws > 0 } }
+            } finally {
+                recordRenderer("settings-panel-${requested.name}", effective, Page.SETTINGS.name)
+            }
+            assertTierDraws(scopedCounts(Page.SETTINGS.name), effective, "SETTINGS")
+            capture("${requested.name.lowercase()}-settings-panel", requested, effective, Page.SETTINGS.name)
+
+            // LIVE adds the two-column panels and an EPG that keeps repainting; the scope
+            // separates them from the settings panel that just left.
+            rule.runOnUiThread { rule.activity.glassDraws.clearScope(Page.LIVE.name) }
+            rule.runOnIdle { model.navigate(Page.LIVE) }
+            rule.waitUntil(15_000) { model.page == Page.LIVE && model.channels.size == 18 }
+            try {
+                rule.waitUntil(15_000) { scopedCounts(Page.LIVE.name).let {
+                    it.fullDraws + it.blurDraws + it.basicDraws > 0 } }
+            } finally {
+                recordRenderer("live-panel-${requested.name}", effective, Page.LIVE.name)
+            }
+            assertTierDraws(scopedCounts(Page.LIVE.name), effective, "LIVE")
+            capture("${requested.name.lowercase()}-live-panel", requested, effective, Page.LIVE.name)
+
+            // Back home: the bright hero is the stress case for the navigation face, so the
+            // same three-tier sample also records the pill over artwork.
+            rule.runOnUiThread { rule.activity.glassDraws.clearScope(Page.HOME.name) }
+            rule.runOnIdle { model.navigate(Page.HOME) }
+            rule.waitUntil(10_000) { model.page == Page.HOME }
+            assertHomeControl()
+            awaitScene()
+            try {
+                rule.waitUntil(10_000) { scopedCounts(Page.HOME.name).let {
+                    it.fullDraws + it.blurDraws + it.basicDraws > 0 } }
+            } finally {
+                recordRenderer("home-nav-${requested.name}", effective, Page.HOME.name)
+            }
+            assertTierDraws(scopedCounts(Page.HOME.name), effective, "HOME")
+            capture("${requested.name.lowercase()}-home-nav", requested, effective, Page.HOME.name)
+        }
+        writeManifest(true)
+    }
+
+    private fun assertTierDraws(scope: dev.cinematv.ui.tv.components.ScopedGlassDraws,
+                                effective: GlassRenderMode, route: String) {
+        when (effective) {
+            GlassRenderMode.FULL -> {
+                assertTrue("$route must draw Full at this tier", scope.fullDraws > 0)
+                assertTrue("$route Full must sample the scene", scope.sourcePresentDraws > 0)
+            }
+            GlassRenderMode.BLUR -> {
+                assertEquals("$route must not draw Full under Blur", 0, scope.fullDraws)
+                assertTrue("$route must draw Blur", scope.blurDraws > 0)
+                assertTrue("$route Blur must sample the scene", scope.sourcePresentDraws > 0)
+            }
+            GlassRenderMode.BASIC -> {
+                assertEquals("$route must not draw Full under Basic", 0, scope.fullDraws)
+                assertEquals("$route must not draw Blur under Basic", 0, scope.blurDraws)
+                assertTrue("$route must draw the safe material", scope.basicDraws > 0)
+            }
+        }
+    }
+
     @Test fun actualProductionRootsRenderRequestedTiersAndKeepNativeInput() {
         writeManifest(false)
         for (requested in modes) {
