@@ -2,6 +2,7 @@ package dev.cinematv
 
 import android.view.KeyEvent
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.mutableStateOf
@@ -71,6 +72,40 @@ class TvStatusDialogTest {
         compose.onNodeWithText("清空记录").assertDoesNotExist()
         assertEquals(0, confirmed.get())
         compose.onNodeWithTag("trigger").assertIsFocused()
+    }
+
+    @Test fun theDialogOwnsTheFirstBackAndThePageOwnsTheNext() {
+        val open = mutableStateOf(false)
+        val pageBacks = AtomicInteger()
+        compose.setContent {
+            BackHandler(enabled = true) { pageBacks.incrementAndGet() }
+            Box(Modifier.fillMaxSize()) {
+                GlassAction("打开", Modifier.testTag("trigger"), onClick = { open.value = true })
+                if (open.value) TvConfirmDialog(
+                    title = "清空记录",
+                    message = "此操作不可撤销",
+                    confirmLabel = "清空",
+                    onConfirm = { open.value = false },
+                    onDismiss = { open.value = false },
+                )
+            }
+        }
+        compose.onNodeWithTag("trigger").requestFocus()
+        compose.onNodeWithTag("trigger").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("清空记录").assertIsDisplayed()
+
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+        compose.waitForIdle()
+        compose.onNodeWithText("清空记录").assertDoesNotExist()
+        assertEquals("The dialog window owns the first Back", 0, pageBacks.get())
+
+        // Only after the dialog window is gone can the activity receive Back again.
+        compose.waitUntil(5_000) { compose.activity.hasWindowFocus() }
+        instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+        compose.waitForIdle()
+        assertEquals("The next Back reaches the page behind it", 1, pageBacks.get())
     }
 
     @Test fun progressIsAReadOnlyFourDpRange() {
