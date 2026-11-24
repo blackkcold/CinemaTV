@@ -36,6 +36,7 @@ fun Modifier.cinemaGlassMaterial(
     dense: Boolean = false,
     backdropOverride: Backdrop? = null,
     level: GlassRenderMode = GlassRenderMode.FULL,
+    role: TvGlassRole = TvGlassRole.PANEL,
     layerBlock: (GraphicsLayerScope.() -> Unit)? = null,
 ): Modifier {
     val effects = LocalTvEffects.current
@@ -94,10 +95,18 @@ fun Modifier.cinemaGlassMaterial(
         onDrawBehind = safe,
         onDrawFallback = safe,
         onDrawSurface = {
-            drawRect(Brush.verticalGradient(listOf(Color.White.copy(.13f + emphasis * .04f),
-                Color(0xFFB9DDF5).copy(.035f), Color.White.copy(.025f))))
-            if (!full) drawRect(Color(0xFF6E9DBB).copy(.10f))
-            if (dense) drawRect(Color(0xFF06111D).copy(.10f))
+            val navigation = role == TvGlassRole.NAVIGATION
+            val faceWhite = if (navigation) NavigationGlassFace.WHITE else .13f
+            val faceEmphasis = if (navigation) .02f else .04f
+            drawRect(Brush.verticalGradient(listOf(Color.White.copy(faceWhite + emphasis * faceEmphasis),
+                Color(0xFFB9DDF5).copy(if (navigation) .015f else .035f),
+                Color.White.copy(if (navigation) .01f else .025f))))
+            if (!full) drawRect((if (navigation) NavigationGlassFace.blue else Color(0xFF6E9DBB))
+                .copy(if (navigation) NavigationGlassFace.BLUE else .10f))
+            if (dense) drawRect((if (navigation) NavigationGlassFace.dense else Color(0xFF06111D))
+                .copy(NavigationGlassFace.DENSE_DARK))
+            // Last, so the pill stays legible over a bright hero instead of the artwork dimming.
+            if (navigation) drawRect(NavigationGlassFace.veilColor.copy(NavigationGlassFace.VEIL))
             if (press > 0f) drawRect(Color.White.copy(.07f * press))
         },
     )
