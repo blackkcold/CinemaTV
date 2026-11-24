@@ -110,3 +110,30 @@ Old baseline versus these captures, with both limits unchanged (mean 0.020, chan
 Every screen was already outside the baseline before this change on the same branch: the untouched base measured 0.130 on `01-home` and 0.095 on `11-settings` at tv1080. This refresh accepts the current rendered state; it does not move a limit. Masks are unchanged, no mask is baked into a PNG, and normalization stays the existing 960×540 RGB/LANCZOS path.
 
 Reviewed at both resolutions: the hero title, metadata and description keep their reading bed; the movie and series filter rows and the detail meta rows sit on a darker bed than before; the settings sidebar and the discovery cover flow keep their focus rings and are not clipped. Per-screen raw and normalized hashes are recorded in each `manifest.json`.
+
+## 2026-11-24 — navigation face and paired poster focus ring
+
+Source `8532f98a9d44fbac9b1e0f6eee97dfb4d5d1aa09`. The floating navigation now draws its own
+face (white .045, veil .34) so 14sp labels clear 4.5:1 over a bright hero; the poster focus
+ring uses the Ink 4dp + Ivory 2dp pair. `03-detail.png` is byte-identical because the detail
+screen does not show the floating navigation.
+
+| viewport | run | artifact | size | result |
+|---|---|---|---|---|
+| tv1080 | 45314161245 | 14885387790 | 1920×1080 | lane passed |
+| tv4k | 45316867405 | pending | 3840×2160 | capture pending |
+
+Old baseline versus these captures, with both limits unchanged (mean 0.020, changed 0.08):
+
+| screen | tv1080 mean / changed | tv4k mean / changed |
+|---|---|---|
+| `01-home.png` | 0.00430 / 0.02534 | pending |
+| `03-detail.png` | 0.00000 / 0.00000 | pending |
+| `05-movies.png` | 0.00356 / 0.02040 | pending |
+| `06-series.png` | 0.00355 / 0.01960 | pending |
+| `07-discovery.png` | 0.00405 / 0.02071 | pending |
+| `11-settings.png` | 0.00029 / 0.00053 | pending |
+
+Reviewed at tv1080: the pill keeps the artwork's warmth and shows the sky through it, every
+tab label is legible, the selected lens stays distinct, and the filter row keeps its focus
+outline. Masks and normalization are unchanged.
