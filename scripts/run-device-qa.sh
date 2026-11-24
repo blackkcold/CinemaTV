@@ -126,11 +126,10 @@ run_stage device-setup configure_device "$1" "$2"
 timeout --kill-after=5s 5s free -m > qa/host-memory-before.txt || true
 
 # 4K software rendering is a functional gate, not a device latency benchmark.
-# Run 41964523868 completed the expanded suite in about 17m; 41967681737
-# reached seven passing cases at 18m and was killed while the next was active
-# (stage exit 124, no assertion failure). Allow a finite 24m for this target's
-# shared-runner variance, with live diagnostics and kill grace intact. Keep
-# all classes/pixel gates and the other targets' existing limits unchanged.
+# The suite grew from 18 to 21 with the page-state coverage; run 45317328519 reached
+# 14 passing cases at the old 24m deadline (stage exit 124, no assertion failure).
+# Give this target a finite 40m shared-runner allowance while the job timeout above
+# outlives the stage. Keep all classes/pixel gates and other targets' limits unchanged.
 CINEMA_INSTRUMENTATION_BUDGET=12m
 CINEMA_TRACE_BUDGET=14m
 CINEMA_HEARTBEAT_BUDGET=18m

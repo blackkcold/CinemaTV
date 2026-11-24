@@ -450,9 +450,9 @@ class DeviceRunnerTest(unittest.TestCase):
             "-Pandroid.testInstrumentationRunnerArguments.class=dev.cinematv.MobileNavigationSmokeTest",
         ]])
 
-    def test_only_4k_receives_twenty_four_minute_instrumentation_budget(self):
+    def test_only_4k_receives_forty_minute_instrumentation_budget(self):
         for viewport, tv, expected in (("1080x1920", False, "12m"), ("1920x1080", True, "12m"),
-                                       ("1920x1080", False, "12m"), ("3840x2160", True, "24m")):
+                                       ("1920x1080", False, "12m"), ("3840x2160", True, "40m")):
             with self.subTest(viewport=viewport, tv=tv):
                 code, _, _, _ = self.run_harness(viewport=viewport, tv=tv)
                 self.assertEqual(code, 0)
@@ -472,7 +472,7 @@ class DeviceRunnerTest(unittest.TestCase):
                 self.assertTrue(diagnostics)
                 self.assertIn("live-log-stopped", self.files)
                 invocation = [args for args in self.calls["timeout"] if "gradle" in args]
-                self.assertEqual(invocation[0][:4], ["--signal=TERM", "--kill-after=30s", "24m", "gradle"])
+                self.assertEqual(invocation[0][:4], ["--signal=TERM", "--kill-after=30s", "40m", "gradle"])
 
     def test_4k_trace_and_heartbeat_outlive_instrumentation_and_are_cleaned_up(self):
         for status in (0, 124):
@@ -481,9 +481,9 @@ class DeviceRunnerTest(unittest.TestCase):
                 self.assertEqual(code, status)
                 self.assertIn(f"device-total\t{status}\t", stages)
                 calls = self.calls["timeout"]
-                self.assertTrue(any(args[:4] == ["--signal=TERM", "--kill-after=30s", "24m", "gradle"] for args in calls))
-                self.assertTrue(any(args[:4] == ["--signal=TERM", "--kill-after=5s", "26m", "adb"] for args in calls))
-                self.assertTrue(any(args[:4] == ["--signal=TERM", "--kill-after=5s", "28m", "python3"] for args in calls))
+                self.assertTrue(any(args[:4] == ["--signal=TERM", "--kill-after=30s", "40m", "gradle"] for args in calls))
+                self.assertTrue(any(args[:4] == ["--signal=TERM", "--kill-after=5s", "42m", "adb"] for args in calls))
+                self.assertTrue(any(args[:4] == ["--signal=TERM", "--kill-after=5s", "44m", "python3"] for args in calls))
                 self.assertIn("live-log-stopped", self.files)
         source = (SCRIPTS / "run-device-qa.sh").read_text()
         self.assertIn('kill "$QA_HEARTBEAT_PID"', source)

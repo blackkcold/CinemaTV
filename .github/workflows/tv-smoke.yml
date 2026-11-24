@@ -110,8 +110,10 @@ jobs:
       - name: Enable KVM
         run: sudo chmod 666 /dev/kvm
       - uses: reactivecircus/android-emulator-runner@v2
-        # 4K's bounded functional suite needs renderer variance plus setup/export.
-        timeout-minutes: ${{ (matrix.name == 'tv4k' || matrix.name == 'tvNative') && 30 || 25 }}
+        # 4K's bounded functional suite needs renderer variance plus setup/export; its
+        # instrumentation budget is 40m after the page-state suites joined, so the job
+        # must outlive the stage or GitHub kills it before the harness can report.
+        timeout-minutes: ${{ matrix.name == 'tv4k' && 55 || (matrix.name == 'tvNative' && 30 || 25) }}
         with:
           api-level: ${{ matrix.api }}
           # TV hosts use AOSP: prior Google-image evidence is a different
