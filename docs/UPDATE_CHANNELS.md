@@ -176,12 +176,14 @@ versionCode sequence:
 | Invocation | Channel | Version | Code | Output |
 |---|---|---|---|---|
 | no argument (unchanged default), or `stable` | stable | `0.8.0` | `10` | `candidate/` |
-| `dev` | dev | `0.8.0-dev.1` | `11` | `candidate-dev/` |
+| `dev` | dev | `0.9.0-dev.2` | `14` | `candidate-dev/` |
 
-Both use the same accepted main app source with no Douban personal-account code.
-Code 11 cannot downgrade to stable code 10; a subsequent stable release needs a
-new globally higher code. These reservations do not change the ordinary Gradle
-defaults or the provenance of earlier public previews.
+The stable candidate keeps main's accepted app payload and still refuses the Douban
+personal-account sources. The dev candidate is built from `dev-compose` and may include
+that dev-only experiment, matching the Gradle channel guard. Codes 12 (`v0.8.0-dev.2`)
+and 13 (the archived TV Web build) are already public; code 14 cannot downgrade to them.
+These reservations do not change the ordinary Gradle defaults or the provenance of
+earlier public previews.
 
 The dedicated stable and dev CI jobs check out the exact workflow SHA (the tested
 merge commit on a PR), not a moving branch. Each builds release bytes with the
