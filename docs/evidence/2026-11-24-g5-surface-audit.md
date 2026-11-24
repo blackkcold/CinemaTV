@@ -81,9 +81,23 @@ no PoC was built and `backdrop` remains the production material.
 | `:app:assembleDebugAndroidTest` | BUILD SUCCESSFUL |
 | `ProductionGlassUiTest#largePanelsRenderTheRequestedTierOnOneBackground` on `cinematv-tv` | OK (21s, three tiers) |
 | Navigation capture, 1920×1080, Apple M4 host GPU | measured above |
-| tv1080 / tv4k golden lanes | recaptured in this change; run ids recorded in the provenance ledger |
+| tv1080 golden lane | recaptured from [45314161245](https://github.com/blackkcold/CinemaTV/actions/runs/45314161245) (artifact 14885387790); confirmation [45327167071](https://github.com/blackkcold/CinemaTV/actions/runs/45327167071) passed |
+| tv4k golden lane | recaptured from [45324367460](https://github.com/blackkcold/CinemaTV/actions/runs/45324367460) (artifact 14889319771); confirmation [45332510107](https://github.com/blackkcold/CinemaTV/actions/runs/45332510107) passed |
 
 The local AVD is E-gate evidence only. Physical TV acceptance remains the owner's T-gate.
+
+## 4K lane capacity and one recorded flake
+
+The 4K lane grew from 18 to 21 suites when the page-state coverage joined. The old 24m
+instrumentation budget stopped at 14/21 with zero failures (stage exit 124), so the budget
+is now 40m with a 55m job timeout; all 21 suites then finished in 25m11s. This changes no
+assertion, class list, mask or threshold.
+
+One confirmation run, [45328665762](https://github.com/blackkcold/CinemaTV/actions/runs/45328665762),
+failed at `RecommendationDashboardUiTest`'s 15s wait for the asynchronous ranker. The same
+artifact passed in 45324367460 and again in 45332510107, and the app/test code is identical
+across all three, so this is recorded as a timing assumption on a slow 4K software renderer,
+not a product regression. Making that wait independent of wall time stays a G6 follow-up.
 
 ## Boundaries
 
