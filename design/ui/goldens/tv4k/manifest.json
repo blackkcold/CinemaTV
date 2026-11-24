@@ -1,7 +1,7 @@
 {
-  "sourceCommit": "ee2b76d068447f85c273dc2e115e271b28f33d16",
-  "workflowRun": 45137482702,
-  "reviewedDate": "2026-11-23",
+  "sourceCommit": "5034b64649dae2caae460826efaaa89f03ee451a",
+  "workflowRun": 45324367460,
+  "reviewedDate": "2026-11-24",
   "viewport": "tv4k",
   "normalizedSize": [
     960,
@@ -13,31 +13,31 @@
     {
       "file": "01-home.png",
       "masks": [],
-      "sourceCommit": "ee2b76d068447f85c273dc2e115e271b28f33d16",
-      "workflowRun": 45137482702,
-      "artifactId": 14802210389,
+      "sourceCommit": "5034b64649dae2caae460826efaaa89f03ee451a",
+      "workflowRun": 45324367460,
+      "artifactId": 14889319771,
       "rawCaptureSize": [
         3840,
         2160
       ],
-      "rawCaptureSha256": "845d72777b2134ecd7e4f544ceb6ce9430d03ec2f907ee722c2728fb70b34ed4",
-      "baselineSha256": "204d5dd7ab00ff243dc8255554dd0fc03fd6907d771b3a796464a5e6db09b764",
-      "reviewedDate": "2026-11-23",
+      "rawCaptureSha256": "9e257f07157cb34a8fd2270844053629134ac0514160a5117aaa00773455f529",
+      "baselineSha256": "1bc173beaa04d353167c17e412fe679f3c5443a95d322177be59b00fad50dcaa",
+      "reviewedDate": "2026-11-24",
       "reviewReason": "阅读遮罩 B：首页只压文字列、放开右侧画作，天空与太阳不再被整体压暗；标题、元信息与简介仍落在暗底上。文字区平均亮度由 0.254 升至 0.271，焦点环、悬浮导航与轨道几何未变，玻璃白面与高光提高后按钮边界更清楚。"
     },
     {
       "file": "03-detail.png",
       "masks": [],
-      "sourceCommit": "ee2b76d068447f85c273dc2e115e271b28f33d16",
-      "workflowRun": 45137482702,
-      "artifactId": 14802210389,
+      "sourceCommit": "5034b64649dae2caae460826efaaa89f03ee451a",
+      "workflowRun": 45324367460,
+      "artifactId": 14889319771,
       "rawCaptureSize": [
         3840,
         2160
       ],
       "rawCaptureSha256": "d645aadc731bc0418a42e07cb1160b446c15533d2a775fb2a11a7fe829d96c7e",
       "baselineSha256": "ece633be82403ec24867521498642706c13e12280ddd650ae8aa1b8df6a0a5ce",
-      "reviewedDate": "2026-11-23",
+      "reviewedDate": "2026-11-24",
       "reviewReason": "阅读遮罩 B：详情页属于文字密集路由，改用更强的阅读遮罩，片源与状态两行小字的底衬由 0.231 降到 0.191。立即播放、收藏、更换片源、片库状态四个按钮与长条面板的玻璃白面提高，边界更清楚，布局与焦点顺序未变。"
     },
     {
@@ -50,16 +50,16 @@
           530
         ]
       ],
-      "sourceCommit": "ee2b76d068447f85c273dc2e115e271b28f33d16",
-      "workflowRun": 45137482702,
-      "artifactId": 14802210389,
+      "sourceCommit": "5034b64649dae2caae460826efaaa89f03ee451a",
+      "workflowRun": 45324367460,
+      "artifactId": 14889319771,
       "rawCaptureSize": [
         3840,
         2160
       ],
-      "rawCaptureSha256": "f89634e8db3891d3a85a46325c6a89d0d889f96a59921695397f7246118c97a6",
-      "baselineSha256": "cec04c5fc5f0c074a42f98f4f4952bef5d05936183930d05afe7e437ab278ba8",
-      "reviewedDate": "2026-11-23",
+      "rawCaptureSha256": "615bfae4d72bb71aaef002c3ecbdf0ec3945206625c147022ff602b0aadaf065",
+      "baselineSha256": "df290ae49b411889af160a95f125e613197fe61301915524524dfdbd32fb1bfe",
+      "reviewedDate": "2026-11-24",
       "reviewReason": "阅读遮罩 B：电影页的标题与筛选条落在更强的阅读遮罩上，文字区平均亮度由 0.327 降到 0.293，右侧画作仍保留亮度。网格列数、筛选项顺序、海报比例与滚动位置均未变化，玻璃只在按钮与筛选胶囊上参与，未改变可点区域与焦点顺序。"
     },
     {
@@ -72,16 +72,16 @@
           530
         ]
       ],
-      "sourceCommit": "ee2b76d068447f85c273dc2e115e271b28f33d16",
-      "workflowRun": 45137482702,
-      "artifactId": 14802210389,
+      "sourceCommit": "5034b64649dae2caae460826efaaa89f03ee451a",
+      "workflowRun": 45324367460,
+      "artifactId": 14889319771,
       "rawCaptureSize": [
         3840,
         2160
       ],
-      "rawCaptureSha256": "17a221bb6ad5fe7ffb3f296a5b16ed81a2e4cad5480338b750b101e3437c5809",
-      "baselineSha256": "6f77a1cfddc0ff5f50cccfea60e0d8ceb45126f565506a9375d3d43e3c91f134",
-      "reviewedDate": "2026-11-23",
+      "rawCaptureSha256": "9a3a814aca47437e17bb1bb76110f0fd8462e086dfae907fe1f9bfc10575f9e2",
+      "baselineSha256": "0234bc0bc937f1edecc107c1b99d02561f3c414b75bff70ae3d63cc7d2fe8414",
+      "reviewedDate": "2026-11-24",
       "reviewReason": "阅读遮罩 B：剧集页与电影页共用同一套阅读遮罩，文字区平均亮度由 0.327 降到 0.293，标题与筛选行的对比度提高。卡片尺寸、滚动位置与底部分页控件未变，分页按钮的禁用态、文案与可点区域保持原样。"
     },
     {
@@ -94,16 +94,16 @@
           530
         ]
       ],
-      "sourceCommit": "ee2b76d068447f85c273dc2e115e271b28f33d16",
-      "workflowRun": 45137482702,
-      "artifactId": 14802210389,
+      "sourceCommit": "5034b64649dae2caae460826efaaa89f03ee451a",
+      "workflowRun": 45324367460,
+      "artifactId": 14889319771,
       "rawCaptureSize": [
         3840,
         2160
       ],
-      "rawCaptureSha256": "7fb28b08320b618671bbe92a94a2b590bc86f9068b3cfa4bc3fbe091c4322f62",
-      "baselineSha256": "2a8658e02be1b45f9514862a4384eca4aa50676d26963f9b8454e4b3e7f74848",
-      "reviewedDate": "2026-11-23",
+      "rawCaptureSha256": "caddf5fe463c808cd89cc0d31614721d80ef1be0e6500b647d17ed9fd7e5a9e8",
+      "baselineSha256": "87a38efa7fd77f4dc041decdb4ea94cb3aece6e42ee8ec6df7915bc9784d53ca",
+      "reviewedDate": "2026-11-24",
       "reviewReason": "阅读遮罩 B：发现页属于文字密集路由，封面流与状态行之间的层次保持，文字区平均亮度由 0.231 降到约 0.195。画作可见度略降以换取文字底衬，封面流几何与焦点顺序未变，状态行与封面的相对位置保持一致。"
     },
     {
@@ -122,16 +122,16 @@
           298
         ]
       ],
-      "sourceCommit": "ee2b76d068447f85c273dc2e115e271b28f33d16",
-      "workflowRun": 45137482702,
-      "artifactId": 14802210389,
+      "sourceCommit": "5034b64649dae2caae460826efaaa89f03ee451a",
+      "workflowRun": 45324367460,
+      "artifactId": 14889319771,
       "rawCaptureSize": [
         3840,
         2160
       ],
-      "rawCaptureSha256": "e87766e8353ba3e38ea6590ac3f72e908ccb6ce7913e50b852279d8ab7d68866",
-      "baselineSha256": "362e40b09237f991191d2b1a3eef9b6d011216d10310ffe589701be18d2f0e9b",
-      "reviewedDate": "2026-11-23",
+      "rawCaptureSha256": "9bfd85dd0c61ca12caf38a24945879b5b3cdaf895ac477c25e75ae426480102c",
+      "baselineSha256": "64f735fb15327e567aa32614af9dcb81c4b3980b89aec33798fe927c5583ee25",
+      "reviewedDate": "2026-11-24",
       "reviewReason": "阅读遮罩 B：设置页的背景画作在文字密集路由上被压暗，分区侧栏与面板文字因此更稳。布局、焦点顺序、字段内容与更新入口未变，玻璃白面与高光提高后侧栏选中态更容易辨认，面板内控件保持原位，未改动滚动位置与焦点恢复路径。"
     }
   ],
