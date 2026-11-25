@@ -1,4 +1,4 @@
-package dev.cinematv.data.douban.public
+package dev.cinematv.data.doubanchart
 
 /** Public Douban pages are read without an account. They never carry personal data. */
 enum class DoubanPublicKind { MOVIE, TV }

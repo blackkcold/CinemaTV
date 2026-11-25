@@ -1,4 +1,4 @@
-package dev.cinematv.data.douban.public
+package dev.cinematv.data.doubanchart
 
 import org.json.JSONObject
 

@@ -41,7 +41,6 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         dev.cinematv.diagnostics.DiagnosticLog.install(this)
-        lifecycleScope.launch { dev.cinematv.data.douban.DoubanDeveloperOptions.get(this@MainActivity).initialize() }
         val isTv = (resources.configuration.uiMode and Configuration.UI_MODE_TYPE_MASK) ==
             Configuration.UI_MODE_TYPE_TELEVISION
         networkManager = getSystemService(ConnectivityManager::class.java)

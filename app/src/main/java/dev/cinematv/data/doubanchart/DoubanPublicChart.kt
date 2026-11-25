@@ -1,4 +1,4 @@
-package dev.cinematv.data.douban.public
+package dev.cinematv.data.doubanchart
 
 import dev.cinematv.data.CatalogAcquisition
 import dev.cinematv.data.CatalogAcquisitionState

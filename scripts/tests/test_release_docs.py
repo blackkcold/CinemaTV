@@ -1,12 +1,18 @@
-"""Offline contracts for the published Dev12 documentation, not APK certification."""
+"""Offline contracts for the release documentation, not APK certification.
+
+The Dev12 acceptance facts live in the release record; the public README and install
+guide describe the current channel state. Both are asserted here so a channel or
+version edit cannot silently drop either one.
+"""
 from pathlib import Path
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
-RELEASE = 'https://github.com/blackkcold/CinemaTV/releases/tag/v0.8.0-dev.2'
+STABLE_RELEASE = 'https://github.com/blackkcold/CinemaTV/releases/tag/v0.8.0'
+DEV_RELEASE = 'https://github.com/blackkcold/CinemaTV/releases/tag/v0.9.0-dev.3'
 
 
-class Dev12ReleaseDocsTest(unittest.TestCase):
+class ReleaseDocsTest(unittest.TestCase):
     def read(self, path):
         return (ROOT / path).read_text()
 
@@ -15,7 +21,6 @@ class Dev12ReleaseDocsTest(unittest.TestCase):
                      'docs/RELEASE_CHECKLIST.md'):
             with self.subTest(document=path):
                 text = self.read(path)
-                self.assertIn(RELEASE, text)
                 self.assertIn('main', text)
                 self.assertIn('0.8.0', text)
                 for stale in ('channel-dev冻结', 'channel-dev未启用本次发布',
@@ -23,27 +28,30 @@ class Dev12ReleaseDocsTest(unittest.TestCase):
                               'channel-dev publication is frozen', 'only stable is published'):
                     self.assertNotIn(stale, text)
 
-    def test_explicit_experiment_paths_and_no_implied_account_authorization(self):
+    def test_public_entry_documents_both_channels(self):
+        readme = self.read('README.md')
+        self.assertIn(STABLE_RELEASE, readme)
+        self.assertIn(DEV_RELEASE, readme)
+        self.assertIn('dev-compose', readme)
+        self.assertIn('archive/tv-web-5c24360', readme)
+        self.assertIn('不进入 Stable 源码范围', readme)
+        install = self.read('docs/INSTALL.md')
+        self.assertIn(DEV_RELEASE, install)
+        self.assertIn('code 15', install)
+        self.assertIn('本 Stable 源码与 `main` 都不包含它', install)
+
+    def test_account_experiment_is_not_advertised_in_stable_docs(self):
         for path in ('README.md', 'docs/INSTALL.md'):
             with self.subTest(document=path):
                 text = self.read(path)
-                self.assertIn('TV：设置 → 连接与账户 → 开发者选项 · Dev', text)
-                self.assertIn('手机：设置 → 开发者选项 · Dev', text)
-                self.assertIn('默认关闭', text)
-                self.assertIn('开启入口不等于授权账号访问', text)
-                self.assertIn('不会自动登录、同步或开启局域网服务', text)
-                self.assertIn('关闭并清理豆瓣账号', text)
-                self.assertRegex(text, r'已导入片库保留|保留已导入片库')
+                for advertised in ('开发者选项 · Dev', '开启豆瓣账号实验', '关闭并清理豆瓣账号'):
+                    self.assertNotIn(advertised, text)
 
     def test_upgrade_preference_and_downgrade_limits_remain_explicit(self):
-        for path in ('README.md', 'docs/INSTALL.md'):
-            with self.subTest(document=path):
-                text = self.read(path)
-                self.assertIn('Stable 未明确保存渠道选择时', text)
-                self.assertIn('升级 Dev 后默认渠道变为 Dev', text)
-                self.assertIn('更高 code 的 Stable', text)
-                self.assertIn('卸载', text)
-                self.assertIn('升级前明确', text)
+        install = self.read('docs/INSTALL.md')
+        for value in ('Stable 未明确保存渠道选择时', '更高 code 的 Stable', '卸载',
+                      '升级前明确渠道偏好', 'code 15'):
+            self.assertIn(value, install)
         channels = self.read('docs/UPDATE_CHANNELS.md')
         self.assertNotIn('Updates retain Room data and preferences.', channels)
         self.assertIn('do not\n  guarantee complete Room or preference migration', channels)
@@ -53,10 +61,10 @@ class Dev12ReleaseDocsTest(unittest.TestCase):
         self.assertNotIn('2026-11-12 17:25:47 UTC', channels)
         self.assertIn('channel-dev has not been published', channels)
         self.assertIn('reserved, not an active feed', channels)
-        for path in ('README.md', 'docs/INSTALL.md'):
-            self.assertIn('Dev 暂需手动下载，channel-dev 尚未公开', self.read(path))
+        self.assertIn('one increasing versionCode ledger across both channels', channels)
+        self.assertIn('Dev 暂需手动下载，channel-dev 尚未公开', install)
 
-    def test_final_dev_identity_and_acceptance_are_scoped(self):
+    def test_dev_identity_and_acceptance_are_scoped(self):
         text = self.read('docs/RELEASE_CHECKLIST.md')
         for value in ('5a076b0b715750a4de43253726fa66c205aa9b32',
                       '553d37076ba0f9989ad5d24942f82638cf722478',

@@ -52,11 +52,11 @@
 
 ## 渠道边界
 
-公开通道源码位于 `app/src/main/java/dev/cinematv/data/douban/public/`，仍落在 `cinematvChannel=stable` 的源码拒绝目录内。也就是说：
+公开通道源码位于 `app/src/main/java/dev/cinematv/data/doubanchart/`，在 `cinematvChannel=stable` 的源码拒绝目录之外，因此 Dev 与 Stable 都能构建它。也就是说：
 
-- 当前 `dev` 线可产出带豆瓣功能的安装包。
-- `stable` 线在源码层面拒绝豆瓣目录，不包含本功能。
-- 如果未来要在 stable 提供公开榜单，需要把公开通道移出该目录，并同时解除 `MainActivity`、`CinemaViewModel`、设置页与 `LocalMediaLibrary` 中的账号引用，再单独评审；不能直接放宽构建闸门。
+- 公开榜单/标签/评分是匿名、低频、单并发的只读能力，不带账号、Cookie 或本机会话。
+- 个人账号实验仍在 `data/douban` 与 `ui/douban`，这两个目录继续被构建闸门拒绝；Stable 源码中不包含它们。
+- 如果未来要在 Stable 提供个人账号，需要单独评审并对真实登录、会话清理与片单导入重新验收，不能直接放宽构建闸门。
 
 开发者诊断日志见 [DIAGNOSTICS.md](DIAGNOSTICS.md)。
 

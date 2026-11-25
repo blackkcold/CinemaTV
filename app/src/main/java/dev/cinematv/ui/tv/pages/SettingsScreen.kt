@@ -88,7 +88,6 @@ fun SettingsScreen(model: CinemaViewModel, initialSection: Int = 0) {
                     } else LazyColumn(state = state, contentPadding = PaddingValues(25.dp), verticalArrangement = Arrangement.spacedBy(15.dp), modifier = Modifier.fillMaxSize()) {
                         when (section) {
                             0 -> {
-                                item { dev.cinematv.ui.douban.DoubanDeveloperOptionsEntry(model, tv = true) }
                                 item { SettingTitle("LibreTV 服务器", "连接你的媒体服务，登录后开始浏览。") }
                                 item { TvField(model.serverAddress, { model.serverAddress = it }, "https://your-libretv.example", Modifier.fillMaxWidth(), onSubmit = model::connect) }
                                 item { GlassAction(if (model.busy) "正在连接…" else "连接 / 刷新", Modifier.width(150.dp).height(43.dp),
@@ -159,9 +158,8 @@ fun SettingsScreen(model: CinemaViewModel, initialSection: Int = 0) {
                                 item { Text("开源组件：Kotlin、AndroidX Compose、系统 WebView、Media3、Coil、Kyant Backdrop（Apache-2.0）。CinemaTV 原创代码采用 MIT 许可；第三方许可与修改说明随 APK 提供。\n仅添加你有权访问的服务器和内容源。", color = TvColors.Secondary, fontSize = 13.sp, lineHeight = 22.sp) }
                             }
                             4 -> {
-                                item { SettingTitle("开发者选项", "实验功能与本机账号设置。") }
-                                if (BuildConfig.UPDATE_CHANNEL == "dev") item { dev.cinematv.ui.douban.DoubanDeveloperOptionsEntry(model, tv = true) }
-                                else item { Text("实验选项仅在 Dev 版本提供。", color = TvColors.Secondary, fontSize = 14.sp) }
+                                item { SettingTitle("开发者选项", "本机诊断日志与排查；默认关闭，不上传。") }
+                                item { dev.cinematv.ui.diagnostics.DiagnosticsSection(tv = true) }
                             }
                             5 -> {
                                 item { SettingTitle("本地推荐", "查看推荐理由、已使用的本地信号与推荐偏好。") }

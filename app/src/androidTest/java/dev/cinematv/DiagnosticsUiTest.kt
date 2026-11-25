@@ -35,7 +35,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import dev.cinematv.diagnostics.DiagnosticLevel
 import dev.cinematv.diagnostics.DiagnosticLog
-import dev.cinematv.ui.douban.DiagnosticsLevelRow
+import dev.cinematv.ui.diagnostics.DiagnosticsLevelRow
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertTrue
@@ -81,15 +81,14 @@ private fun <R : TestRule, A : ComponentActivity> AndroidComposeTestRule<R, A>.f
 
 private fun <R : TestRule, A : ComponentActivity> AndroidComposeTestRule<R, A>.settingsPage() {
     runOnIdle { ViewModelProvider(activity)[CinemaViewModel::class.java].navigate(Page.SETTINGS) }
-    waitUntil(WAIT_MS) { !dev.cinematv.data.douban.DoubanDeveloperOptions.get(activity).busy.value }
-    waitForTag("developer-options-entry")
+    waitForTag("settings-section:developer")
+    onNodeWithTag("settings-section:developer").performClick()
+    waitForTag("diagnostics-entry")
 }
 
-/** Opens Dev → diagnostics without touching the personal-account experiment. */
+/** Opens the developer section's diagnostics panel; no account or network state is involved. */
 private fun <R : TestRule, A : ComponentActivity> AndroidComposeTestRule<R, A>.openDiagnostics() {
     settingsPage()
-    onNodeWithTag("developer-options-entry").performClick()
-    waitForTag("diagnostics-entry")
     onNodeWithTag("diagnostics-entry").performClick()
     waitForTag("diagnostics-status")
 }
@@ -161,12 +160,6 @@ class TvDiagnosticsUiTest {
     @OptIn(ExperimentalTestApi::class)
     @Test fun remoteTogglesLoggingAndReturnsFocusToTheEntry() {
         rule.settingsPage()
-        val developer = rule.onNodeWithTag("developer-options-entry")
-        developer.performSemanticsAction(SemanticsActions.RequestFocus) { it() }
-        developer.assertIsFocused()
-        developer.performKeyInput { pressKey(Key.DirectionCenter) }
-        rule.waitForTag("diagnostics-entry")
-
         val entry = rule.onNodeWithTag("diagnostics-entry")
         entry.performScrollTo()
         entry.performSemanticsAction(SemanticsActions.RequestFocus) { it() }

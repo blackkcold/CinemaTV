@@ -194,11 +194,15 @@ Official references:
 Until the personal-account integration is accepted, `main` and stable candidates
 must exclude `feature/douban-personal-account`. Its account data/UI directories
 (`data/douban` and `ui/douban`) cause any `cinematvChannel=stable` build to fail.
-This is a source-presence guard, not a hidden runtime toggle. The account-free
-public list channel lives under `data/douban/public`, so it is also excluded;
-exposing it in stable requires moving that package out and reviewing the remaining
-account references. Dev may integrate that branch independently; do not merge its
-unaccepted code into `main`.
+This is a source-presence guard, not a hidden runtime toggle.
+
+The anonymous public-list channel is not part of that experiment. It was moved out
+of the guarded directory to `data/doubanchart` so the stable channel can build it
+without the account sources; the guard still refuses any `.kt` file under
+`data/douban` or `ui/douban`. Shipping the account module in stable would require
+re-enabling those directories and reviewing the remaining account references — do
+not loosen the guard for that. Dev may integrate the account branch independently;
+do not merge its unaccepted code into `main`.
 
 A stable label is not hardware certification. Each stable publication records:
 
@@ -249,13 +253,15 @@ versionCode sequence:
 
 | Invocation | Channel | Version | Code | Output |
 |---|---|---|---|---|
-| no argument (unchanged default), or `stable` | stable | `0.8.0` | `10` | `candidate/` |
+| no argument (unchanged default), or `stable` | stable | `0.9.0` | `16` | `candidate/` |
 | `dev` | dev | `0.9.0-dev.3` | `15` | `candidate-dev/` |
 
-The stable candidate keeps main's accepted app payload and still refuses the Douban
-personal-account sources. The dev candidate is built from `dev-compose` and may include
-that dev-only experiment, matching the Gradle channel guard. Codes 12 (`v0.8.0-dev.2`), 13 (the archived TV Web build) and 14
-(`v0.9.0-dev.2`) are already public; code 15 cannot downgrade to them.
+The stable candidate is built from `stable/v0.9.0-candidate`, which merges the accepted
+`dev-compose` payload and still refuses the Douban personal-account sources. The dev
+candidate is built from `dev-compose` and may include that dev-only experiment, matching
+the Gradle channel guard. Codes 10 (`v0.8.0`), 12 (`v0.8.0-dev.2`), 13 (the archived TV
+Web build) and 14 (`v0.9.0-dev.2`) are already public; code 16 cannot downgrade to any of
+them, and code 15 (`v0.9.0-dev.3`) is the highest published dev build.
 These reservations do not change the ordinary Gradle defaults or the provenance of
 earlier public previews.
 

@@ -1,15 +1,18 @@
-package dev.cinematv.ui.douban
+package dev.cinematv.ui.diagnostics
 
 import android.content.Intent
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -75,7 +78,7 @@ fun DiagnosticsSection(tv: Boolean) {
         }
     }
 
-    AccountButton(tv, outlined = true, onClick = { wasOpen = true; open = true },
+    DiagnosticButton(tv, outlined = true, onClick = { wasOpen = true; open = true },
         modifier = Modifier.focusRequester(entry).testTag("diagnostics-entry")
             .semantics { contentDescription = "诊断日志设置，${summaryText(enabled, level, stats)}" }) {
         DiagnosticsSummary(enabled, level, stats)
@@ -122,7 +125,7 @@ fun DiagnosticsSection(tv: Boolean) {
                 )
 
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    AccountButton(tv, enabled = stats.files > 0, onClick = {
+                    DiagnosticButton(tv, enabled = stats.files > 0, onClick = {
                         scope.launch {
                             val file = withContext(Dispatchers.IO + NonCancellable) {
                                 DiagnosticLog.export(context)
@@ -132,7 +135,7 @@ fun DiagnosticsSection(tv: Boolean) {
                             refresh()
                         }
                     }, modifier = Modifier.weight(1f).testTag("diagnostics-export")) { Text("导出日志") }
-                    if (!tv && exportPath != null) AccountButton(tv, outlined = true, onClick = {
+                    if (!tv && exportPath != null) DiagnosticButton(tv, outlined = true, onClick = {
                         val file = exportPath?.let(::File)
                         if (file == null || !file.isFile) {
                             exportPath = null
@@ -151,17 +154,17 @@ fun DiagnosticsSection(tv: Boolean) {
                     style = MaterialTheme.typography.bodySmall)
 
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    AccountButton(tv, outlined = true, enabled = stats.files > 0,
+                    DiagnosticButton(tv, outlined = true, enabled = stats.files > 0,
                         onClick = { confirm = "logs" },
                         modifier = Modifier.weight(1f).testTag("diagnostics-clear-logs")) { Text("清空日志") }
-                    AccountButton(tv, outlined = true, enabled = cacheBytes > 0,
+                    DiagnosticButton(tv, outlined = true, enabled = cacheBytes > 0,
                         onClick = { confirm = "cache" },
                         modifier = Modifier.weight(1f).testTag("diagnostics-clear-cache")) { Text("清理缓存") }
                 }
             }
         },
         confirmButton = {
-            AccountButton(tv, onClick = { open = false },
+            DiagnosticButton(tv, onClick = { open = false },
                 modifier = Modifier.testTag("diagnostics-close")) { Text("关闭") }
         }
     )
@@ -177,12 +180,12 @@ fun DiagnosticsSection(tv: Boolean) {
                     else "只删除公开榜单/标签的缓存并重置请求冷却；账号会话与片库不受影响。")
             } },
             confirmButton = {
-                AccountButton(tv, onClick = {
+                DiagnosticButton(tv, onClick = {
                     confirm = null
                     scope.launch {
                         withContext(Dispatchers.IO) {
                             if (logs) DiagnosticLog.clear()
-                            else dev.cinematv.data.douban.public.DoubanPublicChannel.clear(context)
+                            else dev.cinematv.data.doubanchart.DoubanPublicChannel.clear(context)
                         }
                         if (logs) exportPath = null
                         status = if (logs) "日志已清空" else "公开缓存已清理"
@@ -191,7 +194,7 @@ fun DiagnosticsSection(tv: Boolean) {
                 }, modifier = Modifier.testTag("diagnostics-confirm")) { Text(if (logs) "清空" else "清理") }
             },
             dismissButton = {
-                AccountButton(tv, outlined = true, onClick = { confirm = null },
+                DiagnosticButton(tv, outlined = true, onClick = { confirm = null },
                     modifier = Modifier.focusRequester(cancelFocus).testTag("diagnostics-cancel")) { Text("取消") }
             }
         )
@@ -252,18 +255,27 @@ internal fun DiagnosticsLevelRow(
     toggleFocus: FocusRequester? = null
 ) {
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        AccountButton(tv, onClick = onToggle,
+        DiagnosticButton(tv, onClick = onToggle,
             modifier = Modifier.weight(1f).testTag("diagnostics-toggle")
                 .then(if (toggleFocus != null) Modifier.focusRequester(toggleFocus) else Modifier)) {
             Text(if (enabled) "关闭" else "开启")
         }
-        AccountButton(tv, outlined = level != DiagnosticLevel.BASIC, enabled = enabled,
+        DiagnosticButton(tv, outlined = level != DiagnosticLevel.BASIC, enabled = enabled,
             onClick = { onSelectLevel(DiagnosticLevel.BASIC) },
             modifier = Modifier.weight(1f).testTag("diagnostics-level-basic")
                 .semantics { selected = level == DiagnosticLevel.BASIC }) { Text("基础") }
-        AccountButton(tv, outlined = level != DiagnosticLevel.VERBOSE, enabled = enabled,
+        DiagnosticButton(tv, outlined = level != DiagnosticLevel.VERBOSE, enabled = enabled,
             onClick = { onSelectLevel(DiagnosticLevel.VERBOSE) },
             modifier = Modifier.weight(1f).testTag("diagnostics-level-verbose")
                 .semantics { selected = level == DiagnosticLevel.VERBOSE }) { Text("详细") }
     }
+}
+
+/** Shared action button: on TV a disabled action must also leave the D-pad focus ring. */
+@Composable
+internal fun DiagnosticButton(tv: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier,
+    enabled: Boolean = true, outlined: Boolean = false, content: @Composable RowScope.() -> Unit) {
+    val focusModifier = modifier.then(if (tv) Modifier.focusProperties { canFocus = enabled } else Modifier)
+    if (outlined) OutlinedButton(onClick = onClick, modifier = focusModifier, enabled = enabled, content = content)
+    else Button(onClick = onClick, modifier = focusModifier, enabled = enabled, content = content)
 }

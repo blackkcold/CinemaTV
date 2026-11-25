@@ -23,18 +23,18 @@ adb shell am instrument -w \
   dev.cinematv.test/androidx.test.runner.AndroidJUnitRunner
 ```
 
-CI 侧由 `douban-account-safety.yml` 在 API 33 / API 26 两个模拟器上执行同一组类，并校验方法集合完全执行、无失败无跳过。
+CI 侧由 `diagnostics-safety.yml` 在 API 33 / API 26 两个模拟器上执行同一组类，并校验方法集合完全执行、无失败无跳过。
 
 ## 2. 手机逐项（360dp 与 1.3 字体）
 
-- [ ] 设置 → 开发者选项 · Dev → 诊断日志：默认「已关闭」。
+- [ ] 设置 → 开发者选项 → 诊断日志：默认「已关闭」。
 - [ ] 点「开启」：入口摘要变为「记录中 · 基础」，约 2 秒内出现非 0 字节。
 - [ ] 点「详细」：摘要变为「记录中 · 详细」；再点「基础」可回退。
 - [ ] 返回设置再进入：开关状态保持（持久化生效）。
 - [ ] 关闭再开启：不崩溃，摘要恢复「记录中」，磁盘字节继续增长。
 - [ ] 清空日志：弹出确认框；默认焦点/默认按钮为「取消」；取消后日志仍在。
 - [ ] 再次清空并确认：文件列表清空，摘要回到 0 KB；之后仍能继续记录。
-- [ ] 清理缓存：公开榜单缓存字节归零，账号会话与片库不受影响（重进榜单能重新加载）。
+- [ ] 清理缓存：公开榜单缓存字节归零，片库不受影响（重进榜单能重新加载）。
 - [ ] 导出日志：生成 zip，状态行显示绝对路径；文件存在且可解压，`manifest.json` 与 `logs/*.jsonl` 齐全。
 - [ ] 分享：系统分享面板能收到 `application/zip` 附件（不需要真的发送）。
 - [ ] 连点两次导出：只产生一个有效包，另一个请求不覆盖、不产生半包。
@@ -43,7 +43,7 @@ CI 侧由 `douban-account-safety.yml` 在 API 33 / API 26 两个模拟器上执�
 
 ## 3. TV 逐键（实体设备或 TV 模拟器）
 
-- [ ] 遥控器方向键可把焦点移到「开发者选项 · Dev」，OK 打开。
+- [ ] 遥控器方向键可把焦点移到「开发者选项」，OK 打开。
 - [ ] 方向键可移到「诊断日志」入口，OK 打开面板，焦点进入面板（不是掉到面板后面）。
 - [ ] OK 切换开关；左右/上下能在三个主按钮间移动；焦点框始终可见。
 - [ ] 「清空日志」OK 后，确认框默认焦点在「取消」，不会误触删除。
@@ -67,15 +67,7 @@ scripts/diagnostics/pull-logs.sh --serial emulator-5554 --out ./qa --keep
 - [ ] 取回的 zip 内文件数与设备端一致，末行是完整 JSON。
 - [ ] `stable` 包执行时脚本给出明确失败信息，不静默产出空包。
 
-## 5. 真实账号与真实豆瓣（可选，需用户授权）
-
-- [ ] 开启「详细」→ 扫码登录 → 保存本机会话 → 同步一轮：`douban.account.login`、`sync.start`、`sync.page` 的 `trace` 可串联。
-- [ ] 杀进程再进入 → 继续同步：`sync.start` 的 `resume`/`doneShelves` 与界面一致。
-- [ ] 触发限流或安全验证：`douban.*.gate*` / `failed` 的 `retryAt`、`stop` 与界面提示一致。
-- [ ] 导出后本地搜索：不存在 `dbcl2`、`bid`、`Bearer`、账号 ID、片名、原始 HTML。
-- [ ] 核对 `manifest.json` 的版本/渠道/设备与手记一致。
-
-## 6. 异常与判读
+## 5. 异常与判读
 
 | 现象 | 判读 |
 |---|---|
@@ -85,16 +77,16 @@ scripts/diagnostics/pull-logs.sh --serial emulator-5554 --out ./qa --keep
 | 文件时间显示 1970 | 恢复/时钟异常。保留期按文件名日期判断，当天文件不会被误删。 |
 | `level` 字段与面板不一致 | 以 `fields.level` 为准；级别切换记录在切换之后写入。 |
 
-## 7. 证据
+## 6. 证据
 
 - 截图：手机（1.0/1.3 字体）、TV（焦点在入口/面板/确认框三态）。
 - 文本：`qa/stages.tsv` 或等效执行记录、仪器测试 XML、取回 zip 的 SHA-256。
 - 结论只写实际观测到的；未执行的项目保持未勾选。
 
-## 8. 本机执行记录（2026-11-06）
+## 7. 本机执行记录（2026-11-06）
 
 - JVM：`dev.cinematv.diagnostics.*` 18/18；全量 `:app:testDebugUnitTest` 424/424，0 失败 0 跳过。
-- 仪器：`DiagnosticsUiTest`、`TvDiagnosticsUiTest`、`TvDiagnosticsConfirmFocusTest`、`DiagnosticsLayoutTest` 在 API 34 模拟器（1080x2400、420dpi）4/4；与既有 `DoubanAccountUiTest`、`TvDoubanAccountUiTest` 合计 8/8。
+- 仪器：`DiagnosticsUiTest`、`TvDiagnosticsUiTest`、`TvDiagnosticsConfirmFocusTest`、`DiagnosticsLayoutTest` 在 API 34 模拟器（1080x2400、420dpi）4/4。
 - `pull-logs.sh`：`run-as` 回退与 `adb pull` 主路径各执行一次，zip 内容与设备端一致。
 - lint：0 error（73 warning / 4 hint 均为既有项）。
-- 未执行：API 26 / API 33 的 CI 矩阵、实体 TV、真实账号与真实豆瓣。
+- 未执行：API 26 / API 33 的 CI 矩阵、实体 TV。

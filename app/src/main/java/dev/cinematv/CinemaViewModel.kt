@@ -8,7 +8,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import dev.cinematv.data.*
-import dev.cinematv.data.douban.public.toMediaItem
+import dev.cinematv.data.doubanchart.toMediaItem
 import dev.cinematv.data.library.LibraryChange
 import dev.cinematv.data.recommendation.LocalRecommendationPipeline
 import dev.cinematv.data.recommendation.LocalRecommendationSnapshot
@@ -34,7 +34,7 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
     constructor(application: Application) : this(application, LibreTvRepository(application))
     /** Anonymous public lists; no account, cookie or licence declaration involved. */
     private val publicDouban by lazy {
-        dev.cinematv.data.douban.public.DoubanPublicChannel.chart(application)
+        dev.cinematv.data.doubanchart.DoubanPublicChannel.chart(application)
     }
     val focusCoordinator = FocusCoordinator()
     var reducedMotion by mutableStateOf(repo.reducedMotion)
@@ -307,10 +307,10 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
             doubanTagLoading = true
             doubanTagNotice = ""
             try {
-                val kind = if (dev.cinematv.data.douban.public.DoubanPublicCatalog.isTvTag(tag))
-                    dev.cinematv.data.douban.public.DoubanPublicKind.TV
-                else dev.cinematv.data.douban.public.DoubanPublicKind.MOVIE
-                val page = dev.cinematv.data.douban.public.DoubanPublicChannel
+                val kind = if (dev.cinematv.data.doubanchart.DoubanPublicCatalog.isTvTag(tag))
+                    dev.cinematv.data.doubanchart.DoubanPublicKind.TV
+                else dev.cinematv.data.doubanchart.DoubanPublicKind.MOVIE
+                val page = dev.cinematv.data.doubanchart.DoubanPublicChannel
                     .repository(getApplication()).browse(tag, kind = kind)
                 doubanList = page.items.map { it.toMediaItem() }
                 val asOf = page.fetchedAt.takeIf { it > 0 }?.let { at ->
@@ -324,7 +324,7 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
                     else -> "豆瓣「$tag」· ${page.items.size} 部$asOf"
                 }
             } catch (cancelled: CancellationException) { throw cancelled }
-            catch (stop: dev.cinematv.data.douban.public.DoubanPublicException) {
+            catch (stop: dev.cinematv.data.doubanchart.DoubanPublicException) {
                 doubanTagNotice = stop.message
             } catch (_: Exception) {
                 doubanTagNotice = "豆瓣标签暂时不可用，请稍后再试"
@@ -1080,7 +1080,7 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
                             val now = System.currentTimeMillis()
                             CatalogRefreshPolicy.nextDelay((if (tv) seriesChart else movieChart).catalog, now, deadline)
                                 ?.let { nextChecks[tv] = now + it }
-                        } catch (publicStop: dev.cinematv.data.douban.public.DoubanPublicException) {
+                        } catch (publicStop: dev.cinematv.data.doubanchart.DoubanPublicException) {
                             chartNotice = publicStop.message + publicStop.retryAt
                                 .takeIf { it > System.currentTimeMillis() }
                                 ?.let { until -> " · " + java.time.format.DateTimeFormatter

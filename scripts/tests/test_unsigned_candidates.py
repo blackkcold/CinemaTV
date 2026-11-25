@@ -128,10 +128,10 @@ print((pathlib.Path(os.environ['ANDROID_HOME']) / 'manifest.xml').read_text())
             self.assertIn(expected, build_args)
 
     def test_default_stable_reservation_and_receipt_remain_compatible(self):
-        self.check_candidate([], 'stable', 10, '0.8.0', 'candidate')
+        self.check_candidate([], 'stable', 16, '0.9.0', 'candidate')
 
     def test_explicit_stable_reservation(self):
-        self.check_candidate(['stable'], 'stable', 10, '0.8.0', 'candidate')
+        self.check_candidate(['stable'], 'stable', 16, '0.9.0', 'candidate')
 
     def test_dev_reservation_and_provenance(self):
         self.check_candidate(['dev'], 'dev', 15, '0.9.0-dev.3', 'candidate-dev')

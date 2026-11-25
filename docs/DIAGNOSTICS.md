@@ -1,16 +1,15 @@
-# 诊断日志（Dev）
+# 诊断日志
 
-诊断日志用于开发与验收期的现场排查。它默认关闭，只在 `dev` 渠道可见，且必须由用户在「设置 → 开发者选项 · Dev → 诊断日志」显式开启。
+诊断日志用于开发和验收期的现场排查。它默认关闭，Dev 与 Stable 都可在「设置 → 开发者选项 → 诊断日志」显式开启；不会自动上传。
 
 ## 记录什么
 
 - 应用启动：版本、渠道、设备型号、API 级别。
 - 匿名豆瓣请求：逻辑端点（top250 / browse / hot / doulist）、HTTP 状态、字节数（成功时）、停止原因、耗时；门禁暂停时另记等待与可重试时间。
-- 公共门禁：可重试时间、连续命中次数、预算剩余；账号门禁：等待与可重试时间。
-- 账号流程：初始化、登录验证阶段、身份来源（redirect / dom）、片单页进度、评分条数、失败阶段与可重试时间、断开、取消。
-- 仅「详细」级别追加页面路由、返回（含返回目标）与每条评分的进度。
+- 公共门禁：可重试时间、连续命中次数、预算剩余。
+- 仅「详细」级别追加页面路由与返回（含返回目标）。
 
-主要事件：`app.start`、`diagnostics.*`、`douban.public.request/failed/gate/gate.stop/cache/chart.partial`、`douban.account.initialize/login/sync/score/gate/failed/request/disconnect`、`ui.route/ui.back`。
+主要事件：`app.start`、`diagnostics.*`、`douban.public.request/failed/gate/gate.stop/cache/chart.partial`、`ui.route/ui.back`。
 
 ## 绝不记录
 

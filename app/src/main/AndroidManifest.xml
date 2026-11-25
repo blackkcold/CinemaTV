@@ -29,7 +29,6 @@
       android:grantUriPermissions="true">
       <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/diagnostic_file_paths"/>
     </provider>
-    <activity android:name=".ui.douban.DoubanLoginActivity" android:exported="false" android:excludeFromRecents="true"/>
     <activity android:name=".MainActivity" android:exported="true"
       android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|uiMode">
       <intent-filter>

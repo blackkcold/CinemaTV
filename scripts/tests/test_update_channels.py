@@ -99,8 +99,10 @@ class UpdateChannelsTest(unittest.TestCase):
         self.assertIn('src/main/java/dev/cinematv/data/douban', build)
         self.assertIn('src/main/java/dev/cinematv/ui/douban', build)
         self.assertIn('it.isFile && it.extension == "kt"', build)
-        # The account-free public list package lives under data/douban and is excluded with it.
-        self.assertTrue(list((ROOT / "app/src/main/java/dev/cinematv/data/douban/public").glob("*.kt")))
+        # The anonymous public list package is outside the guarded directories so the
+        # stable channel can build it; the account directories stay refused.
+        self.assertFalse(list((ROOT / "app/src/main/java/dev/cinematv/data/douban/public").glob("*.kt")))
+        self.assertTrue(list((ROOT / "app/src/main/java/dev/cinematv/data/doubanchart").glob("*.kt")))
         self.assertNotIn('contains("douban")', build)
 
     def test_obsolete_workflow_cannot_receive_keys_or_publish(self):

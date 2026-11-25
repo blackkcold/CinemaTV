@@ -269,6 +269,6 @@ tasks.named("preBuild") { dependsOn(verifyRecommendationCore) }
 // skipped tests, so it stays out of the default unit-test task unless explicitly asked for.
 tasks.withType(org.gradle.api.tasks.testing.Test::class.java).configureEach {
     if (!providers.gradleProperty("doubanLiveProbe").isPresent) {
-        filter { excludeTestsMatching("dev.cinematv.data.douban.public.LiveDoubanParserProbeTest") }
+        filter { excludeTestsMatching("dev.cinematv.data.doubanchart.LiveDoubanParserProbeTest") }
     }
 }

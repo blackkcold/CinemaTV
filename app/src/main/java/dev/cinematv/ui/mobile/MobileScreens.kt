@@ -347,7 +347,7 @@ private fun MobileSearch(model: CinemaViewModel) {
         }
         if (model.searchFilters.ratingSource == "Douban") LazyRow(
             contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(dev.cinematv.data.douban.public.DoubanPublicCatalog.uiTags, key = { it }) { tag ->
+            items(dev.cinematv.data.doubanchart.DoubanPublicCatalog.uiTags, key = { it }) { tag ->
                 val selected = model.searchFilters.doubanTag == tag
                 FilterChip(selected = selected, onClick = { model.selectDoubanTag(if (selected) null else tag) },
                     label = { Text(tag) })
@@ -603,7 +603,7 @@ private fun MobileSettings(model: CinemaViewModel) {
         Text("CinemaTV 设置", fontSize = 27.sp, fontWeight = FontWeight.Bold)
         dev.cinematv.ui.update.UpdateSettings(tv = false)
         HorizontalDivider(color = stroke)
-        dev.cinematv.ui.douban.DoubanDeveloperOptionsEntry(model, tv = false)
+        dev.cinematv.ui.diagnostics.DiagnosticsSection(tv = false)
         MobileGlassOutlinedButton(onClick = { recommendationOpen = true }, modifier = Modifier.testTag("recommendation-dashboard-open")) {
             Text("本地推荐看板")
         }

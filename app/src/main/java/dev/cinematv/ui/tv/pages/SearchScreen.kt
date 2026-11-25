@@ -88,7 +88,7 @@ fun SearchScreen(model: CinemaViewModel) {
         }
         if (model.searchFilters.ratingSource == "Douban") TvChipRow(
             contentPadding = PaddingValues(horizontal = layout.gutter)) {
-            items(dev.cinematv.data.douban.public.DoubanPublicCatalog.uiTags, key = { it }) { tag ->
+            items(dev.cinematv.data.doubanchart.DoubanPublicCatalog.uiTags, key = { it }) { tag ->
                 val selected = model.searchFilters.doubanTag == tag
                 TvChip(tag, selected = selected, modifier = Modifier.widthIn(min = 86.dp, max = 130.dp)) {
                     model.selectDoubanTag(if (selected) null else tag)
