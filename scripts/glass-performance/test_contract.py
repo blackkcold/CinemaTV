@@ -53,6 +53,21 @@ class ProtocolTest(unittest.TestCase):
         self.assertEqual(20, result["appRenderIntervalMs"]["max"])
         self.assertEqual(10.8, result["activeWindowSeconds"])
 
+    def test_schema3_compact_receipts_are_reconstructed_without_losing_causality(self):
+        data = fixture()
+        data["schema"] = 3
+        data["end"]["draws"] = dict(data["inputs"][-1]["after"]["draws"])
+        for window in data["windows"]:
+            for key in ("measured", "key", "routeBefore", "index"):
+                window.pop(key, None)
+        for native in data["inputs"]:
+            native.pop("after", None)
+        result = frame_summary(data)
+        self.assertTrue(result["validForComparison"])
+        self.assertEqual(24, result["nativeInputWindows"])
+        self.assertEqual(19, result["perWindow"][-1]["key"])
+        self.assertEqual("HOME", result["perWindow"][-1]["routeBefore"])
+
     def test_callback_loss_is_invalid_data_not_dropped_frames(self):
         data = fixture()
         data["metricCallbackDrops"] = 2

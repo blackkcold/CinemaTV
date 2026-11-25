@@ -22,7 +22,7 @@
 > | G3 | 代码完成；`G3.4` owner-waived 2026-11-25 | `TvRouteBackTest`、`TvImeBackTest`、`TvPlayerBackLadderTest`、`TvStatusDialogTest`、`MainActivityPathSmokeTest`；`archive/tv-web-5c24360` |
 > | G4 | 完成（owner waiver） | `docs/evidence/2026-11-25-g4-deletion.md`；`docs/evidence/2026-11-25-g3.4-waiver.md`；归档 tag `archive/tv-web-5c24360` |
 > | G5 | 完成（先于 G4，见下） | `docs/evidence/2026-11-24-g5-surface-audit.md`；tv1080 与 tv4k 金标均重录并复跑通过（PR #54） |
-> | G6 | 未开始 | G5 已定稿；等 G4 删除后在同一源码上测完整效果 |
+> | G6 | 进行中（E-gate） | `docs/evidence/2026-11-25-g6-glass-baseline.md`；G6.1/G6.2 已记录，G6.3/G6.5 待 CI/设备，G6.4 T-gate owner-run |
 >
 > 勾选框按上述核对结果更新；未勾项表示该项仍未完成或未按原类名落地，不代表门禁整体未推进。
 
@@ -194,13 +194,13 @@ G0 治理与基线
 
 ### G6 — 实测优化、真机验收与交付
 
-- [ ] **G6.1 先测完整效果。** 在已完成 G5 的精确源码上采集 Basic/Blur/Full，记录实际生效档。按 §7 做同档版本比较和材质成本比较，两者分开报告。
-- [ ] **G6.2 定位后降级。** 仅对实测失败的表面调整面积/高度/并发数/材质，参数和分辨率写进 `ProductionGlassPolicy`；保持全功能配置可供复验。旧 `GlassRenderPolicy` 的240,000px等常数不是当前生产预算，不直接迁回。先前景可读性与焦点正确，再比较优化前后。
+- [x] **G6.1 先测完整效果。** 在已完成 G5 的精确源码上采集 Basic/Blur/Full，记录实际生效档。按 §7 做同档版本比较和材质成本比较，两者分开报告。
+- [x] **G6.2 定位后降级。** 仅对实测失败的表面调整面积/高度/并发数/材质，参数和分辨率写进 `ProductionGlassPolicy`；保持全功能配置可供复验。旧 `GlassRenderPolicy` 的240,000px等常数不是当前生产预算，不直接迁回。先前景可读性与焦点正确，再比较优化前后。
 - [ ] **G6.3 API和环境矩阵。** API26/29验证Basic，31验证Blur上限，33/36验证ENHANCED Full及AUTO Blur；补32边界的policy测试。低RAM、省电、moderate/severe热压、软件绘制、失败latch、Reduced Motion分别验证；实际设备与测试注入的证据分开。
 - [ ] **G6.4 T-gate。** 按 §7 在点名的基础/主流真机上验收，至少两台；每台使用同一份该轮候选APK。30分钟热稳定、20轮路由/播放返回内存循环；使用可重复的合法本地媒体，网络故障场景另测。
 - [ ] 使用G1的release instrumentation APK附着到已安装候选包；目标和测试APK在获准的外部环境完成同证书签名，私钥不进入CI。测试前后复核已安装目标APK hash，测试APK单独留hash；不得为接入采集器重建或换掉已经验收的目标APK。
 - [ ] **G6.5 最终复跑。** 完整CI与全部要求lane通过，6张金标×2 viewport复跑、全部捕获图评审；只有G6降级实际改变视觉时再重捕受影响图。
-- [ ] **G6.6 文档和交付。** `GLASS_PRODUCTION.md` 合并V4仍有效的前景分离、平台/失败回退、手机静态材质说明；删除或明确标注旧bitmap/focus-only路径，不继承旧数值限制。V4完成合并后标历史并指向生产文档。
+- [ ] **G6.6 文档和交付。**（V4 历史标记与 T-gate handoff 已记录；最终金标/全矩阵/真机交付未完成） `GLASS_PRODUCTION.md` 合并V4仍有效的前景分离、平台/失败回退、手机静态材质说明；删除或明确标注旧bitmap/focus-only路径，不继承旧数值限制。V4完成合并后标历史并指向生产文档。
 - [ ] 生成迁移完成清单、实测参数、已通过设备与最终APK来源。若要发布，使用G4迁移后的Dev候选链、固定外部签名，并对最终签名字节完成安装/升级与真机验收；普通debug/benchmark APK不是可升级Dev发布包。
 - [ ] 对 `dev-compose` 的原生TV、公开数据、诊断、账号实验分组列出可吸收提交。T-gate后由用户单独决定合并范围；不整支自动合并。
 

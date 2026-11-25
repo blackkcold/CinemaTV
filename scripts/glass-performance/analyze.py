@@ -64,7 +64,7 @@ def frame_summary(data, profile=DEFAULT_PROFILE):
             after.setdefault("profile", profile)
             after["route"] = following["routeBefore"] if following else data["end"]["route"]
             after["draws"] = following["drawsBefore"] if following else data["end"]["draws"]
-            after.setdefault("focusOwner", following["focusOwnerBefore"] if following else data["end"].get("focusOwner"))
+            after.setdefault("focusOwner", following.get("focusOwnerBefore") if following else data["end"].get("focusOwner"))
             for key in ("ready", "fontsReady", "fontFailures", "busy", "decodedScene", "actualMode",
                         "failed", "foreground", "animationsEnabled", "requested", "expectedMode"):
                 after.setdefault(key, data["start"].get(key))
