@@ -54,9 +54,10 @@ emulator. The benchmark does not run on the user's Mac.
   can still allow the remaining tiers to be examined.
 - Every run starts a clean isolated package, loads the synthetic catalog/art/fonts, then
   performs an unmeasured native-input warmup cycle. No startup or shader warmup is timed.
-- Default `glass-controls`: 22 real `adb shell input keyevent` presses per measured run, two identical cycles:
-  Home hero → navigation Up/Right/Right/Left → activate Movies → Back (navigation retained)
-  → Down to hero → hero Right/Left → open detail → Back to hero.
+- Default `glass-controls`: 24 real `adb shell input keyevent` presses per measured run, two identical cycles:
+  Home hero → navigation Up/Right/Right/Left → activate Movies → Back (hero retained)
+  → Down to the first rail → rail Right/Left → open detail → Back to the rail → Up to the
+  hero so the next measured cycle starts from the same state.
 - KeyDown receives a native monotonic timestamp. A 450 ms active window starts there.
   The next key is not sent until after a >=700 ms delay and its native receipt. Static
   gaps, startup, warmup and `FIRST_DRAW_FRAME` samples are excluded.
@@ -84,8 +85,8 @@ python3 -m py_compile scripts/glass-performance/*.py
 ## Selecting one profile
 
 Both driver and analyzer accept `--profile glass-controls|poster-motion`. The default
-is `glass-controls`, preserving its exact 11-key cycle repeated twice (22 measured
-windows, 13 warmup/preparation keys), original route assertions and timing statistics.
+is `glass-controls`, preserving its exact 12-key cycle repeated twice (24 measured
+windows, 14 warmup/preparation keys), original route assertions and timing statistics.
 Workflow dispatch exposes the same choice; push-triggered runs remain glass-controls.
 One invocation chooses **one** profile, runs **nine** trials (three interleaved tiers),
 and uses the same build-once APK. It never doubles the default work to 18 trials.

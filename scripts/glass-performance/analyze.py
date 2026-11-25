@@ -29,12 +29,22 @@ def frame_summary(data, profile=DEFAULT_PROFILE):
     cycle = cycle_for(profile)
     validate_profile(data, profile)
     warmup_count, measured_count = 2 + len(cycle), 2 * len(cycle)
-    assert data["schema"] == 2 and data["buildType"] == "glassBenchmark" and data["debuggable"] is False
+    assert data["schema"] in (2, 3) and data["buildType"] == "glassBenchmark" and data["debuggable"] is False
     assert data["package"] == "dev.cinematv.glassbenchmark"
     assert data["screenrecordConcurrent"] is False, "Video-encoded runs cannot enter baseline"
     assert data["root"] == "TvRootApp" and data["viewModel"] == "CinemaViewModel" and data["provider"] == "ProductionGlassProvider"
     assert data["width"] == 1920 and data["height"] == 1080 and data["densityDpi"] == 320, "Require production 1080p/320dpi layout"
     windows = sorted(data["windows"], key=lambda w: w["startNs"])
+    # Schema 3 exports compact windows; the native input receipts carry the identity.
+    if windows and "measured" not in windows[0]:
+        by_start = {v["receivedNs"]: v for v in data["inputs"] if v.get("measured")}
+        enriched = []
+        for window in windows:
+            native = by_start.get(window["startNs"])
+            assert native is not None, "Schema 3 window has no measured input receipt"
+            enriched.append(dict(window, measured=True, key=native["key"],
+                                 routeBefore=native["routeBefore"], index=native["index"]))
+        windows = enriched
     assert len(windows) == measured_count, "Exactly the selected profile native measured inputs required"
     assert all(w["measured"] and w["endNs"] - w["startNs"] == 450_000_000 for w in windows)
     assert all(a["endNs"] <= b["startNs"] for a, b in zip(windows, windows[1:])), "Input activity windows overlap"
@@ -42,6 +52,23 @@ def frame_summary(data, profile=DEFAULT_PROFILE):
     measured = [v for v in data["inputs"] if v["measured"]]
     assert len(measured) == measured_count, "Duplicate or missing measured input receipts"
     inputs = {v["index"]: v for v in measured}
+    if data["schema"] == 3 and profile == DEFAULT_PROFILE:
+        # Schema 3 keeps compact per-input receipts and full start/end snapshots.
+        # Reconstruct the applied draw/route state from the next receipt's "before"
+        # values; readiness/tier authority stays on the full start/end snapshots.
+        ordered = [inputs[index] for index in sorted(inputs)]
+        for position, native in enumerate(ordered):
+            following = ordered[position + 1] if position + 1 < len(ordered) else None
+            after = dict(native.get("after", {}))
+            after.setdefault("runId", data["runId"])
+            after.setdefault("profile", profile)
+            after["route"] = following["routeBefore"] if following else data["end"]["route"]
+            after["draws"] = following["drawsBefore"] if following else data["end"]["draws"]
+            after.setdefault("focusOwner", following["focusOwnerBefore"] if following else data["end"].get("focusOwner"))
+            for key in ("ready", "fontsReady", "fontFailures", "busy", "decodedScene", "actualMode",
+                        "failed", "foreground", "animationsEnabled", "requested", "expectedMode"):
+                after.setdefault(key, data["start"].get(key))
+            native["after"] = after
     for state in [data["start"], data["end"], *(v["after"] for v in data["inputs"])]:
         validate_profile(state, profile)
     catalog = None
@@ -187,7 +214,18 @@ def analyze(directory, profile=DEFAULT_PROFILE):
                     matrix_catalog = catalog
                 assert result["runId"] == run["runId"] and result["tier"] == run["tier"], "Run identity/tier differs from planned trial"
                 host = json.loads((directory / run["runId"] / "inputs.json").read_text())
-                assert [step["native"] for step in host if step["native"]["measured"]] == [step for step in data["inputs"] if step["measured"]], "Host and native input receipts differ"
+                host_measured = [step["native"] for step in host if step["native"]["measured"]]
+                native_measured = [step for step in data["inputs"] if step["measured"]]
+                if data["schema"] == 3:
+                    # Schema 3 stores compact native receipts; the host receipt also
+                    # carries the full applied state. Compare the causal identity fields.
+                    keys = ("index", "key", "measured", "routeBefore", "receivedNs",
+                            "drawsBefore", "focusOwnerBefore")
+                    assert ([{key: value.get(key) for key in keys} for value in host_measured] ==
+                            [{key: value.get(key) for key in keys} for value in native_measured]), \
+                        "Host and native input receipts differ"
+                else:
+                    assert host_measured == native_measured, "Host and native input receipts differ"
                 if profile == "poster-motion":
                     assert [step["native"] for step in host] == data["inputs"], "Host and native poster warmup/input receipts differ"
                 result["appHwuiPipeline"] = run.get("appHwuiPipeline", [])
