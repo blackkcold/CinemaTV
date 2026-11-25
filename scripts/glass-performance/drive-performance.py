@@ -173,6 +173,10 @@ def warmup(run_id, pid, profile=DEFAULT_PROFILE):
         if catalog is not None:
             poster_step(steps[-1]["native"]["after"], offset - 2, catalog)
     assert foreground() == pid, "App process changed during warmup"
+    if profile == DEFAULT_PROFILE:
+        end = steps[-1]["native"]["after"]
+        assert (end.get("bookmarkRegion"), end.get("bookmarkItem")) == ("hero", "primary"), \
+            "Glass warmup must finish at Home hero before measured cycles"
     return steps
 
 

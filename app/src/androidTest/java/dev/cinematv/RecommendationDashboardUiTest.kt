@@ -50,7 +50,8 @@ private fun recommendationDashboard(rule: ComposeContentTestRule, activity: Comp
         val wasFavorite = model.repo.isFavorite(seed)
         runBlocking { if (!wasFavorite) model.repo.toggleFavorite(seed) }
         rule.waitUntil(15_000) { model.recommendationSnapshots.first().second.ranking.positiveWorkCount > 0 }
-        if (tv) rule.onNodeWithText("关于 CinemaTV").performClick()
+        // Native settings is sectioned: the dashboard entry lives under 本地推荐.
+        if (tv) rule.onNodeWithTag("settings-section:recommendations").performClick()
         val opener = rule.onNodeWithTag("recommendation-dashboard-open")
         if (tv) {
             opener.performSemanticsAction(SemanticsActions.RequestFocus) { it() }

@@ -1,12 +1,19 @@
 package dev.cinematv.data
 
 import android.content.Context
+import android.app.Application
 import android.content.ContextWrapper
 import android.content.SharedPreferences
 import android.net.Uri
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.ViewModel
+import dev.cinematv.CinemaViewModel
+import dev.cinematv.Page
 import dev.cinematv.data.library.CinemaLibraryDatabase
 import dev.cinematv.data.library.LegacyLibraryImport
 import dev.cinematv.data.library.LocalMediaLibrary
@@ -16,14 +23,19 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.util.UUID
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -243,6 +255,36 @@ class LibreTvProtocolTest {
         assertTrue(repo.localItems().isEmpty())
     }
 
+    @Test fun cachedDetailKeyFromAnotherClientUsesCurrentLocalSourceWhenUrlMatches() = runBlocking {
+        val source = repo.sources().single()
+        val payload = detail()
+        payload.getJSONObject("videoInfo").put("sourceKey", "other-device-local-key")
+            .put("sourceUrl", source.url)
+        server.enqueue(payload.toString())
+        val result = repo.detail(work.copy(id = "same-provider-id", source = source))
+        assertEquals(source, result.source)
+        assertEquals("same-provider-id", result.id)
+        assertEquals(source.key, repo.localItems().single().source?.key)
+    }
+
+    @Test fun matchingKeyCannotAuthorizeDetailFromAnotherSourceUrl() = runBlocking {
+        val payload = detail()
+        payload.getJSONObject("videoInfo").put("sourceUrl", "https://wrong.example.test/provider")
+        server.enqueue(payload.toString())
+        try { repo.detail(work.copy(id = "one", source = repo.sources().single())); fail("Wrong source URL") }
+        catch (_: LibreTvProtocolException) { }
+        assertTrue(repo.localItems().isEmpty())
+    }
+
+    @Test fun cachedSearchKeyDoesNotOverrideTheReportedSourceUrl() = runBlocking {
+        val cached = row("cache").put("sourceKey", "another-device")
+            .put("sourceUrl", repo.sources().single().url)
+        server.enqueue(search(cached, row("wrong").put("sourceUrl", "https://wrong.example.test/provider")).toString())
+        val found = repo.searchSnapshot("Fixture").items
+        assertEquals(listOf("cache"), found.map { it.id })
+        assertEquals(repo.sources().single(), found.single().source)
+    }
+
     @Test fun truncatedNdjsonRetainsPartialResultButNeverClaimsCompletion() = runBlocking {
         server.enqueue(search(row("partial")).put("type", "source")
             .put("sourceKey", repo.sources().single().key).put("ok", true).put("ms", 14).toString() + "\n")
@@ -284,6 +326,381 @@ class LibreTvProtocolTest {
         assertNull(server.requests[2].headers["cookie"])
     }
 
+    @Test fun delayedAuthenticationCannotLeakItsCookieToAReplacementServer() = runBlocking {
+        val gate = CountDownLatch(1)
+        server.enqueue("{\"success\":true}", headers = "Set-Cookie: synthetic=old-a; HttpOnly\r\n", gate = gate)
+        val login = async { repo.login("synthetic-password") }
+        withContext(Dispatchers.IO) { assertTrue(server.delayed.poll(4, TimeUnit.SECONDS) == true) }
+        FixtureServer().use { next ->
+            repo.configureServer(next.base)
+            next.enqueue("{\"passwordRequired\":true,\"verified\":false}")
+            assertFalse(repo.status().verified)
+            gate.countDown()
+            withTimeout(4_000) {
+                try { login.await(); fail("Old login must be discarded") }
+                catch (_: CancellationException) { }
+            }
+            next.enqueue("{\"passwordRequired\":true,\"verified\":false}")
+            repo.status()
+            assertTrue(next.requests.all { it.headers["cookie"] == null })
+        }
+    }
+
+    @Test fun delayedStatusCannotOverwriteTheReplacementServersSources() = runBlocking {
+        val gate = CountDownLatch(1)
+        server.enqueue("""{"passwordRequired":true,"verified":true,"defaultSources":[{"key":"a","name":"Old","url":"https://a.example.test/provider"}]}""", gate = gate)
+        val status = async { repo.status() }
+        withContext(Dispatchers.IO) { assertTrue(server.delayed.poll(4, TimeUnit.SECONDS) == true) }
+        FixtureServer().use { next ->
+            repo.configureServer(next.base)
+            next.enqueue("""{"passwordRequired":true,"verified":true,"defaultSources":[{"key":"b","name":"Current","url":"https://b.example.test/provider"}]}""")
+            assertEquals("b", repo.status().sources.last().key)
+            gate.countDown()
+            withTimeout(4_000) {
+                try { status.await(); fail("Old status must be discarded") }
+                catch (_: CancellationException) { }
+            }
+            assertEquals(listOf("b"), repo.defaultSources.map { it.key })
+        }
+    }
+
+    @Test fun delayedUnauthorizedCannotClearANewServersSession() = runBlocking {
+        val gate = CountDownLatch(1)
+        server.enqueue("{\"error\":\"expired\"}", 401, gate = gate)
+        val oldSearch = async { repo.searchSnapshots("Fixture").toList() }
+        withContext(Dispatchers.IO) { assertTrue(server.delayed.poll(4, TimeUnit.SECONDS) == true) }
+        FixtureServer().use { next ->
+            repo.configureServer(next.base)
+            next.enqueue("{\"success\":true}", headers = "Set-Cookie: synthetic=current-b; HttpOnly\r\n")
+            assertTrue(repo.login("synthetic-password"))
+            gate.countDown()
+            withTimeout(4_000) {
+                try { oldSearch.await(); fail("Old 401 must be discarded") }
+                catch (_: CancellationException) { }
+            }
+            next.enqueue("{\"passwordRequired\":true,\"verified\":true}")
+            assertTrue(repo.status().verified)
+            assertEquals("synthetic=current-b", next.requests.last().headers["cookie"])
+        }
+    }
+
+    @Test fun expiredSearchSessionShowsLoginAndPreservesQueryAndLocalResults() = runBlocking {
+        repo.library.initialize()
+        repo.library.cacheItem(work)
+        server.enqueue("{\"passwordRequired\":true,\"verified\":true}")
+        val store = ViewModelStore()
+        val model = onMain {
+            ViewModelProvider(store, object : ViewModelProvider.Factory {
+                @Suppress("UNCHECKED_CAST")
+                override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                    require(modelClass == CinemaViewModel::class.java)
+                    return CinemaViewModel(context.applicationContext as Application, repo) as T
+                }
+            })[CinemaViewModel::class.java]
+        }
+        try {
+            withTimeout(5_000) { while (!onMain { model.authorized && !model.busy }) delay(20) }
+            server.enqueue("{\"error\":\"未登录\"}", 401)
+            onMain { model.query = work.title; model.search() }
+            withTimeout(5_000) { while (!onMain { model.passwordRequired && !model.authorized && !model.busy }) delay(20) }
+            onMain {
+                assertEquals(Page.SETTINGS, model.page)
+                assertEquals(work.title, model.query)
+                assertTrue(model.results.any { it.title == work.title })
+                assertTrue(model.message.contains("重新登录"))
+            }
+        } finally { onMain { store.clear() } }
+    }
+
+    @Test fun delayedSameServerUnauthorizedCannotClearASuccessfulRelogin() = runBlocking {
+        server.enqueue("{\"success\":true}", headers = "Set-Cookie: synthetic=old; HttpOnly\r\n")
+        assertTrue(repo.login("synthetic-password"))
+        val gate = CountDownLatch(1)
+        server.enqueue("{\"error\":\"expired\"}", 401, gate = gate)
+        val oldSearch = async { repo.searchSnapshots("Fixture").toList() }
+        withContext(Dispatchers.IO) { assertTrue(server.delayed.poll(4, TimeUnit.SECONDS) == true) }
+        try {
+            server.enqueue("{\"success\":true}", headers = "Set-Cookie: synthetic=new; HttpOnly\r\n")
+            assertTrue(repo.login("synthetic-password"))
+            gate.countDown()
+            withTimeout(4_000) {
+                try { oldSearch.await(); fail("Pre-login response must be discarded") }
+                catch (_: CancellationException) { }
+            }
+            server.enqueue("{\"passwordRequired\":true,\"verified\":true}")
+            assertTrue(repo.status().verified)
+            assertEquals("synthetic=new", server.requests.last().headers["cookie"])
+        } finally { gate.countDown() }
+    }
+
+    @Test fun unauthorizedIssuedDuringLoginCannotClearTheAuthenticatedCookie() = runBlocking {
+        val connection = repo.beginAuthentication()
+        val authGate = CountDownLatch(1)
+        val errorGate = CountDownLatch(1)
+        server.enqueue("{\"success\":true}", headers = "Set-Cookie: synthetic=current; HttpOnly\r\n", gate = authGate)
+        val login = async { repo.login("synthetic-password", connection) }
+        withContext(Dispatchers.IO) { assertTrue(server.delayed.poll(4, TimeUnit.SECONDS) == true) }
+        server.enqueue("{\"error\":\"not yet logged in\"}", 401, gate = errorGate)
+        val unauthenticatedSearch = async { repo.searchSnapshots("Fixture", connection).toList() }
+        withContext(Dispatchers.IO) { assertTrue(server.delayed.poll(4, TimeUnit.SECONDS) == true) }
+        try {
+            authGate.countDown()
+            assertTrue(withTimeout(4_000) { login.await() })
+            errorGate.countDown()
+            withTimeout(4_000) {
+                try { unauthenticatedSearch.await(); fail("Old session revision must be discarded") }
+                catch (_: CancellationException) { }
+            }
+            server.enqueue("{\"passwordRequired\":true,\"verified\":true}")
+            assertTrue(repo.status().verified)
+            assertEquals("synthetic=current", server.requests.last().headers["cookie"])
+        } finally { authGate.countDown(); errorGate.countDown() }
+    }
+
+    private fun sourceList(vod: List<Pair<String, String>>, live: List<Pair<String, String>> = emptyList()) = JSONObject()
+        .put("name", "Synthetic subscription")
+        .put("sources", JSONArray(vod.map { JSONObject().put("name", it.first).put("url", it.second) }))
+        .put("liveSources", JSONArray(live.map { JSONObject().put("name", it.first).put("url", it.second) }))
+        .put("stats", JSONObject().put("format", "tvbox").put("skipped", 1)
+            .put("skippedByReason", JSONObject().put("spider", 1)).put("truncated", 0))
+
+    @Test fun advertisedSourceListCanPopulateAnOtherwiseEmptyServerThroughTheAuthenticatedApi() = runBlocking {
+        repo.removeSource(repo.sources().single().url)
+        server.enqueue("{\"success\":true}", headers = "Set-Cookie: synthetic=subscriptions; HttpOnly\r\n")
+        assertTrue(repo.login("synthetic-password"))
+        server.enqueue("""{"passwordRequired":true,"verified":true,"defaultSources":[],"defaultLiveSources":[],"defaultSubscriptions":[{"url":"https://lists.example.test/default.json","name":"Server default","refreshDays":10}]}""")
+        val status = repo.status()
+        assertTrue(status.sources.isEmpty())
+        assertTrue(status.liveSources.isEmpty())
+        assertEquals(1, status.defaultSubscriptions.size)
+        server.enqueue(sourceList(listOf("VOD" to "https://vod.example.test/api"),
+            listOf("Live" to "https://live.example.test/list.m3u")).toString())
+        val preview = repo.previewSourceSubscription(status.defaultSubscriptions.single())
+        assertTrue(repo.sources().isEmpty()) // Preview is side-effect free until reviewed.
+        assertEquals(1, preview.snapshot.stats.skippedByReason["spider"])
+        repo.importSourceSubscription(preview)
+        assertEquals(1, repo.sources().size)
+        assertEquals(1, repo.liveSources().size)
+        assertEquals("/api/source-list", server.requests.last().uri.path)
+        assertEquals("https://lists.example.test/default.json", server.requests.last().uri.getQueryParameter("url"))
+        assertEquals("synthetic=subscriptions", server.requests.last().headers["cookie"])
+    }
+
+    @Test fun refreshKeepsManualSourcesOtherSubscriptionsDisabledChoicesAndLibraryAcrossRestart() = runBlocking {
+        val manual = repo.sources().single()
+        val first = SourceSubscription("https://lists.example.test/one.json", "First")
+        val second = SourceSubscription("https://lists.example.test/two.json", "Second")
+        val a = "https://vod.example.test/a"
+        val b = "https://vod.example.test/b"
+        val c = "https://vod.example.test/c"
+        server.enqueue(sourceList(listOf("A" to a, "B" to b, "Imported duplicate" to manual.url),
+            listOf("Live" to "https://live.example.test/list.m3u")).toString())
+        repo.importSourceSubscription(repo.previewSourceSubscription(first))
+        repo.setSourceEnabled(a, false)
+        server.enqueue(sourceList(listOf("B shared" to b)).toString())
+        repo.importSourceSubscription(repo.previewSourceSubscription(second))
+        repo.library.initialize()
+        val saved = work.copy(source = repo.sources().first { it.url == a }, episodes = listOf("https://media.example.test/a.mp4"), playlistKnown = true)
+        repo.library.cacheItem(saved)
+        repo.saveProgress(saved, 42_000, durationMs = 120_000)
+        server.enqueue(sourceList(listOf("A updated" to a, "C" to c, "Imported duplicate" to manual.url)).toString())
+        val refreshed = repo.previewSourceSubscription(first)
+        assertEquals(SubscriptionSourceChanges(1, 1, 1), refreshed.changes.vod)
+        assertEquals(1, refreshed.changes.live.removed)
+        repo.importSourceSubscription(refreshed)
+        assertEquals(setOf(manual.url, a, b, c), repo.sources().map { it.url }.toSet())
+        assertFalse(repo.sources().first { it.url == a }.enabled)
+        assertEquals(manual, repo.sources().first { it.url == manual.url })
+        assertTrue(repo.liveSources().isEmpty())
+        assertEquals(42_000L, repo.library.snapshot.progress(saved, 0)?.positionMs)
+
+        val reopened = LibreTvRepository(object : ContextWrapper(context) {
+            override fun getSharedPreferences(name: String, mode: Int) = fixturePreferences
+        }, repo.library)
+        assertEquals(repo.sourceSubscriptions(), reopened.sourceSubscriptions())
+        assertFalse(reopened.sources().first { it.url == a }.enabled)
+        reopened.stopSourceSubscription(first.url)
+        assertEquals(listOf(second.url), reopened.sourceSubscriptions().map { it.subscription.url })
+        assertEquals(setOf(manual.url, a, b, c), reopened.sources().map { it.url }.toSet())
+        assertEquals(42_000L, reopened.library.snapshot.progress(saved, 0)?.positionMs)
+    }
+
+    @Test fun failedAndStaleSubscriptionRefreshCannotOverwriteReviewedSources() = runBlocking {
+        val subscription = SourceSubscription("https://lists.example.test/one.json")
+        server.enqueue(sourceList(listOf("Original" to "https://vod.example.test/one")).toString())
+        repo.importSourceSubscription(repo.previewSourceSubscription(subscription))
+        val original = repo.sourceSubscriptions().single()
+        server.enqueue("{\"error\":\"temporary failure\"}", 502)
+        try { repo.previewSourceSubscription(subscription); fail("Failure accepted") }
+        catch (error: LibreTvHttpException) { assertEquals(502, error.status) }
+        assertEquals(original, repo.sourceSubscriptions().single())
+        server.enqueue(sourceList(emptyList()).toString())
+        try { repo.previewSourceSubscription(subscription); fail("Empty refresh accepted") }
+        catch (_: LibreTvProtocolException) { }
+        assertEquals(original, repo.sourceSubscriptions().single())
+
+        server.enqueue(sourceList(listOf("Updated" to "https://vod.example.test/one")).toString())
+        val firstReview = repo.previewSourceSubscription(subscription)
+        server.enqueue(sourceList(listOf("Stale" to "https://vod.example.test/stale")).toString())
+        val staleReview = repo.previewSourceSubscription(subscription)
+        val saved = repo.importSourceSubscription(firstReview)
+        try { repo.importSourceSubscription(staleReview); fail("Stale review accepted") }
+        catch (_: IllegalStateException) { }
+        assertEquals(saved, repo.sourceSubscriptions().single())
+        repo.configureServer("https://replacement.example.test")
+        try { repo.importSourceSubscription(firstReview); fail("Replaced connection review accepted") }
+        catch (_: CancellationException) { }
+        assertEquals(saved, repo.sourceSubscriptions().single())
+    }
+
+    @Test fun corruptSubscriptionStorageIsPreservedInsteadOfOverwritten() = runBlocking {
+        val corrupt = "{\"schema\":999,\"preserve\":true}"
+        assertTrue(fixturePreferences.edit().putString("source_subscriptions_v1", corrupt).commit())
+        val reopened = LibreTvRepository(object : ContextWrapper(context) {
+            override fun getSharedPreferences(name: String, mode: Int) = fixturePreferences
+        }, repo.library)
+        assertTrue(reopened.subscriptionStorageError.isNotBlank())
+        try { reopened.previewSourceSubscription(SourceSubscription("https://lists.example.test/new.json")); fail("Corrupt store overwritten") }
+        catch (_: IllegalStateException) { }
+        assertEquals(corrupt, fixturePreferences.getString("source_subscriptions_v1", null))
+        assertTrue(server.requests.isEmpty())
+    }
+
+    @Test fun refreshingAndStoppingAnOverlappingSubscriptionCannotChangeTheEffectiveSource() = runBlocking {
+        val sharedVod = "https://shared.example.test/vod"
+        val sharedLive = "https://shared.example.test/live.m3u"
+        val first = SourceSubscription("https://lists.example.test/first.json")
+        val second = SourceSubscription("https://lists.example.test/second.json")
+        val a = sourceList(listOf("Winner A" to sharedVod), listOf("Live A" to sharedLive))
+        val b = sourceList(listOf("Shadowed B" to sharedVod, "Only B" to "https://shared.example.test/only-b"),
+            listOf("Live B" to sharedLive))
+        server.enqueue(a.toString()); repo.importSourceSubscription(repo.previewSourceSubscription(first))
+        server.enqueue(b.toString()); repo.importSourceSubscription(repo.previewSourceSubscription(second))
+        assertEquals("Winner A", repo.sources().first { it.url == sharedVod }.name)
+        server.enqueue(a.toString())
+        val review = repo.previewSourceSubscription(first)
+        assertEquals(SubscriptionSourceChanges(0, 0, 0), review.changes.vod)
+        repo.importSourceSubscription(review)
+        assertEquals(listOf(first.url, second.url), repo.sourceSubscriptions().map { it.subscription.url })
+        assertEquals("Winner A", repo.sources().first { it.url == sharedVod }.name)
+        assertEquals("Live A", repo.liveSources().first { it.url == sharedLive }.name)
+
+        repo.stopSourceSubscription(second.url)
+        assertEquals("Winner A", repo.sources().first { it.url == sharedVod }.name)
+        assertEquals("Live A", repo.liveSources().first { it.url == sharedLive }.name)
+        assertFalse(repo.isManualSource(sharedVod))
+        assertFalse(repo.isManualSource(sharedLive, live = true))
+        assertTrue(repo.isManualSource("https://shared.example.test/only-b"))
+    }
+
+    @Test fun stoppingSubscriptionSerializesManualAddsInsteadOfLosingThemAtCommit() = runBlocking {
+        val armed = AtomicBoolean(false)
+        val commitStarted = CountDownLatch(1)
+        val continueCommit = CountDownLatch(1)
+        val blockingPreferences = object : SharedPreferences by fixturePreferences {
+            override fun edit(): SharedPreferences.Editor {
+                val actual = fixturePreferences.edit()
+                return object : SharedPreferences.Editor by actual {
+                    override fun putString(key: String?, value: String?): SharedPreferences.Editor {
+                        actual.putString(key, value)
+                        return this
+                    }
+                    override fun commit(): Boolean {
+                        if (armed.compareAndSet(true, false)) {
+                            commitStarted.countDown()
+                            check(continueCommit.await(4, TimeUnit.SECONDS))
+                        }
+                        return actual.commit()
+                    }
+                }
+            }
+        }
+        val isolated = LibreTvRepository(object : ContextWrapper(context) {
+            override fun getSharedPreferences(name: String, mode: Int) = blockingPreferences
+        }, repo.library)
+        val subscription = SourceSubscription("https://lists.example.test/stop.json")
+        server.enqueue(sourceList(listOf("Retained" to "https://vod.example.test/retained")).toString())
+        isolated.importSourceSubscription(isolated.previewSourceSubscription(subscription))
+        armed.set(true)
+        val stopping = async(Dispatchers.IO) { isolated.stopSourceSubscription(subscription.url) }
+        withContext(Dispatchers.IO) { assertTrue(commitStarted.await(3, TimeUnit.SECONDS)) }
+        val addAttempted = CountDownLatch(1)
+        val adding = async(Dispatchers.IO) {
+            addAttempted.countDown()
+            isolated.addSource("Concurrent manual", "https://vod.example.test/new-manual")
+        }
+        try {
+            withContext(Dispatchers.IO) { assertTrue(addAttempted.await(2, TimeUnit.SECONDS)) }
+            delay(100)
+            assertFalse("Manual mutation must wait for the source-list transaction", adding.isCompleted)
+            continueCommit.countDown()
+            withTimeout(5_000) { stopping.await(); adding.await() }
+            assertTrue(isolated.isManualSource("https://vod.example.test/new-manual"))
+            assertTrue(isolated.isManualSource("https://vod.example.test/retained"))
+        } finally { continueCommit.countDown() }
+    }
+
+    @Test fun manualSourceValidationAndRemovalUseOwnershipInsteadOfKeyPrefix() = runBlocking {
+        val before = repo.sources()
+        for (url in listOf("https://", "https://user:secret@example.test/api", "https://example.test:99999/api")) {
+            try { repo.addSource("Invalid", url); fail("Invalid manual source accepted") }
+            catch (_: IllegalArgumentException) { }
+        }
+        try { repo.addLiveSource("Invalid EPG", "https://live.example.test/a.m3u", "https://"); fail("Invalid EPG accepted") }
+        catch (_: IllegalArgumentException) { }
+        assertEquals(before, repo.sources())
+        val url = "https://default.example.test/vod"
+        server.enqueue("""{"passwordRequired":true,"verified":true,"defaultSources":[{"key":"custom_not_manual","name":"Server","url":"$url"}]}""")
+        repo.status()
+        assertFalse(repo.isManualSource(url))
+        repo.addSource("Manual override", url)
+        assertTrue(repo.isManualSource(url))
+        assertTrue(repo.hasSourceFallback(url))
+        repo.removeSource(url)
+        assertFalse(repo.isManualSource(url))
+        assertEquals("Server", repo.sources().first { it.url == url }.name)
+    }
+
+    @Test fun sameChannelGuideRefreshIsBoundedAndAlternateStreamWithSameEpgIdCanReceiveFocus() = runBlocking {
+        repo.addLiveSource("Guide fixture", "https://live.example.test/list.m3u", "https://epg.example.test/guide.xml")
+        server.enqueue("{\"passwordRequired\":true,\"verified\":true}")
+        val store = ViewModelStore()
+        val model = onMain {
+            ViewModelProvider(store, object : ViewModelProvider.Factory {
+                @Suppress("UNCHECKED_CAST")
+                override fun <T : ViewModel> create(modelClass: Class<T>): T = CinemaViewModel(context.applicationContext as Application, repo) as T
+            })[CinemaViewModel::class.java]
+        }
+        try {
+            withTimeout(5_000) { while (!onMain { model.authorized && !model.busy }) delay(20) }
+            server.enqueue("""{"channels":[{"id":"same-epg","tvgId":"same-epg","name":"HD","url":"https://media.example.test/hd.m3u8"},{"id":"same-epg","tvgId":"same-epg","name":"SD","url":"https://media.example.test/sd.m3u8"}]}""")
+            onMain { model.loadChannels(model.liveSources.single()) }
+            withTimeout(5_000) { while (!onMain { model.channels.size == 2 && !model.busy }) delay(20) }
+            fun guide(title: String) = """{"programs":[{"title":"$title","start":1,"stop":9999999999999}]}"""
+            server.enqueue(guide("Original"))
+            onMain { model.focusChannel(model.channels.first()) }
+            withTimeout(5_000) { while (!onMain { model.epgPrograms.singleOrNull()?.title == "Original" }) delay(20) }
+            val future = System.currentTimeMillis() + 16 * 60_000L
+            server.enqueue(guide("Refreshed"))
+            onMain { model.refreshEpgIfStale(future); model.refreshEpgIfStale(future) }
+            withTimeout(5_000) { while (!onMain { model.epgPrograms.singleOrNull()?.title == "Refreshed" }) delay(20) }
+            onMain { model.refreshEpgIfStale(future); model.refreshEpgIfStale(future) }
+            delay(100)
+            assertEquals(2, server.requests.count { it.uri.path == "/api/live/epg" })
+            server.enqueue(guide("Alternate"))
+            onMain { model.focusChannel(model.channels.last()) }
+            withTimeout(5_000) { while (!onMain { model.epgPrograms.singleOrNull()?.title == "Alternate" }) delay(20) }
+            assertEquals("https://media.example.test/sd.m3u8", onMain { model.activeChannel?.url })
+            assertEquals(3, server.requests.count { it.uri.path == "/api/live/epg" })
+        } finally { onMain { store.clear() } }
+    }
+
+    private fun <T> onMain(block: () -> T): T {
+        var result: Result<T>? = null
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { result = runCatching(block) }
+        return requireNotNull(result).getOrThrow()
+    }
+
     @Test fun cancellingBlockedDetailDoesNotRequestAnotherCandidate() = runBlocking {
         server.enqueue(search(row("blocked"), row("other")).toString())
         server.enqueue("", stall = true, stallBody = true)
@@ -321,24 +738,33 @@ class LibreTvProtocolTest {
     }
 
     private data class Captured(val uri: Uri, val headers: Map<String, String>, val body: String)
-    private data class Reply(val body: String, val code: Int, val headers: String, val stall: Boolean, val stallBody: Boolean)
+    private data class Reply(val body: String, val code: Int, val headers: String, val stall: Boolean,
+        val stallBody: Boolean, val gate: CountDownLatch?)
     private class FixtureServer : AutoCloseable {
         private val listener = ServerSocket(0, 8, InetAddress.getByName("127.0.0.1"))
         private val replies = LinkedBlockingQueue<Reply>()
         val requests = CopyOnWriteArrayList<Captured>()
         val stalled = LinkedBlockingQueue<Boolean>()
+        val delayed = LinkedBlockingQueue<Boolean>()
         val closedByClient = LinkedBlockingQueue<Boolean>()
         private val clients = CopyOnWriteArrayList<Socket>()
+        private val clientWorkers = CopyOnWriteArrayList<Thread>()
         @Volatile private var running = true
         @Volatile private var failure: Throwable? = null
         val base = "http://127.0.0.1:${listener.localPort}"
         private val worker = Thread({
             while (running) try {
-                listener.accept().use { client -> clients += client; handle(client) }
+                val client = listener.accept()
+                clients += client
+                Thread({
+                    try { client.use { handle(it) } }
+                    catch (error: Exception) { if (running) failure = error }
+                }, "libretv-protocol-client").apply { isDaemon = true; clientWorkers += this; start() }
             } catch (error: Exception) { if (running) failure = error }
         }, "libretv-protocol-loopback").apply { isDaemon = true; start() }
-        fun enqueue(body: String, code: Int = 200, headers: String = "", stall: Boolean = false, stallBody: Boolean = false) {
-            replies.put(Reply(body, code, headers, stall, stallBody))
+        fun enqueue(body: String, code: Int = 200, headers: String = "", stall: Boolean = false,
+            stallBody: Boolean = false, gate: CountDownLatch? = null) {
+            replies.put(Reply(body, code, headers, stall, stallBody, gate))
         }
         private fun handle(client: Socket) {
             client.soTimeout = 5000
@@ -360,6 +786,10 @@ class LibreTvProtocolTest {
             }
             requests += Captured(Uri.parse(path), headers, String(body, 0, offset))
             val reply = requireNotNull(replies.poll(5, TimeUnit.SECONDS)) { "Unexpected request: $path" }
+            reply.gate?.let { gate ->
+                delayed.put(true)
+                check(gate.await(5, TimeUnit.SECONDS)) { "Delayed response was not released" }
+            }
             if (reply.stall) {
                 if (reply.stallBody) client.getOutputStream().apply {
                     write("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 1000\r\nConnection: close\r\n\r\n{".toByteArray())
@@ -374,10 +804,15 @@ class LibreTvProtocolTest {
                 return
             }
             val bytes = reply.body.toByteArray(Charsets.UTF_8)
-            client.getOutputStream().apply {
-                write(("HTTP/1.1 ${reply.code} Fixture\r\nContent-Type: application/json; charset=utf-8\r\n" +
-                    "Content-Length: ${bytes.size}\r\n${reply.headers}Connection: close\r\n\r\n").toByteArray(Charsets.US_ASCII))
-                write(bytes); flush()
+            try {
+                client.getOutputStream().apply {
+                    write(("HTTP/1.1 ${reply.code} Fixture\r\nContent-Type: application/json; charset=utf-8\r\n" +
+                        "Content-Length: ${bytes.size}\r\n${reply.headers}Connection: close\r\n\r\n").toByteArray(Charsets.US_ASCII))
+                    write(bytes); flush()
+                }
+            } catch (closed: java.net.SocketException) {
+                // A response intentionally released after replacement may be rejected at its headers.
+                if (reply.gate == null) throw closed
             }
         }
         override fun close() {
@@ -385,7 +820,9 @@ class LibreTvProtocolTest {
             listener.close()
             clients.forEach { it.close() }
             worker.join(6000)
+            clientWorkers.forEach { it.join(6000) }
             assertFalse("Fixture failed to stop", worker.isAlive)
+            assertTrue("Fixture client failed to stop", clientWorkers.none { it.isAlive })
             assertNull("Fixture server failed", failure)
         }
     }

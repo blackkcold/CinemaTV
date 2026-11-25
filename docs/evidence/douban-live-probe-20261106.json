@@ -1,0 +1,88 @@
+{
+  "schema": 1,
+  "scope": "User-requested personal-use live compatibility probe. Not a rights grant, not production acceptance, not a redistributed dataset.",
+  "date_utc": "2026-11-06T07:59:18Z",
+  "endpoint_count": 6,
+  "spacing_seconds": 5,
+  "concurrency": 1,
+  "authenticated": false,
+  "cookies": false,
+  "automatic_redirects": false,
+  "retries": 0,
+  "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+  "requests": [
+    {
+      "name": "top250-page1",
+      "url": "https://movie.douban.com/top250?start=0&filter=",
+      "status": 200,
+      "content_type": "text/html; charset=utf-8",
+      "bytes": 64370,
+      "sha256": "bec84f97efabea889c1eaaefbf55a5a2369eb1b351a4ac10913c17f24b9ad608"
+    },
+    {
+      "name": "top250-page10",
+      "url": "https://movie.douban.com/top250?start=225&filter=",
+      "status": 200,
+      "content_type": "text/html; charset=utf-8",
+      "bytes": 61437,
+      "sha256": "54d9b935ed8e1bed354751e489aaa1e8d5641c28ccc026367e08f3200e91aadc"
+    },
+    {
+      "name": "browse-suspense",
+      "url": "https://movie.douban.com/j/new_search_subjects?sort=T&range=0,10&tags=%E6%82%AC%E7%96%91&start=0",
+      "status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "bytes": 7507,
+      "sha256": "27e0ea5f73f5de7943bf0ba9dfdbc1fb1e27c067c741268c7b750bc1ad757f87"
+    },
+    {
+      "name": "hot-movie",
+      "url": "https://movie.douban.com/j/search_subjects?type=movie&tag=%E7%83%AD%E9%97%A8&sort=recommend&page_limit=40&page_start=0",
+      "status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "bytes": 11318,
+      "sha256": "c7daa31558efa51eb433dce62c08ad0d95cf358b835c4b8bb52ba80c6c57e4bc"
+    },
+    {
+      "name": "doulist-oscar",
+      "url": "https://www.douban.com/doulist/240962/?sort=seq&playable=0",
+      "status": 200,
+      "content_type": "text/html; charset=utf-8",
+      "bytes": 116391,
+      "sha256": "bc855ff75037e145aacae5c9a61a03199e522dfa74fafed525ff18672e16dc5f"
+    },
+    {
+      "name": "subject-detail",
+      "url": "https://movie.douban.com/subject/1292052/",
+      "status": 302,
+      "content_type": "text/html",
+      "bytes": 138,
+      "sha256": "753e0dd54f28c4f7009b9c0b18a68aed175416bd8b7d134858264586eaac56f0",
+      "location_host": "sec.douban.com",
+      "followed": false
+    }
+  ],
+  "parser_results": {
+    "module": "app/src/main/java/dev/cinematv/data/douban/public/DoubanPublicParser.kt",
+    "top250_page1": { "items": 25, "first_rank": 1, "last_rank": 25, "first_rating_present": true, "first_cover_present": true },
+    "top250_page10": { "items": 25, "first_rank": 226, "last_rank": 250, "first_rating_present": true },
+    "browse_suspense": { "items": 20, "first_rating_present": true, "first_cover_present": true },
+    "hot_movie": { "items": 40, "first_rating_present": true, "first_cover_present": true },
+    "doulist": { "items": 25, "first_rating_present": true, "first_cover_present": true }
+  },
+  "findings": [
+    "Anonymous list pages, tag JSON, hot JSON and doulist pages are readable from a normal client network.",
+    "The doulist item markup puts id before class and may place a streaming-service icon as the first image; the parser now scopes the poster to the post block.",
+    "Anonymous subject detail still redirects to sec.douban.com; detail and community score remain login-only.",
+    "No cookie, account, proxy, captcha solving or redirect following was used."
+  ],
+  "not_verified": [
+    "ongoing availability or rate-limit thresholds",
+    "Android WebView or device network behaviour",
+    "image hotlink policy",
+    "TV series chart coverage",
+    "any right to redistribute"
+  ],
+  "raw_responses_published": false,
+  "production_acquisition_enabled": false
+}

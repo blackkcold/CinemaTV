@@ -25,7 +25,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import dev.cinematv.ui.GlassAction
+import dev.cinematv.ui.tv.components.GlassAction
 import dev.cinematv.ui.tv.design.LocalTvEffects
 import dev.cinematv.ui.tv.design.TvEffects
 import dev.cinematv.ui.tv.focus.*
@@ -146,7 +146,7 @@ class InterruptedFocusRestorationTest {
     private fun suspendLazyRestore(): CompletableDeferred<String?> {
         val release = CompletableDeferred<String?>()
         rule.runOnUiThread {
-            registry.attachLazyRegion("HOME", "rail") { prepareStarted = true; release.await() }
+            registry.attachLazyRegion("HOME", "rail") { _, _ -> prepareStarted = true; release.await() }
         }
         startRestore()
         rule.mainClock.advanceTimeBy(64)

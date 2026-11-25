@@ -14,21 +14,38 @@ import java.security.MessageDigest
  * Only an explicit trusted metadata ID can associate sources with a common work.
  */
 object MediaDomainMapper {
+    private val HEX = "0123456789abcdef".toCharArray()
+
+    private fun hex(bytes: ByteArray): String {
+        val chars = CharArray(bytes.size * 2)
+        for (index in bytes.indices) {
+            val value = bytes[index].toInt() and 0xff
+            chars[index * 2] = HEX[value ushr 4]
+            chars[index * 2 + 1] = HEX[value and 0x0f]
+        }
+        return String(chars)
+    }
+
     private fun id(prefix: String, vararg parts: String): String {
         // Length prefixes avoid collisions when a provider ID contains delimiters.
         val value = parts.joinToString("") { "${it.length}:$it" }
         val digest = MessageDigest.getInstance("SHA-256").digest(value.toByteArray(Charsets.UTF_8))
-        return prefix + ":" + digest.joinToString("") { "%02x".format(it.toInt() and 0xff) }
+        return prefix + ":" + hex(digest)
     }
 
     fun sourceId(item: MediaItem): String = id("source", item.source?.url.orEmpty())
-    fun entryId(item: MediaItem): String = if (item.source == null) {
-        // Metadata providers can reuse numeric IDs across movie/TV namespaces. A source-less
-        // unknown result must not accidentally claim either namespace before type resolution.
-        id("entry", "metadata", mediaKind(item), item.id)
-    } else {
-        // Preserve provider listing IDs across unknown -> movie/series enrichment.
-        id("entry", item.source.url, item.id)
+    fun entryId(item: MediaItem): String {
+        item.cachedEntryId?.let { return it }
+        val computed = if (item.source == null) {
+            // Metadata providers can reuse numeric IDs across movie/TV namespaces. A source-less
+            // unknown result must not accidentally claim either namespace before type resolution.
+            id("entry", "metadata", mediaKind(item), item.id)
+        } else {
+            // Preserve provider listing IDs across unknown -> movie/series enrichment.
+            id("entry", item.source.url, item.id)
+        }
+        item.cachedEntryId = computed
+        return computed
     }
 
     private fun mediaKind(item: MediaItem): String =

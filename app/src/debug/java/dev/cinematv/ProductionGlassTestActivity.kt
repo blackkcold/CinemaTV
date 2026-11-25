@@ -4,7 +4,6 @@ import android.content.res.Configuration
 import android.os.Bundle
 import android.view.View
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.compose.runtime.CompositionLocalProvider
@@ -60,7 +59,6 @@ class ProductionGlassTestActivity : ComponentActivity() {
                     LocalProductionGlassObserver provides { glassObservation = it },
                     LocalProductionSceneDecoded provides { decodedScene = it },
                 ) {
-                    BackHandler(enabled = model.page != Page.HOME) { model.back() }
                     if (landscape) TvRootApp(model) else MobileRootApp(model)
                 }
             }

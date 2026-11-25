@@ -34,7 +34,7 @@ class MobilePlaybackSmokeTest {
         rule.waitUntil(20000) { model.authorized && model.featured.isNotEmpty() }
         rule.runOnIdle { model.open(model.featured.first()) }
         rule.waitUntil(15000) { !model.busy && model.selected?.episodes?.size == 36 }
-        rule.onNodeWithText("播放 / 续播").performScrollTo().performClick()
+        rule.onNodeWithTag("mobile-play-primary").performScrollTo().performClick()
         rule.waitUntil(20000) { model.page == Page.PLAYER && (model.selected?.durationMs ?: 0) > 0 }
         capture("mobile-player-portrait")
         rule.runOnIdle { rule.activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE }

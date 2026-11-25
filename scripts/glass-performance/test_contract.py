@@ -47,11 +47,26 @@ class ProtocolTest(unittest.TestCase):
     def test_active_windows_exclude_startup_and_idle_without_cross_window_intervals(self):
         result = frame_summary(fixture())
         self.assertTrue(result["validForComparison"])
-        self.assertEqual(198, result["renderedFrameSamples"])
+        self.assertEqual(216, result["renderedFrameSamples"])
         self.assertEqual(2, result["excludedStartupIdleOrFirstDrawSamples"])
         self.assertEqual(10, result["windowRenderTotalMs"]["p95"])
         self.assertEqual(20, result["appRenderIntervalMs"]["max"])
-        self.assertEqual(9.9, result["activeWindowSeconds"])
+        self.assertEqual(10.8, result["activeWindowSeconds"])
+
+    def test_schema3_compact_receipts_are_reconstructed_without_losing_causality(self):
+        data = fixture()
+        data["schema"] = 3
+        data["end"]["draws"] = dict(data["inputs"][-1]["after"]["draws"])
+        for window in data["windows"]:
+            for key in ("measured", "key", "routeBefore", "index"):
+                window.pop(key, None)
+        for native in data["inputs"]:
+            native.pop("after", None)
+        result = frame_summary(data)
+        self.assertTrue(result["validForComparison"])
+        self.assertEqual(24, result["nativeInputWindows"])
+        self.assertEqual(19, result["perWindow"][-1]["key"])
+        self.assertEqual("HOME", result["perWindow"][-1]["routeBefore"])
 
     def test_callback_loss_is_invalid_data_not_dropped_frames(self):
         data = fixture()
@@ -366,9 +381,9 @@ class PosterProfileTest(unittest.TestCase):
                     frame_summary(data, "poster-motion")
 
     def test_exact_profiles_and_counts(self):
-        self.assertEqual([19, 22, 22, 21, 23, 4, 20, 22, 21, 23, 4], [v[0] for v in cycle_for(DEFAULT_PROFILE)])
+        self.assertEqual([19, 22, 22, 21, 23, 4, 20, 22, 21, 23, 4, 19], [v[0] for v in cycle_for(DEFAULT_PROFILE)])
         self.assertEqual([20, 22, 22, 22, 22, 21, 21, 23, 4, 21, 21, 19], [v[0] for v in cycle_for("poster-motion")])
-        self.assertEqual(13, WARMUP_COUNT)
+        self.assertEqual(14, WARMUP_COUNT)
         result = frame_summary(poster_fixture(), "poster-motion")
         self.assertTrue(result["validForComparison"])
         self.assertEqual("poster-motion", result["profile"])

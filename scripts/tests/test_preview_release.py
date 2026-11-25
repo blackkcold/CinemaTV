@@ -14,7 +14,7 @@ spec.loader.exec_module(p)
 
 class PromotionTests(unittest.TestCase):
     def setUp(self):
-        self.classes = {d: ['required.Test'] for d in ('phone', 'tv1080', 'tv4k', 'compat26')}
+        self.classes = {d: ['required.Test'] for d in ('phone', 'tv1080', 'tv4k', 'tvNative', 'tv29', 'tv31', 'tv36', 'compat26')}
         self.run = dict(repository={'full_name': p.REPO}, head_repository={'full_name': p.REPO},
                         path='.github/workflows/android.yml', name='Android TV APK', status='completed',
                         updated_at=p.datetime.now(p.timezone.utc).isoformat(), conclusion='success', event='pull_request', run_attempt=1, id=42, head_sha='a' * 40)

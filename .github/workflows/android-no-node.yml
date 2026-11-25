@@ -1,0 +1,44 @@
+name: Android no-Node build
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'app/**'
+      - 'backdrop/**'
+      - 'build.gradle.kts'
+      - 'settings.gradle.kts'
+      - 'gradle/**'
+      - '.github/workflows/android-no-node.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cinematv-no-node-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  no-node:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install required Android SDK packages
+        shell: bash
+        run: |
+          SDKMANAGER=$(find "${ANDROID_HOME}/cmdline-tools" -type f -name sdkmanager | head -1)
+          test -n "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+      - name: Build Android without the TV Web Node pipeline
+        run: |
+          gradle --no-daemon --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process \
+            :app:assembleDebug

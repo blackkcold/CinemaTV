@@ -2,6 +2,8 @@ package dev.cinematv.playback
 
 import android.content.Context
 import androidx.annotation.OptIn
+import androidx.media3.common.AudioAttributes
+import androidx.media3.common.C
 import dev.cinematv.BuildConfig
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.database.StandaloneDatabaseProvider
@@ -42,7 +44,16 @@ object PlaybackFactory {
             .setTargetBufferBytes(deviceProfile(context).playbackBufferBytes)
             .setPrioritizeTimeOverSizeThresholds(false)
             .build()
-        if (!cacheVod) return ExoPlayer.Builder(context, renderers).setLoadControl(loadControl).build()
+        val builder = ExoPlayer.Builder(context, renderers)
+            .setLoadControl(loadControl)
+            .setAudioAttributes(AudioAttributes.Builder()
+                .setUsage(C.USAGE_MEDIA)
+                .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
+                .build(), /* handleAudioFocus = */ true)
+            .setHandleAudioBecomingNoisy(true)
+            .setSeekBackIncrementMs(10_000L)
+            .setSeekForwardIncrementMs(10_000L)
+        if (!cacheVod) return builder.build()
         val http = DefaultHttpDataSource.Factory()
             .setAllowCrossProtocolRedirects(true)
             .setUserAgent("CinemaTV/${BuildConfig.VERSION_NAME} (Android)")
@@ -52,9 +63,6 @@ object PlaybackFactory {
             .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
         val mediaSource = DefaultMediaSourceFactory(context)
             .setDataSourceFactory(source)
-        return ExoPlayer.Builder(context, renderers)
-            .setLoadControl(loadControl)
-            .setMediaSourceFactory(mediaSource)
-            .build()
+        return builder.setMediaSourceFactory(mediaSource).build()
     }
 }

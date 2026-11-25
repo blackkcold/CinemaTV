@@ -28,6 +28,7 @@ class UnsignedCandidateTest(unittest.TestCase):
             'app/src/main/keep.txt': 'accepted app source\n',
             'backdrop/src/main/keep.txt': 'accepted backdrop source\n',
             'app/build.gradle.kts': 'synthetic build configuration\n',
+            'release/signing-identity.json': json.dumps({'applicationId': 'dev.cinematv', 'certificateSha256': 'a' * 64}) + '\n',
         }.items():
             target = self.repo / path
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -42,13 +43,14 @@ args = dict(arg[2:].split('=', 1) for arg in sys.argv[1:] if arg.startswith('-P'
 channel = args['cinematvChannel']
 values = dict(package='dev.cinematv', versionCode=args['cinematvVersionCode'],
     versionName=args['cinematvVersionName'], channel=channel, minSdk='26',
-    label='CinemaTV Dev' if channel == 'dev' else 'CinemaTV', debuggable='false')
+    label='CinemaTV Dev' if channel == 'dev' else 'CinemaTV', debuggable='false', private='false')
 values.update(json.loads(os.environ.get('SYNTHETIC_MANIFEST_OVERRIDES', '{}')))
 manifest = ('<manifest xmlns:android="http://schemas.android.com/apk/res/android" '
     'package="{package}" android:versionCode="{versionCode}" android:versionName="{versionName}">'
     '<uses-sdk android:minSdkVersion="{minSdk}"/>'
     '<application android:debuggable="{debuggable}" android:label="{label}">'
     '<meta-data android:name="dev.cinematv.UPDATE_CHANNEL" android:value="{channel}"/>'
+    '<meta-data android:name="dev.cinematv.PRIVATE_BUILD" android:value="{private}"/>'
     '</application></manifest>').format(**values)
 (sdk / 'manifest.xml').write_text(manifest)
 apk = pathlib.Path('app/build/outputs/apk/release/app-release-unsigned.apk')
@@ -56,6 +58,8 @@ apk.parent.mkdir(parents=True, exist_ok=True)
 with zipfile.ZipFile(apk, 'w') as archive:
     archive.writestr('AndroidManifest.xml', manifest)
     archive.writestr('TEST-ONLY.txt', 'Synthetic non-installable host-test fixture. No signatures.')
+    if os.environ.get('SYNTHETIC_WEB_ASSET'):
+        archive.writestr('assets/tv-web/index.html', 'retired web asset')
 if os.environ.get('SYNTHETIC_MUTATE_SOURCE'):
     pathlib.Path('app/src/main/keep.txt').write_text('changed during build')
 ''')
@@ -124,13 +128,13 @@ print((pathlib.Path(os.environ['ANDROID_HOME']) / 'manifest.xml').read_text())
             self.assertIn(expected, build_args)
 
     def test_default_stable_reservation_and_receipt_remain_compatible(self):
-        self.check_candidate([], 'stable', 10, '0.8.0', 'candidate')
+        self.check_candidate([], 'stable', 16, '0.9.0', 'candidate')
 
     def test_explicit_stable_reservation(self):
-        self.check_candidate(['stable'], 'stable', 10, '0.8.0', 'candidate')
+        self.check_candidate(['stable'], 'stable', 16, '0.9.0', 'candidate')
 
     def test_dev_reservation_and_provenance(self):
-        self.check_candidate(['dev'], 'dev', 11, '0.8.0-dev.1', 'candidate-dev')
+        self.check_candidate(['dev'], 'dev', 15, '0.9.0-dev.3', 'candidate-dev')
 
     def test_invalid_arguments_reject_before_build(self):
         for args in [('preview',), ('dev', 'arbitrary-version')]:
@@ -157,13 +161,14 @@ print((pathlib.Path(os.environ['ANDROID_HOME']) / 'manifest.xml').read_text())
         (self.repo / 'app/src/main/ignored.apk').write_text('synthetic ignored source')
         self.assert_no_build(self.run_script('dev'), 'untracked ignored files')
 
-    def test_account_experiment_rejected_even_for_dev(self):
+    def test_account_experiment_is_rejected_for_stable_only(self):
         path = self.repo / 'app/src/main/java/dev/cinematv/data/douban/Account.kt'
         path.parent.mkdir(parents=True)
         path.write_text('// synthetic unaccepted account source')
         self.commit()
-        for channel in ('stable', 'dev'):
-            self.assert_no_build(self.run_script(channel), 'unaccepted Douban personal-account sources')
+        self.assert_no_build(self.run_script('stable'), 'unaccepted Douban personal-account sources')
+        # The build Gradle guard and AGENTS allow the experiment on the dev channel only.
+        self.check_candidate(['dev'], 'dev', 15, '0.9.0-dev.3', 'candidate-dev')
 
     def test_source_mutation_during_build_rejected(self):
         result = self.run_script('dev', SYNTHETIC_MUTATE_SOURCE='1')
@@ -179,7 +184,8 @@ print((pathlib.Path(os.environ['ANDROID_HOME']) / 'manifest.xml').read_text())
     def test_wrong_packaged_identity_never_gets_receipt(self):
         for field, value in [('package', 'wrong.package'), ('versionCode', '10'),
                              ('versionName', '0.8.0'), ('channel', 'stable'),
-                             ('minSdk', '25'), ('label', 'CinemaTV'), ('debuggable', 'true')]:
+                             ('minSdk', '25'), ('label', 'CinemaTV'), ('debuggable', 'true'),
+                             ('private', 'true')]:
             with self.subTest(field=field):
                 result = self.run_script('dev', SYNTHETIC_MANIFEST_OVERRIDES=json.dumps({field: value}))
                 self.assertNotEqual(result.returncode, 0)
@@ -188,12 +194,19 @@ print((pathlib.Path(os.environ['ANDROID_HOME']) / 'manifest.xml').read_text())
                 import shutil
                 shutil.rmtree(self.repo / 'candidate-dev')
 
-    def test_credential_names_rejected_without_printing_values(self):
-        for name in ('CINEMATV_KEYSTORE_PATH', 'CINEMATV_KEY_ALIAS', 'CINEMATV_KEY_PASSWORD'):
+    def test_credential_and_personal_defaults_rejected_without_printing_values(self):
+        for name in ('CINEMATV_KEYSTORE_PATH', 'CINEMATV_KEY_ALIAS', 'CINEMATV_KEY_PASSWORD',
+                     'CINEMATV_LIBRETV_SERVER', 'CINEMATV_LIBRETV_PASSWORD'):
             with self.subTest(name=name):
                 result = self.run_script('dev', **{name: 'SYNTHETIC-NOT-A-CREDENTIAL'})
-                self.assert_no_build(result, 'signing credentials')
+                self.assert_no_build(result, 'personal build defaults')
                 self.assertNotIn('SYNTHETIC-NOT-A-CREDENTIAL', result.stdout + result.stderr)
+
+    def test_retired_tv_web_assets_are_rejected(self):
+        result = self.run_script('dev', SYNTHETIC_WEB_ASSET='1')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('retired TV Web assets', result.stdout + result.stderr)
+        self.assertFalse((self.repo / 'candidate-dev').exists())
 
     def test_dedicated_jobs_cannot_sign_or_publish(self):
         workflow = (ROOT / '.github/workflows/update-channels.yml').read_text()

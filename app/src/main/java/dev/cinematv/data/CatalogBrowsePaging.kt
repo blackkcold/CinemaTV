@@ -8,7 +8,8 @@ data class CatalogBrowseState(
     val pages: Int = 0,
     val loading: Boolean = false,
     val notice: String = "",
-    val restartRequired: Boolean = false
+    val restartRequired: Boolean = false,
+    val retryableFailure: Boolean = false
 ) {
     val canLoadMore: Boolean get() = nextOffset != null && !loading && !restartRequired
     fun description(nowMs: Long = System.currentTimeMillis()): String = when {
@@ -30,13 +31,14 @@ object CatalogBrowsePaging {
         require(offset == state.nextOffset) { "Unexpected catalog cursor" }
         if (page.licenseRejected || (page.licenseExpiresAt > 0 && page.licenseExpiresAt <= nowMs))
             return state.copy(items = emptyList(), loading = false, nextOffset = null,
-                notice = "目录授权已过期或无效，请刷新目录。", restartRequired = true)
-        if (!page.available) return state.copy(loading = false, notice = "目录暂不可用，已保留成功读取的结果；可重试。")
+                notice = "目录授权已过期或无效，请刷新目录。", restartRequired = true, retryableFailure = false)
+        if (!page.available) return state.copy(loading = false, retryableFailure = true,
+            notice = "目录暂不可用，已保留成功读取的结果；可重试。")
         val first = state.catalog
         if (first != null && (first.provider != page.provider ||
                 first.acquisition?.snapshotId != page.acquisition?.snapshotId ||
                 first.licenseExpiresAt != page.licenseExpiresAt))
-            return state.copy(loading = false, nextOffset = null, restartRequired = true,
+            return state.copy(loading = false, nextOffset = null, restartRequired = true, retryableFailure = false,
                 notice = "目录快照或授权已变化，已停止加载；请刷新目录。")
         val items = (state.items + page.items).mapNotNull { it.usableMetadata(nowMs) }
             .distinctBy { "${it.catalogProvider}:${it.source?.url.orEmpty()}:${it.id}" }

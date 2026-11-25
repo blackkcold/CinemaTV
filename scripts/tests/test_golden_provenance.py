@@ -22,37 +22,95 @@ EXPECTED_MASKS = {
     "05-movies.png": [[410, 482, 555, 530]],
     "06-series.png": [[410, 482, 555, 530]],
     "07-discovery.png": [[410, 482, 555, 530]],
-    "11-settings.png": [[410, 482, 555, 530], [455, 199, 515, 235]],
+    "11-settings.png": [[410, 482, 555, 530], [455, 262, 515, 298]],
 }
 # Exact values from the individually reviewed 80a91e3 artifact bytes, not values
 # derived from the current manifest under test. Tuples are raw SHA, baseline SHA.
-CAPTURES = {'tv1080': {'01-home.png': ('1af2ee36b836e7ee6d317af6ebb747eba28af4ef1e98310a84b7083be2c118ac',
-                            '384697bdfee784beb9bbe662524195fea49ffc0fb20ea1f74685693541d0ffa3'),
-            '03-detail.png': ('0f52259bb6cfef6731bf5c49f896868cba6fbb37c118dde915b4ee86f5e5bfb8',
-                              'e98299b0a1b190a9ecb1c4fea5e434907ef4d3460bfb5109ba12088e4637596b'),
-            '05-movies.png': ('40916671a76b97c3afdc1c400731defa56ab1c6637cfb32d37004237e89f4905',
-                              '405adfd5d58a5deab709b856b00fbdce5ebfb7c484302eb6388b08609ec8bacb'),
-            '06-series.png': ('c11dd2ba0c122f5815f9f2b5864d903a4d3734584bd20566d1d1bdb75e376c67',
-                              '29095fc4533d38cf7a3ef2f6daa4c1df89c06baf5fb6400a459b68e7934bef6b'),
-            '07-discovery.png': ('d99e1bc153c5df83278bea408ef0088b786e78b13938ad7c7b694c2da2e00be4',
-                                 '9e7a6c4c1f8d55ee5e89405dc2a9ab99ad58e2a856eced30abca8f78e278352a'),
-            '11-settings.png': ('2574fa628d8fb3f3baceba7aaed604d5c439fa72dc4f6948cb564bf894dfa8cd',
-                                'e63a35a868615d95b9c0f0cd924e37882ad4047a3aa0146c00a952e5e49ad2cd')},
- 'tv4k': {'01-home.png': ('83ee2874bbc8a6072d296b247ace441b075bef5bc58721dc5d22b78d6a200b06',
-                          'ffdf4474a01890c5c9de32d8f392baa52571e0f8253aa3407aa5c35e7e8fc908'),
-          '03-detail.png': ('78aca7a4484b84d42174b158eb014316167edaa0251485d3e3b2d93ede5cf7ca',
-                            '5c1c2669e71fa96cd5e8018c501f0ee68472138ed91cdb1e28de9d60a0e29111'),
-          '05-movies.png': ('335bff55393f19c4f95280c800654e6aa274319ddec440e84b9c6af2c5ced0dc',
-                            '1f86132bd1998c097447eb58c1b12ea2c529db6d5af6f740a3b226606c06c946'),
-          '06-series.png': ('b9363447b8514efd99200356129ff5f4b6c222ad3f47783b49dc4718a1447d97',
-                            'bdfaa745d93b92bbb10b8e4515ae951ba4cc152542cf3ea084a4930f109c8e87'),
-          '07-discovery.png': ('587893a692c2c879fd22a441fe4565cdb9f3d25276a6c23182f7f7289b9ed680',
-                               '33f93a82041452862af78bfa24c82ac6e7cb6eaaf642d0e1a7287a55cf286121'),
-          '11-settings.png': ('be69fd0bc6fad07f2d9fb19d44a3fbf1a8ba06d830f9eee46f10d457dfe3eb2c',
-                              'd86173e19bafc82bb9a6230ae6cd2f605df71df0bf3923082e88ba738f4bec36')}}
+# Current reviewed baseline: both viewports were recaptured after the reading-scrim
+# change. Each row keeps the raw capture SHA and the normalized baseline SHA.
+BASELINES = {
+        "tv1080": {
+        "source": "8532f98a9d44fbac9b1e0f6eee97dfb4d5d1aa09",
+        "run": 45314161245,
+        "artifact": 14885387790,
+        "date": "2026-11-24",
+        "size": [1920, 1080],
+    },
 
-# Historical detail/settings overrides remain recorded in REVIEW.md even though
-# all six current rows now use 80a91e3. Do not erase the earlier capture evidence.
+        "tv4k": {
+        "source": "5034b64649dae2caae460826efaaa89f03ee451a",
+        "run": 45324367460,
+        "artifact": 14889319771,
+        "date": "2026-11-24",
+        "size": [3840, 2160],
+    },
+
+}
+
+CAPTURES = {
+        "tv1080": {
+        "01-home.png": ("23cf4aa6d06ed1c0afb43aa7cf5ab9b88be91e98f1e4e1adaad80421d3c3aa7b",
+                        "623cdb2a5e0a1043d19694a905d42596517ba31dbeb2ea6b14ac2145a0844d63"),
+        "03-detail.png": ("c839961a450c4d41a7fb1b57a24f167908a3554df2db7e43a3ad3950590f8c01",
+                        "c1bff5f28ddf8cbbad47eced5317ccc995c60522599e733816554a1faa725905"),
+        "05-movies.png": ("98c1c46091a2a3b820d0da0395720179ebf7b502a49a570a53f30a3f906a9e31",
+                        "2e4c81ec0f0c200bb746aeadd5da4892d31a6cc93b8ddaf99c0136e5c602a518"),
+        "06-series.png": ("660bbb5b37da21bee7eecf7a04fb0ddf45a70f93a6d5d6dabd09574affc5b026",
+                        "5fb5362e0d893824d5adf0ed487eddf89fc701dd1a951d1d5cdef4abb3012784"),
+        "07-discovery.png": ("399763ba433cf2e0ad0c20a1f4272465fcef7477d4b8f30feec63433dca9fd8d",
+                        "045152253d6e5b67a3a6441c4e3ea3e7578e6d1c6a688e217460744aa6bc471b"),
+        "11-settings.png": ("fe8f22905f593711961f3a702078e2d0cde627622c97ff87797a05863fcbe72b",
+                        "dbbed3132fead147017704f7764b74180af9b5ade2c167ecac9b0444202cfb5f"),
+    },
+
+        "tv4k": {
+        "01-home.png": ("9e257f07157cb34a8fd2270844053629134ac0514160a5117aaa00773455f529",
+                        "1bc173beaa04d353167c17e412fe679f3c5443a95d322177be59b00fad50dcaa"),
+        "03-detail.png": ("d645aadc731bc0418a42e07cb1160b446c15533d2a775fb2a11a7fe829d96c7e",
+                        "ece633be82403ec24867521498642706c13e12280ddd650ae8aa1b8df6a0a5ce"),
+        "05-movies.png": ("615bfae4d72bb71aaef002c3ecbdf0ec3945206625c147022ff602b0aadaf065",
+                        "df290ae49b411889af160a95f125e613197fe61301915524524dfdbd32fb1bfe"),
+        "06-series.png": ("9a3a814aca47437e17bb1bb76110f0fd8462e086dfae907fe1f9bfc10575f9e2",
+                        "0234bc0bc937f1edecc107c1b99d02561f3c414b75bff70ae3d63cc7d2fe8414"),
+        "07-discovery.png": ("caddf5fe463c808cd89cc0d31614721d80ef1be0e6500b647d17ed9fd7e5a9e8",
+                        "87a38efa7fd77f4dc041decdb4ea94cb3aece6e42ee8ec6df7915bc9784d53ca"),
+        "11-settings.png": ("9bfd85dd0c61ca12caf38a24945879b5b3cdaf895ac477c25e75ae426480102c",
+                        "64f735fb15327e567aa32614af9dcb81c4b3980b89aec33798fe927c5583ee25"),
+    },
+
+}
+
+# The 2026-11-05 settings bytes, kept only because REVIEW.md's superseded ledger
+# still quotes what that review saw.
+LEGACY_SETTINGS_CAPTURE_HASHES = {
+    "tv1080": ("2574fa628d8fb3f3baceba7aaed604d5c439fa72dc4f6948cb564bf894dfa8cd",
+               "e63a35a868615d95b9c0f0cd924e37882ad4047a3aa0146c00a952e5e49ad2cd"),
+    "tv4k": ("be69fd0bc6fad07f2d9fb19d44a3fbf1a8ba06d830f9eee46f10d457dfe3eb2c",
+             "d86173e19bafc82bb9a6230ae6cd2f605df71df0bf3923082e88ba738f4bec36"),
+}
+
+# Only settings uses the later reviewed capture. Preserve the exact source and
+# bytes above for the five unchanged screens and the superseded settings ledger.
+SETTINGS_SOURCE_COMMIT = "ce0ee6c11a936c0e1b0297f132957838502b6f5f"
+SETTINGS_WORKFLOW_RUN = 42183795256
+SETTINGS_REVIEWED_DATE = "2026-11-06"
+SETTINGS_CAPTURES = {
+    "tv1080": {
+        "artifactId": 13487249284,
+        "rawCaptureSha256": "587954dc787a0705049f906ad588c8f80b338cc347946ac0452f5bf70abd4f8d",
+        "baselineSha256": "4236126c5b52dbd53d23511da0079ff666a74adc1628751c3d8539a965440151",
+        "zipSha256": "19741025b80fb71c6127b1fc0980e1bb9671da4e9c6f928013be59f5fcd3bd4d",
+    },
+    "tv4k": {
+        "artifactId": 13488310708,
+        "rawCaptureSha256": "24cb21b122f06cb5454353d1ea906fdcee1d03b9fbe139fc0a62664f16648f49",
+        "baselineSha256": "c1f013ed41c77001199aebb5e5e7f76dcfec4f67746e0f87fbe385bba0d9641c",
+        "zipSha256": "1805ac955ad7a4336a63e4675f2e0f6e5659a52af785d49595c92e51d0cc2c91",
+    },
+}
+
+# Historical detail/settings overrides remain recorded in REVIEW.md. Do not
+# erase earlier capture evidence when accepting a later per-screen refresh.
 HISTORICAL_CAPTURES = [('tv1080/03-detail.png',
   '3b2e9842d9efa305f56f1cef0148b0fcd3fe0a45',
   41911066064,
@@ -146,35 +204,46 @@ class GoldenProvenanceTest(unittest.TestCase):
                     self.assertEqual(len(raster), 540 * (1 + 960 * 3))
                     self.assertTrue(all(value in range(5) for value in raster[::1 + 960 * 3]))
 
-    def test_six_screen_refresh_records_exact_reviewed_capture_provenance(self):
-        artifacts = {"tv1080": (13398969985, [1920, 1080]), "tv4k": (13400124111, [3840, 2160])}
+    def test_each_screen_records_its_exact_reviewed_capture_provenance(self):
         for viewport, captures in CAPTURES.items():
             manifest = read_manifest(viewport)
-            artifact, size = artifacts[viewport]
+            baseline = BASELINES[viewport]
             self.assertEqual(list(captures), list(SCREENS))
             for row in manifest["screens"]:
                 with self.subTest(viewport=viewport, screen=row["file"]):
-                    self.assertEqual(row["sourceCommit"], SOURCE_COMMIT)
-                    self.assertEqual(row["workflowRun"], WORKFLOW_RUN)
+                    self.assertEqual(row["sourceCommit"], baseline["source"])
+                    self.assertEqual(row["workflowRun"], baseline["run"])
                     self.assertEqual(compare.baseline_provenance(manifest, row), {
-                        "baselineSourceCommit": SOURCE_COMMIT, "baselineWorkflowRun": WORKFLOW_RUN,
+                        "baselineSourceCommit": baseline["source"], "baselineWorkflowRun": baseline["run"],
                     })
-                    self.assertEqual(row["artifactId"], artifact)
-                    self.assertEqual(row["rawCaptureSize"], size)
+                    self.assertEqual(row["artifactId"], baseline["artifact"])
+                    self.assertEqual(row["rawCaptureSize"], baseline["size"])
                     self.assertEqual((row["rawCaptureSha256"], row["baselineSha256"]), captures[row["file"]])
-                    self.assertEqual(row["reviewedDate"], REVIEWED_DATE)
+                    self.assertEqual(row["reviewedDate"], baseline["date"])
                     self.assertGreater(len(row["reviewReason"]), 100)
             self.assertEqual(len({row["reviewReason"] for row in manifest["screens"]}), 6)
 
-    def test_refresh_preserves_all_masks_and_original_manifest_defaults(self):
+    def test_refresh_preserves_reviewed_masks_and_viewport_defaults(self):
         for viewport in CAPTURES:
             manifest = read_manifest(viewport)
-            self.assertEqual(manifest["sourceCommit"], "07d85420df3fd13a83e0d9b41b740927d5011bc0")
-            self.assertEqual(manifest["workflowRun"], 41819223687)
-            self.assertEqual(manifest["reviewedDate"], "2026-11-04")
+            baseline = BASELINES[viewport]
+            self.assertEqual(manifest["sourceCommit"], baseline["source"])
+            self.assertEqual(manifest["workflowRun"], baseline["run"])
+            self.assertEqual(manifest["reviewedDate"], baseline["date"])
             self.assertEqual(manifest["viewport"], viewport)
             self.assertEqual(manifest["normalizedSize"], [960, 540])
             self.assertEqual({row["file"]: row["masks"] for row in manifest["screens"]}, EXPECTED_MASKS)
+
+    def test_settings_moves_existing_port_mask_without_expanding_it(self):
+        original = [455, 199, 515, 235]
+        for viewport in CAPTURES:
+            row = next(row for row in read_manifest(viewport)["screens"] if row["file"] == "11-settings.png")
+            self.assertEqual(len(row["masks"]), 2)
+            self.assertEqual(row["masks"][0], [410, 482, 555, 530])
+            relocated = row["masks"][1]
+            self.assertEqual([new - old for new, old in zip(relocated, original)], [0, 63, 0, 63])
+            self.assertEqual((relocated[2] - relocated[0], relocated[3] - relocated[1]),
+                             (original[2] - original[0], original[3] - original[1]))
 
     def test_comparison_limits_and_normalization_are_not_weakened(self):
         self.assertEqual(compare.SIZE, (960, 540))
@@ -221,6 +290,28 @@ class GoldenProvenanceTest(unittest.TestCase):
             self.assertIn(required, review)
         for name in SCREENS:
             self.assertIn(f"`{name}`", review)
+
+    def test_settings_review_preserves_prior_history_and_exact_capture_evidence(self):
+        review = (ROOT / "design/ui/goldens/REVIEW.md").read_text()
+        previous, current = review.split("\n## Settings destinations refresh · 2026-11-06", 1)
+        self.assertEqual(hashlib.sha256(previous.encode()).hexdigest(),
+                         "a66732365a117846778255728ab69694fbca739a2c974c8e4c7bd3ed81715949")
+        for required in (SETTINGS_SOURCE_COMMIT, str(SETTINGS_WORKFLOW_RUN),
+                         "6f3d64d375dc82d5ca467fb38db59ab5643354c0", "62 of 62", "18 of 18",
+                         "The source run remains failed", "63 normalized pixels", "no area expansion",
+                         "0.033476/0.070604", "0.032889/0.066644", "0.000007/0",
+                         "Pillow 13.0.0", "no masks baked into the PNG", "fresh exact-commit acceptance"):
+            self.assertIn(required, current)
+        for viewport, capture in SETTINGS_CAPTURES.items():
+            with self.subTest(viewport=viewport):
+                for value in capture.values():
+                    self.assertIn(str(value), current)
+                ledger = current.split("### Superseded 2026-11-05 settings captures", 1)[1]
+                line = next(line for line in ledger.splitlines() if f"`{viewport}/11-settings.png`" in line)
+                old_artifact = {"tv1080": 13398969985, "tv4k": 13400124111}[viewport]
+                for value in (SOURCE_COMMIT, str(WORKFLOW_RUN), REVIEWED_DATE, str(old_artifact),
+                              *LEGACY_SETTINGS_CAPTURE_HASHES[viewport]):
+                    self.assertIn(value, line)
 
 
 if __name__ == "__main__":

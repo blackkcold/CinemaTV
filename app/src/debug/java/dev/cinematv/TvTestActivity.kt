@@ -3,7 +3,6 @@ package dev.cinematv
 import android.os.Bundle
 import android.view.View
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.CompositionLocalProvider
@@ -30,6 +29,7 @@ class TvTestActivity : ComponentActivity() {
     var testFontScaleOverride by mutableStateOf<Float?>(null)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        dev.cinematv.diagnostics.DiagnosticLog.install(this)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         @Suppress("DEPRECATION")
         window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_FULLSCREEN or
@@ -45,7 +45,6 @@ class TvTestActivity : ComponentActivity() {
                         fontLoadFailures = fonts.failedAssets
                         bundledFontsReady = fonts.regional.size == NotoRegion.entries.size && fonts.failedAssets.isEmpty()
                     }
-                    BackHandler(enabled = model.page != Page.HOME) { model.back() }
                     TvRootApp(model) { decodedScene = it }
                 }
             }

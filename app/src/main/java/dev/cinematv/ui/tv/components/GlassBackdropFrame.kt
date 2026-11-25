@@ -19,6 +19,8 @@ internal class GlassDrawDiagnostics {
         internal set
     var basicDraws: Int = 0
         internal set
+    var sourcePresentDrawsTotal: Int = 0
+        internal set
     private val scoped = mutableMapOf<String, ScopedGlassDraws>()
 
     fun record(mode: GlassRenderMode, scope: String?, sourcePresent: Boolean) {
@@ -27,6 +29,7 @@ internal class GlassDrawDiagnostics {
             GlassRenderMode.BLUR -> blurDraws++
             GlassRenderMode.BASIC -> basicDraws++
         }
+        if (sourcePresent) sourcePresentDrawsTotal++
         // Null in ordinary app/benchmark hosts. Scope is captured at composition,
         // never looked up from a changing model during this draw callback.
         if (scope != null) {
@@ -38,6 +41,14 @@ internal class GlassDrawDiagnostics {
                 sourcePresentDraws = previous.sourcePresentDraws + if (sourcePresent) 1 else 0,
             )
         }
+    }
+
+    fun clear() {
+        successfulLensDraws = 0
+        blurDraws = 0
+        basicDraws = 0
+        sourcePresentDrawsTotal = 0
+        scoped.clear()
     }
 
     fun scopedSnapshot(scope: String): ScopedGlassDraws = scoped[scope] ?: ScopedGlassDraws()

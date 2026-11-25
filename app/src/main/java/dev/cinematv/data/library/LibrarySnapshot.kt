@@ -13,12 +13,15 @@ data class LibraryRecord(
     val historyAt: Long?
 )
 
+enum class LibraryChange { FULL, PROGRESS }
+
 /** Immutable, memory-only read model. Safe for Compose and synchronous repository accessors. */
 data class LibrarySnapshot(
     val ready: Boolean = false,
     val records: List<LibraryRecord> = emptyList(),
     val episodeProgress: Map<String, EpisodeProgress> = emptyMap(),
-    val associations: LocalWorkAssociations = LocalWorkAssociations()
+    val associations: LocalWorkAssociations = LocalWorkAssociations(),
+    val change: LibraryChange = LibraryChange.FULL
 ) {
     private val byEntry by lazy { records.associateBy { MediaDomainMapper.entryId(it.item) } }
 
@@ -73,6 +76,29 @@ data class LibrarySnapshot(
         val progress = index?.let { progress(item, it) }
             ?: return item.copy(positionMs = 0L, durationMs = 0L, lastEpisode = 0)
         return item.copy(positionMs = progress.positionMs, durationMs = progress.durationMs, lastEpisode = index)
+    }
+
+    /** Replaces only the changed record; null means the caller must do a full refresh. */
+    internal fun withProgress(
+        entryId: String,
+        record: LibraryRecord,
+        progress: EpisodeProgress,
+    ): LibrarySnapshot? {
+        var found = false
+        val nextRecords = records.map { current ->
+            if (MediaDomainMapper.entryId(current.item) == entryId) {
+                found = true
+                record
+            } else {
+                current
+            }
+        }
+        if (!found) return null
+        return copy(
+            records = nextRecords,
+            episodeProgress = episodeProgress + (progress.episodeId to progress),
+            change = LibraryChange.PROGRESS,
+        )
     }
 }
 

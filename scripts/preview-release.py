@@ -85,7 +85,7 @@ def validate(run, jobs, tree, requested, receipts, classes, payload, sha):
     age = datetime.now(timezone.utc) - datetime.fromisoformat(run['updated_at'].replace('Z', '+00:00'))
     require(timedelta(0) <= age <= timedelta(days=14), 'Source run is stale or future-dated')
     require(re.fullmatch(VERSION, requested), 'Not a prerelease')
-    require(set(classes) == {'phone', 'tv1080', 'tv4k', 'compat26'}, 'Not the full matrix')
+    require(set(classes) == {'phone', 'tv1080', 'tv4k', 'tvNative', 'tv29', 'tv31', 'tv36', 'compat26'}, 'Not the full matrix')
     for name in ['apk'] + [f'ui-qa / UI / {device}' for device in classes]:
         matches = [job for job in jobs if job['name'] == name]
         require(len(matches) == 1 and matches[0]['conclusion'] == 'success' and matches[0]['status'] == 'completed', f'Missing successful job: {name}')

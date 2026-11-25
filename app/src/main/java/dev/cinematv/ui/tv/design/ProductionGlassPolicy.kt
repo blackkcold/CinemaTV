@@ -1,7 +1,26 @@
 package dev.cinematv.ui.tv.design
 
+import dev.cinematv.Page
+
 /** Render backends, deliberately separate from the persisted [GlassQuality] preference. */
 enum class GlassRenderMode { BASIC, BLUR, FULL }
+
+/** The semantic surface a material is drawn on. The level is a cap, never a mandate. */
+enum class TvGlassRole { NAVIGATION, ACTION, PANEL, DIALOG, PLAYER_OVERLAY }
+
+/**
+ * The most a surface may render. Dialogs and player overlays are Basic by contract:
+ * they have no protected still scene to sample. Panels may use the full area; no
+ * per-screen area/count limit belongs here until G6 measurement supports one.
+ */
+fun glassLevelFor(page: Page, role: TvGlassRole): GlassRenderMode = when (role) {
+    TvGlassRole.NAVIGATION, TvGlassRole.ACTION, TvGlassRole.PANEL -> GlassRenderMode.FULL
+    TvGlassRole.DIALOG, TvGlassRole.PLAYER_OVERLAY -> GlassRenderMode.BASIC
+}
+
+/** Both the platform/user decision and the surface cap apply; the lower tier wins. */
+fun effectiveGlassLevel(platform: GlassRenderMode, cap: GlassRenderMode): GlassRenderMode =
+    if (platform.ordinal <= cap.ordinal) platform else cap
 
 /** Platform thermal hints, not a GPU benchmark or a temperature measurement. */
 enum class GlassThermalState { UNKNOWN, NONE, LIGHT, MODERATE, SEVERE, CRITICAL, EMERGENCY, SHUTDOWN }

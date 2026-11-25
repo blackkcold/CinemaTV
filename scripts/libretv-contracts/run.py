@@ -19,6 +19,19 @@ VERSION = '2.21.1'
 COMMIT = '29cbeb3d37b4876f909a0354087a3531af0447f6'
 ARCHIVE = f'libretv-{VERSION}-standalone.tar.gz'
 SHA256 = 'df9b240c0fdbb8470aaccccc5435f74820d6bea6f4d905b2c83d1e6dd0973786'
+RELEASES = {
+    '2.21.1': (COMMIT, SHA256),
+    '2.21.2': ('722e86fce102aa6701e73a83dd0a14eb5ba707c9',
+               '153ac847179afc8ae8764a40f9352b5ef277d8dfb253c602b320fb41b38599f6'),
+}
+
+
+def select_release(version):
+    """Only audited, checksum-pinned official releases may execute in this harness."""
+    global VERSION, COMMIT, ARCHIVE, SHA256
+    COMMIT, SHA256 = RELEASES[version]
+    VERSION = version
+    ARCHIVE = f'libretv-{VERSION}-standalone.tar.gz'
 
 
 def verify_archive(archive, sums):
@@ -30,12 +43,14 @@ def verify_archive(archive, sums):
         raise ValueError('Release archive checksum mismatch')
 
 
-def child_env(port, password):
+def child_env(port, password, subscriptions=None):
     # Do not inherit credentials, sources, proxy settings, or NODE_OPTIONS.
     env = {'PATH': os.defpath, 'HOSTNAME': '127.0.0.1', 'PORT': str(port),
            'NODE_ENV': 'production', 'NEXT_TELEMETRY_DISABLED': '1'}
     if password is not None:
         env['PASSWORD'] = password
+    if subscriptions is not None:
+        env['DEFAULT_SUBSCRIPTIONS'] = json.dumps(subscriptions)
     return env
 
 
@@ -56,13 +71,13 @@ def request(port, path, method='GET', body=None, cookie=None, raw=None):
 
 
 @contextlib.contextmanager
-def server(node, directory, password):
+def server(node, directory, password, subscriptions=None):
     with socket.socket() as sock:
         sock.bind(('127.0.0.1', 0))
         port = sock.getsockname()[1]
     # Output is intentionally discarded: credentials/cookies never become evidence.
     proc = subprocess.Popen([str(node), 'server.js'], cwd=directory,
-                            env=child_env(port, password), stdout=subprocess.DEVNULL,
+                            env=child_env(port, password, subscriptions), stdout=subprocess.DEVNULL,
                             stderr=subprocess.DEVNULL)
     try:
         for _ in range(100):
@@ -155,11 +170,13 @@ def run(node, directory):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--version', choices=sorted(RELEASES), default='2.21.1')
     parser.add_argument('--archive', required=True, type=Path)
     parser.add_argument('--sums', required=True, type=Path)
     parser.add_argument('--node', required=True, type=Path)
     parser.add_argument('--output', required=True, type=Path)
     args = parser.parse_args()
+    select_release(args.version)
     verify_archive(args.archive, args.sums)
     node = args.node.resolve()
     runtime = subprocess.check_output([str(node), '--version'], text=True).strip()

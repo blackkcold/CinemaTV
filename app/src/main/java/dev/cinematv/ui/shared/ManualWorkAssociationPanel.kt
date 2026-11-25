@@ -20,7 +20,7 @@ import dev.cinematv.data.library.associationConflicts
 import dev.cinematv.data.library.associationEvidence
 import dev.cinematv.data.library.visibleAssociationItems
 import kotlinx.coroutines.delay
-import dev.cinematv.ui.GlassAction
+import dev.cinematv.ui.tv.components.GlassAction
 import dev.cinematv.ui.mobile.MobileGlassOutlinedButton
 import dev.cinematv.ui.tv.design.TvColors
 import dev.cinematv.ui.tv.focus.rememberFocusTarget

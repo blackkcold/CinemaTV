@@ -1,3 +1,7 @@
+> **Historical after 2026-11-25.** The active production depth/lens contract is carried
+> in [`GLASS_PRODUCTION.md`](GLASS_PRODUCTION.md). This V4 document is retained for the
+> original depth reference and should not be used as a separate policy source.
+
 # V4 depth controls
 
 Implementation follows the approved V4 depth reference: wider curved inner rim,

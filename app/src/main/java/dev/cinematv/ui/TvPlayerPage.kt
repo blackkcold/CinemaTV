@@ -1,17 +1,22 @@
 package dev.cinematv.ui
 
+import dev.cinematv.ui.tv.components.GlassAction
+import dev.cinematv.ui.tv.components.TvErrorState
+
 import dev.cinematv.ui.icons.CinemaSymbol
 import android.view.ViewGroup
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import dev.cinematv.ui.typography.CinemaTvText as Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusProperties
@@ -30,24 +35,42 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.C
 import androidx.media3.common.Format
-import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
-import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
-import dev.cinematv.playback.PlaybackFactory
+import dev.cinematv.playback.NativePlaybackSession
 import dev.cinematv.playback.ObservePlaybackLifecycle
+import dev.cinematv.playback.PlaybackProgressWritePolicy
+import dev.cinematv.playback.togglePlayPause
+import java.util.concurrent.atomic.AtomicLong
 import dev.cinematv.ui.tv.components.CinemaGlassSurface
+import dev.cinematv.ui.tv.components.TvProgressBar
 import dev.cinematv.ui.tv.design.LocalTvLayout
 import dev.cinematv.ui.tv.focus.trackTvContentFocus
+import dev.cinematv.ui.shared.RemoteBackPress
 import dev.cinematv.Page
 import dev.cinematv.CinemaViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 
 private enum class PlayerPanel { QUALITY, AUDIO, SUBTITLE, SPEED }
+
+/**
+ * The player owns a local Back ladder: close its panel, then hide its controls, then
+ * leave the route. A playback error skips the ladder because there is nothing left to
+ * control. Kept pure so the order is tested without a decoding session.
+ */
+internal enum class PlayerBackStep { CLOSE_PANEL, HIDE_CONTROLS, EXIT }
+
+internal fun playerBackStep(panelOpen: Boolean, controlsVisible: Boolean, hasError: Boolean): PlayerBackStep =
+    when {
+        panelOpen -> PlayerBackStep.CLOSE_PANEL
+        hasError -> PlayerBackStep.EXIT
+        controlsVisible -> PlayerBackStep.HIDE_CONTROLS
+        else -> PlayerBackStep.EXIT
+    }
 private data class TrackChoice(val title: String, val group: Tracks.Group, val trackIndex: Int)
 
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
@@ -93,21 +116,32 @@ private fun applyChoice(player: Player, type: Int, choice: TrackChoice?) {
 @Composable
 fun TvPlayerPage(model: CinemaViewModel) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    val session = model.playbackSession ?: return
-    val uri = session.url
-    val episodeAtCreation = session.episodeIndex
-    val player = remember(session) {
-        PlaybackFactory.create(context, cacheVod = session.item != null).apply {
-            setMediaItem(MediaItem.fromUri(uri))
-            prepare()
-            playWhenReady = true
-            if (model.playbackPosition > 0) seekTo(model.playbackPosition)
+    val session = model.playbackSession
+    if (session == null) {
+        Box(Modifier.fillMaxSize().background(Color.Black).testTag("tv-page-player"), contentAlignment = Alignment.Center) {
+            TvErrorState(
+                title = "播放会话未就绪",
+                detail = "请返回详情页重新选择剧集",
+                retryLabel = "返回",
+                onRetry = { model.back() },
+            )
         }
+        return
     }
+    val episodeAtCreation = session.episodeIndex
+    val playback = remember(session) {
+        NativePlaybackSession(context, mediaId = "playback-${session.generation}", uri = session.url,
+            title = model.playbackTitle, positionMs = model.playbackPosition, cacheVod = session.item != null,
+            autoPlay = session.autoPlay)
+    }
+    val player = playback.player
     var position by remember(session) { mutableLongStateOf(0L) }
     var duration by remember(session) { mutableLongStateOf(0L) }
     var error by remember(session) { mutableStateOf("") }
     var isPlaying by remember(session) { mutableStateOf(true) }
+    val lastSavedPosition = remember(session) { AtomicLong(model.playbackPosition.coerceAtLeast(0L)) }
+    var buffering by remember(session) { mutableStateOf(player.playbackState == Player.STATE_BUFFERING) }
+    var playRequested by remember(session) { mutableStateOf(player.playWhenReady) }
     var controlsVisible by remember(session) { mutableStateOf(true) }
     var panel by remember(session) { mutableStateOf<PlayerPanel?>(null) }
     var tracksVersion by remember(session) { mutableIntStateOf(0) }
@@ -120,17 +154,16 @@ fun TvPlayerPage(model: CinemaViewModel) {
     val subtitleFocus = remember(session) { FocusRequester() }
     val speedFocus = remember(session) { FocusRequester() }
     var returnFocus by remember(session) { mutableStateOf(playFocus) }
+    val backPress = remember(session) { RemoteBackPress() }
     val layout = LocalTvLayout.current
-    ObservePlaybackLifecycle(player)
     val handleBack: () -> Unit = {
-        when {
-            panel != null -> { panel = null; controlsVisible = true; interaction++ }
-            error.isNotBlank() -> model.back()
-            controlsVisible -> controlsVisible = false
-            else -> model.back()
+        when (playerBackStep(panel != null, controlsVisible, error.isNotBlank())) {
+            PlayerBackStep.CLOSE_PANEL -> { panel = null; controlsVisible = true; interaction++ }
+            PlayerBackStep.HIDE_CONTROLS -> controlsVisible = false
+            PlayerBackStep.EXIT -> model.back()
         }
     }
-    BackHandler(onBack = handleBack)
+    BackHandler { backPress.reset(); handleBack() }
     val openPanel: (PlayerPanel, FocusRequester) -> Unit = { next, trigger ->
         controlsVisible = true
         returnFocus = trigger
@@ -139,6 +172,7 @@ fun TvPlayerPage(model: CinemaViewModel) {
     }
 
     DisposableEffect(player) {
+        var ended = false
         val listener = object : Player.Listener {
             override fun onPlayerError(exception: PlaybackException) {
                 error = exception.message ?: "视频解码或网络错误"
@@ -146,24 +180,51 @@ fun TvPlayerPage(model: CinemaViewModel) {
                 controlsVisible = true
             }
             override fun onPlaybackStateChanged(state: Int) {
-                if (state == Player.STATE_ENDED) model.playerEnded(player.currentPosition, player.duration.coerceAtLeast(0L), episodeAtCreation, session)
+                buffering = state == Player.STATE_BUFFERING
+                if (state == Player.STATE_ENDED) {
+                    ended = true
+                    model.playerEnded(player.currentPosition, player.duration.coerceAtLeast(0L), episodeAtCreation, session)
+                }
             }
+            override fun onIsLoadingChanged(loading: Boolean) { buffering = loading }
             override fun onIsPlayingChanged(playing: Boolean) { isPlaying = playing }
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                playRequested = playWhenReady
+                session.recordPlayIntent(playWhenReady, player.playbackSuppressionReason != Player.PLAYBACK_SUPPRESSION_REASON_NONE)
+            }
+            override fun onPlaybackSuppressionReasonChanged(playbackSuppressionReason: Int) {
+                session.recordPlayIntent(player.playWhenReady, playbackSuppressionReason != Player.PLAYBACK_SUPPRESSION_REASON_NONE)
+            }
             override fun onTracksChanged(tracks: Tracks) { tracksVersion++ }
         }
         player.addListener(listener)
         onDispose {
-            model.savePlaybackPosition(player.currentPosition.coerceAtLeast(0L), episodeAtCreation, player.duration.coerceAtLeast(0L), session)
+            val finalPosition = player.currentPosition
+            val persistedPosition = finalPosition.coerceAtLeast(0L)
+            if (!ended && finalPosition != C.TIME_UNSET &&
+                PlaybackProgressWritePolicy.shouldPersistFinal(persistedPosition, lastSavedPosition.get())) {
+                model.savePlaybackPosition(persistedPosition, episodeAtCreation, player.duration.coerceAtLeast(0L), session)
+                lastSavedPosition.set(persistedPosition)
+            }
             player.removeListener(listener)
-            player.release()
+            playback.close()
         }
     }
+    ObservePlaybackLifecycle(playback)
     LaunchedEffect(player) {
         var ticks = 0
         while (isActive) {
-            position = player.currentPosition.coerceAtLeast(0L)
+            val currentPosition = player.currentPosition
+            position = currentPosition.coerceAtLeast(0L)
             duration = player.duration.coerceAtLeast(0L)
-            if (++ticks % 5 == 0) model.savePlaybackPosition(position, episodeAtCreation, player.duration.coerceAtLeast(0L), session)
+            if (++ticks % 5 == 0 && currentPosition != C.TIME_UNSET &&
+                PlaybackProgressWritePolicy.shouldPersistWhilePlaying(
+                    currentPosition, lastSavedPosition.get(), player.isPlaying,
+                )) {
+                model.savePlaybackPosition(currentPosition.coerceAtLeast(0L), episodeAtCreation,
+                    player.duration.coerceAtLeast(0L), session)
+                lastSavedPosition.set(currentPosition.coerceAtLeast(0L))
+            }
             delay(1000)
         }
     }
@@ -192,15 +253,24 @@ fun TvPlayerPage(model: CinemaViewModel) {
     }
 
     Box(
-        Modifier.fillMaxSize().background(Color.Black)
+        Modifier.fillMaxSize().background(Color.Black).testTag("tv-page-player")
             .focusRequester(rootFocus)
             .onPreviewKeyEvent { event ->
-                if (event.type == KeyEventType.KeyDown && event.key == Key.Back) {
-                    handleBack(); true
-                } else if (event.type == KeyEventType.KeyDown && event.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE) {
-                    if (player.isPlaying) player.pause() else player.play()
-                    controlsVisible = true; returnFocus = playFocus
-                    interaction++; true
+                if (event.key == Key.Back) {
+                    val native = event.nativeKeyEvent
+                    when (native.action) {
+                        android.view.KeyEvent.ACTION_DOWN -> backPress.down(native.downTime, native.repeatCount)
+                        android.view.KeyEvent.ACTION_UP -> if (backPress.up(native.downTime, native.isCanceled)) handleBack()
+                    }
+                    // Consume the entire remote press. Changing routes on key-up
+                    // keeps its release out of the newly created browsing view.
+                    true
+                } else if (playback.handleMediaKey(event.nativeKeyEvent)) {
+                    if (event.type == KeyEventType.KeyDown) {
+                        controlsVisible = true; returnFocus = playFocus
+                        interaction++
+                    }
+                    true
                 } else if (event.type != KeyEventType.KeyDown || panel != null || controlsVisible) false
                 else when (event.key) {
                     Key.DirectionCenter, Key.Enter -> {
@@ -227,7 +297,8 @@ fun TvPlayerPage(model: CinemaViewModel) {
                     )
                 }
             },
-            update = { it.player = player }
+            update = { it.player = player },
+            onRelease = { it.player = null }
         )
         if (controlsVisible) {
             Box(Modifier.fillMaxSize().background(Brush.verticalGradient(
@@ -264,15 +335,16 @@ fun TvPlayerPage(model: CinemaViewModel) {
                                 else -> false
                             }
                         }.trackTvContentFocus().focusable(), contentAlignment = Alignment.CenterStart) {
-                        Box(Modifier.fillMaxWidth().height(4.dp).background(Color.White.copy(alpha = .23f)))
-                        if (duration > 0) Box(Modifier.fillMaxWidth((position.toDouble() / duration).toFloat().coerceIn(0f, 1f))
-                            .height(4.dp).background(Ivory))
+                        TvProgressBar(
+                            progress = if (duration > 0) (position.toDouble() / duration).toFloat() else 0f,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(9.dp), verticalAlignment = Alignment.CenterVertically) {
                         GlassAction("−10s", Modifier.width(62.dp).height(41.dp), onFocus = { interaction++ }) { seek(-10000) }
-                        GlassAction(if (isPlaying) "暂停" else "播放", Modifier.focusRequester(playFocus).width(80.dp).height(41.dp),
-                            prominent = true, icon = if (isPlaying) CinemaSymbol.Pause else CinemaSymbol.Play, onFocus = { interaction++ }) {
-                            if (player.isPlaying) player.pause() else player.play()
+                        GlassAction(if (playRequested) "暂停" else "播放", Modifier.focusRequester(playFocus).width(80.dp).height(41.dp),
+                            prominent = true, icon = if (playRequested) CinemaSymbol.Pause else CinemaSymbol.Play, onFocus = { interaction++ }) {
+                            player.togglePlayPause()
                             interaction++
                         }
                         GlassAction("+10s", Modifier.width(62.dp).height(41.dp), onFocus = { interaction++ }) { seek(10000) }
@@ -284,6 +356,13 @@ fun TvPlayerPage(model: CinemaViewModel) {
                         if (model.playerReturnPage == Page.DETAIL) GlassAction("选集 / 换源", Modifier.width(110.dp).height(41.dp), onFocus = { interaction++ }) { model.back() }
                     }
                 }
+            }
+        }
+
+        if (buffering) {
+            Box(Modifier.align(Alignment.Center).background(Color(0xCC090A0D), RoundedCornerShape(14.dp))
+                .padding(horizontal = 22.dp, vertical = 14.dp)) {
+                Text("正在缓冲…", color = Ivory, fontSize = 16.sp)
             }
         }
 

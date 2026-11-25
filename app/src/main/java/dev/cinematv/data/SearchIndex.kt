@@ -13,7 +13,9 @@ data class SearchFilters(
     val year: String? = null,
     val minRating: Double? = null,
     val ratingSource: String? = null,
-    val doubanTopOnly: Boolean = false
+    val doubanTopOnly: Boolean = false,
+    /** Curated public tag list; null means no tag list is active. */
+    val doubanTag: String? = null
 ) {
     fun matches(item: MediaItem, nowMs: Long = System.currentTimeMillis()): Boolean {
         if (!CatalogLicensePolicy.isAvailable(item, nowMs)) return false
@@ -21,7 +23,7 @@ data class SearchFilters(
         if (!year.isNullOrBlank() && item.year.trim() != year.trim()) return false
         val provider = ratingSource?.takeIf(String::isNotBlank)?.let(RatingPolicy::normalizeProvider)
         if (provider != null && RatingPolicy.provider(item) != provider) return false
-        if (provider == "douban" && !RatingPolicy.hasLicensedDoubanMetadata(item, nowMs)) return false
+        if (provider == "douban" && !RatingPolicy.hasDoubanMetadata(item, nowMs)) return false
         if (minRating != null) {
             if (!minRating.isFinite() || minRating !in 0.0..10.0) return false
             val score = RatingPolicy.score(item, nowMs) ?: return false
@@ -56,15 +58,23 @@ object RatingPolicy {
         CatalogLicensePolicy.isAvailable(item, nowMs) && provider(item) == "douban" &&
             item.ratingLicenseExpiresAt > 0 && item.ratingLicenseExpiresAt > nowMs
 
+    /**
+     * A public-page score carries explicit provenance instead of a licence declaration.
+     * It is still a Douban score, so it must never be presented as another provider's.
+     */
+    fun hasDoubanMetadata(item: MediaItem, nowMs: Long = System.currentTimeMillis()): Boolean =
+        CatalogLicensePolicy.isAvailable(item, nowMs) && provider(item) == "douban" &&
+            (item.ratingPublic || (item.ratingLicenseExpiresAt > 0 && item.ratingLicenseExpiresAt > nowMs))
+
     fun score(item: MediaItem, nowMs: Long = System.currentTimeMillis()): Double? {
         if (!CatalogLicensePolicy.isAvailable(item, nowMs)) return null
         if (provider(item) == "libretv") return null // A transport is not a rating authority.
-        if (provider(item) == "douban" && !hasLicensedDoubanMetadata(item, nowMs)) return null
+        if (provider(item) == "douban" && !hasDoubanMetadata(item, nowMs)) return null
         return item.rating.trim().toDoubleOrNull()?.takeIf { it.isFinite() && it in 0.0..10.0 }
     }
 
     fun isDoubanTop(item: MediaItem, nowMs: Long = System.currentTimeMillis()): Boolean =
-        hasLicensedDoubanMetadata(item, nowMs) && item.doubanTopRank?.let { it in 1..250 } == true
+        hasDoubanMetadata(item, nowMs) && item.doubanTopRank?.let { it in 1..250 } == true
 }
 
 data class SearchHit(

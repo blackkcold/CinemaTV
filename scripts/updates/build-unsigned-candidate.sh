@@ -3,9 +3,10 @@
 set -euo pipefail
 : "${ANDROID_HOME:?}"
 # Inspect only variable names; never pipe/print environment values (or depend on SIGPIPE).
-for variable in ${!CINEMATV_KEYSTORE_@} CINEMATV_KEY_PASSWORD CINEMATV_KEY_ALIAS; do
+for variable in ${!CINEMATV_KEYSTORE_@} CINEMATV_KEY_PASSWORD CINEMATV_KEY_ALIAS \
+    CINEMATV_LIBRETV_SERVER CINEMATV_LIBRETV_PASSWORD; do
   if declare -p "$variable" >/dev/null 2>&1; then
-    echo 'Unsigned candidate preparation refuses all external signing credentials'; exit 1
+    echo 'Unsigned candidate preparation refuses external signing credentials and personal build defaults'; exit 1
   fi
 done
 if [ "$#" -gt 1 ]; then
@@ -14,8 +15,10 @@ fi
 # One reserved global versionCode sequence. The no-argument stable path is unchanged.
 CHANNEL=${1:-stable}
 case "$CHANNEL" in
-  stable) VERSION_NAME=0.8.0; VERSION_CODE=10; OUTPUT=candidate ;;
-  dev) VERSION_NAME=0.8.0-dev.1; VERSION_CODE=11; OUTPUT=candidate-dev ;;
+  stable) VERSION_NAME=0.9.0; VERSION_CODE=16; OUTPUT=candidate ;;
+  # Codes 12 (v0.8.0-dev.2), 13 (archived TV Web build) and 14 (v0.9.0-dev.2)
+  # are already public.
+  dev) VERSION_NAME=0.9.0-dev.3; VERSION_CODE=15; OUTPUT=candidate-dev ;;
   *) echo 'Usage: build-unsigned-candidate.sh [stable|dev]'; exit 2 ;;
 esac
 if [ -e "$OUTPUT" ]; then
@@ -28,12 +31,15 @@ fi
 if [ -n "$(git ls-files --others --ignored --exclude-standard app/src backdrop/src)" ]; then
   echo 'Candidate refuses untracked ignored files in source/resource inputs'; exit 1
 fi
-# These two first candidates use main's accepted app payload, not the account experiment.
-for source_root in app/src/main/java/dev/cinematv/data/douban app/src/main/java/dev/cinematv/ui/douban; do
-  if [ -d "$source_root" ] && [ -n "$(find "$source_root" -type f -name '*.kt' -print -quit)" ]; then
-    echo 'Candidate refuses unaccepted Douban personal-account sources'; exit 1
-  fi
-done
+# Stable candidates must never carry the unaccepted account experiment. Gradle enforces
+# the same channel split and AGENTS keeps that code dev-only; a dev candidate may carry it.
+if [ "$CHANNEL" = stable ]; then
+  for source_root in app/src/main/java/dev/cinematv/data/douban app/src/main/java/dev/cinematv/ui/douban; do
+    if [ -d "$source_root" ] && [ -n "$(find "$source_root" -type f -name '*.kt' -print -quit)" ]; then
+      echo 'Candidate refuses unaccepted Douban personal-account sources'; exit 1
+    fi
+  done
+fi
 SOURCE_COMMIT=$(git rev-parse HEAD)
 SOURCE_TREE=$(git rev-parse 'HEAD^{tree}')
 export SOURCE_COMMIT SOURCE_TREE CHANNEL VERSION_NAME VERSION_CODE OUTPUT
@@ -55,13 +61,17 @@ if "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify "$APK" >/dev/null 2>&1; t
   echo 'Unsigned candidate unexpectedly has a valid signature'; exit 1
 fi
 unzip -t "$APK" > /dev/null
+if unzip -l "$APK" | grep -q 'assets/tv-web/'; then
+  echo 'Candidate must not contain retired TV Web assets' >&2
+  exit 1
+fi
 mkdir "$OUTPUT"
 cp "$APK" "$OUTPUT/CinemaTV-$VERSION_NAME-code$VERSION_CODE-$CHANNEL-UNSIGNED.apk"
 ANALYZER=$(find "$ANDROID_HOME/cmdline-tools" -type f -name apkanalyzer | head -1)
 test -n "$ANALYZER"
 "$ANALYZER" manifest print "$APK" > "$OUTPUT/AndroidManifest.xml"
 python3 - <<'PY'
-import hashlib, json, os, pathlib, re, subprocess, xml.etree.ElementTree as ET
+import hashlib, json, os, pathlib, re, subprocess, xml.etree.ElementTree as ET, zipfile
 root = pathlib.Path(os.environ['OUTPUT'])
 channel, name, code = os.environ['CHANNEL'], os.environ['VERSION_NAME'], os.environ['VERSION_CODE']
 manifest = ET.parse(root / 'AndroidManifest.xml').getroot()
@@ -76,7 +86,10 @@ assert sdk.get(a + 'minSdkVersion') == '26'
 assert app.get(a + 'debuggable', 'false') == 'false'
 assert app.get(a + 'label') == ('CinemaTV Dev' if channel == 'dev' else 'CinemaTV')
 assert [x.get(a+'value') for x in app.findall('meta-data') if x.get(a+'name') == 'dev.cinematv.UPDATE_CHANNEL'] == [channel]
+assert [x.get(a+'value') for x in app.findall('meta-data') if x.get(a+'name') == 'dev.cinematv.PRIVATE_BUILD'] == ['false']
 apk = root / f'CinemaTV-{name}-code{code}-{channel}-UNSIGNED.apk'
+with zipfile.ZipFile(apk) as archive:
+    assert not any(entry.startswith('assets/tv-web/') for entry in archive.namelist()), 'Candidate must not contain retired TV Web assets'
 head = os.environ.get('CANDIDATE_SOURCE_HEAD', os.environ['SOURCE_COMMIT'])
 assert re.fullmatch(r'[0-9a-f]{40}', head), 'Invalid source head SHA'
 def git_object(ref):
@@ -89,7 +102,10 @@ receipt = dict(schema=1, status='unsigned-not-installable-not-certified', channe
     applicationSourceTree=git_object('HEAD:app/src'),
     backdropSourceTree=git_object('HEAD:backdrop/src'),
     applicationBuildBlob=git_object('HEAD:app/build.gradle.kts'),
-    apkBytes=apk.stat().st_size, unsignedApkSha256=hashlib.file_digest(apk.open('rb'), 'sha256').hexdigest())
+    apkBytes=apk.stat().st_size, unsignedApkSha256=hashlib.sha256(apk.read_bytes()).hexdigest())
+identity = json.loads(pathlib.Path('release/signing-identity.json').read_text())
+assert identity.get('applicationId') == 'dev.cinematv' and re.fullmatch(r'[0-9a-f]{64}', identity.get('certificateSha256', ''))
+receipt['expectedCertificateSha256'] = identity['certificateSha256']
 if os.environ.get('GITHUB_ACTIONS') == 'true':
     receipt['workflow'] = {key: os.environ.get(variable, '') for key, variable in (
         ('repository', 'GITHUB_REPOSITORY'), ('runId', 'GITHUB_RUN_ID'),

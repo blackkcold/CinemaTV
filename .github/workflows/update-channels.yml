@@ -23,7 +23,23 @@ concurrency:
   group: update-channels-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  scope:
+    runs-on: ubuntu-latest
+    outputs:
+      personal: ${{ steps.classify.outputs.personal }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - id: classify
+        run: |
+          if find app/src/main/java/dev/cinematv/data/douban app/src/main/java/dev/cinematv/ui/douban -name '*.kt' -print -quit 2>/dev/null | grep -q .; then
+            echo 'personal=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'personal=false' >> "$GITHUB_OUTPUT"
+          fi
   safety:
+    needs: scope
     runs-on: ubuntu-latest
     timeout-minutes: 25
     strategy:
@@ -50,12 +66,22 @@ jobs:
           path: .cache/cinematv-noto-fonts
           key: noto-fonts-v2-${{ hashFiles('scripts/fonts/noto-fonts.lock.json') }}
       - name: Validate channel and compile signing helper without using a key
+        id: build
         run: |
+          if [ '${{ matrix.channel }}' = stable ] && [ '${{ needs.scope.outputs.personal }}' = true ]; then
+            if gradle --no-daemon -PcinematvChannel=stable help > stable-account-rejection.txt 2>&1; then
+              echo 'Stable incorrectly accepted personal-account source'; exit 1
+            fi
+            grep -F 'Unaccepted Douban personal-account sources may only be built for dev, never stable' stable-account-rejection.txt
+            echo 'stable_rejected=true' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           python3 -m unittest discover -s scripts/tests -v
           javac -d "$RUNNER_TEMP/signing-helper" scripts/updates/SignUpdateManifest.java
           bash scripts/generate-test-media.sh
           gradle --no-daemon -PcinematvChannel=${{ matrix.channel }} :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug
       - name: Check packaged channel, icon, signature and disabled live updater
+        if: steps.build.outputs.stable_rejected != 'true'
         run: |
           APK=app/build/outputs/apk/debug/app-debug.apk
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$APK"
@@ -79,6 +105,7 @@ jobs:
             app/build/outputs/apk/androidTest/debug/*.apk
             app/build/test-results/
             app/build/reports/lint-results-debug.*
+            stable-account-rejection.txt
           if-no-files-found: error
   settings-ui:
     needs: safety
@@ -145,6 +172,8 @@ jobs:
           if-no-files-found: warn
 
   installer-fixtures:
+    needs: scope
+    if: needs.scope.outputs.personal != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -247,6 +276,8 @@ jobs:
           if-no-files-found: error
 
   unsigned-stable-candidate:
+    needs: scope
+    if: needs.scope.outputs.personal != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -279,6 +310,8 @@ jobs:
           if-no-files-found: error
 
   unsigned-dev-candidate:
+    needs: scope
+    if: needs.scope.outputs.personal != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:

@@ -24,7 +24,6 @@ import androidx.compose.ui.unit.sp
 import com.kyant.backdrop.backdrops.rememberCombinedBackdrop
 import dev.cinematv.CinemaViewModel
 import dev.cinematv.Page
-import dev.cinematv.ui.GlassAction
 import dev.cinematv.ui.icons.CinemaSymbol
 import dev.cinematv.ui.shared.CinemaBrandStartup
 import dev.cinematv.ui.tv.design.*
@@ -32,6 +31,14 @@ import dev.cinematv.ui.tv.focus.*
 import dev.cinematv.ui.typography.CinemaTvText as Text
 import kotlin.math.abs
 import kotlin.math.roundToInt
+
+private val MAIN_TABS = listOf("精选" to Page.HOME, "电影" to Page.MOVIES, "剧集" to Page.SERIES,
+    "发现" to Page.EXPLORE, "直播" to Page.LIVE)
+private val NAV_ICONS = listOf(
+    Triple("搜索", CinemaSymbol.Search, Page.SEARCH),
+    Triple("片库", CinemaSymbol.Library, Page.LIBRARY),
+    Triple("设置", CinemaSymbol.Settings, Page.SETTINGS),
+)
 
 @Composable
 fun FloatingNavigation(model: CinemaViewModel, onFocusWithin: (Boolean) -> Unit, modifier: Modifier = Modifier) {
@@ -42,17 +49,16 @@ fun FloatingNavigation(model: CinemaViewModel, onFocusWithin: (Boolean) -> Unit,
         CinemaBrandStartup(Modifier.width(120.dp).height(29.dp))
         MainNavigationTabs(model)
         Row(Modifier.width(136.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            NavIcon("搜索", CinemaSymbol.Search, model, Page.SEARCH)
-            NavIcon("片库", CinemaSymbol.Library, model, Page.LIBRARY)
-            NavIcon("设置", CinemaSymbol.Settings, model, Page.SETTINGS)
+            NAV_ICONS.forEach { (label, symbol, destination) ->
+                NavIcon(label, symbol, model, destination)
+            }
         }
     }
 }
 
 @Composable
 private fun MainNavigationTabs(model: CinemaViewModel) {
-    val entries = listOf("精选" to Page.HOME, "电影" to Page.MOVIES, "剧集" to Page.SERIES,
-        "发现" to Page.EXPLORE, "直播" to Page.LIVE)
+    val entries = MAIN_TABS
     val selected = entries.indexOfFirst { it.second == model.section }
     val navigation = LocalNavigationFocus.current
     val content = LocalContentFocus.current
@@ -77,7 +83,7 @@ private fun MainNavigationTabs(model: CinemaViewModel) {
     Box(Modifier.width(itemWidth * entries.size + 8.dp).height(44.dp).testTag("tv-main-navigation")) {
         // Source graph: scene -> glass container -> lens -> crisp foreground labels.
         Box(Modifier.matchParentSize().recordProductionGlass(containerScene)
-            .cinemaGlassMaterial(radius = 22.dp, dense = true))
+            .cinemaGlassMaterial(radius = 22.dp, dense = true, role = TvGlassRole.NAVIGATION))
         if (selected >= 0 || focusedIndex != null) Box(Modifier.padding(4.dp).offset { IntOffset((position.value * itemPx).roundToInt(), 0) }
             .width(itemWidth).height(36.dp).cinemaNavigationLens(combined) {
                 val squash = if (effects.reducedMotion) 0f else (abs(lensVelocity) * .016f).coerceAtMost(.12f)
@@ -92,7 +98,7 @@ private fun MainNavigationTabs(model: CinemaViewModel) {
                     .onFocusChanged { if (it.isFocused) focusedIndex = index else if (focusedIndex == index) focusedIndex = null }
                     .selectable(index == selected, interactions, indication = null, role = Role.Tab) { model.navigate(destination) },
                     contentAlignment = Alignment.Center) {
-                    Text(label, color = if (index == selected || index == focusedIndex) Color.White else TvColors.Secondary,
+                    Text(label, color = if (index == selected || index == focusedIndex) Color.White else TvColors.Accent,
                         fontSize = 14.sp, maxLines = 1)
                 }
             }
@@ -108,6 +114,7 @@ private fun NavIcon(label: String, icon: CinemaSymbol, model: CinemaViewModel, d
     Box(contentAlignment = Alignment.Center) {
         GlassAction("", Modifier.size(39.dp).semantics { contentDescription = "打开$label" }
             .then(if (selected) Modifier.focusRequester(navigation) else Modifier)
-            .focusProperties { canFocus = true; down = content }, selected = selected, icon = icon) { model.navigate(destination) }
+            .focusProperties { canFocus = true; down = content }, selected = selected, icon = icon,
+            role = TvGlassRole.NAVIGATION) { model.navigate(destination) }
     }
 }

@@ -1,5 +1,6 @@
 package dev.cinematv.ui.tv
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -9,12 +10,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.cinematv.ui.typography.CinemaTvText as Text
 import dev.cinematv.CinemaViewModel
 import dev.cinematv.Page
+import dev.cinematv.perf.LocalPerfProbePage
+import dev.cinematv.perf.NativePerfProbe
 import dev.cinematv.ui.*
+import dev.cinematv.ui.shared.presentationKey
 import dev.cinematv.ui.tv.components.*
 import dev.cinematv.ui.tv.design.*
 import dev.cinematv.ui.tv.focus.*
@@ -34,6 +39,11 @@ fun TvRootApp(model: CinemaViewModel, onSceneDecoded: (String?) -> Unit = {}) {
         LaunchedEffect(model.page, imeVisible) {
             if (shouldHideTvIme(model.page, imeVisible)) keyboard?.hide()
         }
+        // The one route owner. HOME with no local state falls through to the system
+        // exit; Dialogs and the player own their local Back windows/handlers.
+        BackHandler(enabled = model.page != Page.HOME || imeVisible) {
+            if (imeVisible) keyboard?.hide() else model.back()
+        }
         val savedPages = rememberSaveableStateHolder()
         val registry = remember { TvFocusRegistry() }
         val navigation = remember { FocusRequester() }
@@ -42,10 +52,17 @@ fun TvRootApp(model: CinemaViewModel, onSceneDecoded: (String?) -> Unit = {}) {
             TvNavigationFocusOwner { model.page !in listOf(Page.DETAIL, Page.PLAYER, Page.SETTINGS) }
         }
         val focusObserver = LocalTvFocusOwnerObserver.current
-        SideEffect { focusObserver?.invoke(navigationFocusOwner) }
+        // Measurement lane only: a volatile read in production, the applied-state timeline
+        // for the acceptance run. See NativePerfProbe.
+        val perfFocusKey = (model.selected ?: model.focused)?.presentationKey
+        SideEffect {
+            focusObserver?.invoke(navigationFocusOwner)
+            NativePerfProbe.record(model.page.name, perfFocusKey)
+        }
         var navigationHasFocus by remember { mutableStateOf(false) }
         var decodedArt by remember { mutableStateOf<String?>(null) }
         val glassScene = rememberProductionGlassScene(model.page != Page.PLAYER)
+        val artworkItems = remember(model.featured, model.tvShows) { model.featured + model.tvShows }
         val showNav = navigationFocusOwner.available
         LaunchedEffect(showNav) { if (!showNav) { navigationFocusOwner.update(false); navigationHasFocus = false } }
         CompositionLocalProvider(LocalTvFocusRegistry provides registry, LocalNavigationFocus provides navigation,
@@ -53,13 +70,15 @@ fun TvRootApp(model: CinemaViewModel, onSceneDecoded: (String?) -> Unit = {}) {
             LocalNavigationFocusOwner provides navigationFocusOwner,
             LocalTvContentFocusOwner provides navigationFocusOwner,
             LocalBackdropArt provides decodedArt,
-            LocalProductionGlassScene provides glassScene) {
+            LocalProductionGlassScene provides glassScene,
+            LocalPerfProbePage provides model.page.name) {
             val layout = LocalTvLayout.current
-            if (model.page != Page.PLAYER) ArtworkPrefetch(model.featured + model.tvShows, model.focused)
-            Box(Modifier.fillMaxSize().then(posterInput).background(TvColors.Background)) {
+            if (model.page != Page.PLAYER) ArtworkPrefetch(artworkItems, model.focused)
+            Box(Modifier.fillMaxSize().testTag("tv-root").then(posterInput).background(TvColors.Background)) {
                 if (model.page != Page.PLAYER) BackdropLayer(
                     if (model.page == Page.DETAIL) model.selected else model.focused ?: model.featured.firstOrNull(),
-                    modifier = Modifier.recordProductionGlass(glassScene)
+                    modifier = Modifier.recordProductionGlass(glassScene),
+                    denseText = model.page != Page.HOME,
                 ) { decodedArt = it; onSceneDecoded(it) }
                 savedPages.SaveableStateProvider(model.focusRoute) {
                   key(model.focusRoute) {

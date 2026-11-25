@@ -12,8 +12,13 @@ val MediaItem.watchProgress: Float? get() = if (durationMs > 0L) (positionMs.toD
 fun MediaItem.metadataLine(): String = listOf(
     year, category,
     RatingPolicy.score(this)?.let { "★ ${ratingSource.ifBlank { "来源评分" }} $rating" }.orEmpty(),
+    doubanRankLabel().orEmpty(),
     if (sourceCount > 1) "$sourceCount 个片源" else ""
 ).filter(String::isNotBlank).joinToString(" · ")
+
+/** A chart position is shown only when the record actually carries one. */
+fun MediaItem.doubanRankLabel(): String? =
+    doubanTopRank?.takeIf { it in 1..250 }?.let { "TOP $it" }
 
 /** Narrow cards keep a valid score and its actual source ahead of optional detail. */
 fun MediaItem.cardMetadataLine(): String = listOf(

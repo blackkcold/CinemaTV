@@ -29,7 +29,7 @@ import androidx.lifecycle.ViewModelStore
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import dev.cinematv.data.MediaItem
-import dev.cinematv.ui.GlassAction
+import dev.cinematv.ui.tv.components.GlassAction
 import dev.cinematv.ui.shared.presentationKey
 import dev.cinematv.ui.tv.components.ContentRail
 import dev.cinematv.ui.tv.design.*

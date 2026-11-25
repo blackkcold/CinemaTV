@@ -1,7 +1,7 @@
 {
-  "sourceCommit": "07d85420df3fd13a83e0d9b41b740927d5011bc0",
-  "workflowRun": 41819223687,
-  "reviewedDate": "2026-11-04",
+  "sourceCommit": "5034b64649dae2caae460826efaaa89f03ee451a",
+  "workflowRun": 45324367460,
+  "reviewedDate": "2026-11-24",
   "viewport": "tv4k",
   "normalizedSize": [
     960,
@@ -13,32 +13,32 @@
     {
       "file": "01-home.png",
       "masks": [],
-      "sourceCommit": "80a91e3ae7605a96717c7a238b37cefd81264104",
-      "workflowRun": 41993059313,
-      "artifactId": 13400124111,
+      "sourceCommit": "5034b64649dae2caae460826efaaa89f03ee451a",
+      "workflowRun": 45324367460,
+      "artifactId": 14889319771,
       "rawCaptureSize": [
         3840,
         2160
       ],
-      "rawCaptureSha256": "83ee2874bbc8a6072d296b247ace441b075bef5bc58721dc5d22b78d6a200b06",
-      "baselineSha256": "ffdf4474a01890c5c9de32d8f392baa52571e0f8253aa3407aa5c35e7e8fc908",
-      "reviewedDate": "2026-11-05",
-      "reviewReason": "Reviewed production glass navigation, approved CinemaTV identity and Noto typography. The foreground two-tone focus ring clearly identifies View Details without clipping or covering the label; hero actions and rail geometry remain separate and legible."
+      "rawCaptureSha256": "9e257f07157cb34a8fd2270844053629134ac0514160a5117aaa00773455f529",
+      "baselineSha256": "1bc173beaa04d353167c17e412fe679f3c5443a95d322177be59b00fad50dcaa",
+      "reviewedDate": "2026-11-24",
+      "reviewReason": "阅读遮罩 B：首页只压文字列、放开右侧画作，天空与太阳不再被整体压暗；标题、元信息与简介仍落在暗底上。文字区平均亮度由 0.254 升至 0.271，焦点环、悬浮导航与轨道几何未变，玻璃白面与高光提高后按钮边界更清楚。"
     },
     {
       "file": "03-detail.png",
       "masks": [],
-      "sourceCommit": "80a91e3ae7605a96717c7a238b37cefd81264104",
-      "workflowRun": 41993059313,
-      "artifactId": 13400124111,
+      "sourceCommit": "5034b64649dae2caae460826efaaa89f03ee451a",
+      "workflowRun": 45324367460,
+      "artifactId": 14889319771,
       "rawCaptureSize": [
         3840,
         2160
       ],
-      "rawCaptureSha256": "78aca7a4484b84d42174b158eb014316167edaa0251485d3e3b2d93ede5cf7ca",
-      "baselineSha256": "5c1c2669e71fa96cd5e8018c501f0ee68472138ed91cdb1e28de9d60a0e29111",
-      "reviewedDate": "2026-11-05",
-      "reviewReason": "Reviewed foreground two-tone Play focus ring with Reduced Motion enabled; focus is now distinct without relying on scaling or backdrop brightness. Play icon and label, sibling actions and association row remain unclipped. The existing episode row continues below the scroll fold."
+      "rawCaptureSha256": "d645aadc731bc0418a42e07cb1160b446c15533d2a775fb2a11a7fe829d96c7e",
+      "baselineSha256": "ece633be82403ec24867521498642706c13e12280ddd650ae8aa1b8df6a0a5ce",
+      "reviewedDate": "2026-11-24",
+      "reviewReason": "阅读遮罩 B：详情页属于文字密集路由，改用更强的阅读遮罩，片源与状态两行小字的底衬由 0.231 降到 0.191。立即播放、收藏、更换片源、片库状态四个按钮与长条面板的玻璃白面提高，边界更清楚，布局与焦点顺序未变。"
     },
     {
       "file": "05-movies.png",
@@ -50,17 +50,17 @@
           530
         ]
       ],
-      "sourceCommit": "80a91e3ae7605a96717c7a238b37cefd81264104",
-      "workflowRun": 41993059313,
-      "artifactId": 13400124111,
+      "sourceCommit": "5034b64649dae2caae460826efaaa89f03ee451a",
+      "workflowRun": 45324367460,
+      "artifactId": 14889319771,
       "rawCaptureSize": [
         3840,
         2160
       ],
-      "rawCaptureSha256": "335bff55393f19c4f95280c800654e6aa274319ddec440e84b9c6af2c5ced0dc",
-      "baselineSha256": "1f86132bd1998c097447eb58c1b12ea2c529db6d5af6f740a3b226606c06c946",
-      "reviewedDate": "2026-11-05",
-      "reviewReason": "Reviewed independent selected underline and foreground focus ring on All; both remain distinguishable without covering the label. Narrow portrait captions retain the valid numeric rating and Synthetic source before intentional trailing metadata ellipsis. Filter and poster geometry remain intact."
+      "rawCaptureSha256": "615bfae4d72bb71aaef002c3ecbdf0ec3945206625c147022ff602b0aadaf065",
+      "baselineSha256": "df290ae49b411889af160a95f125e613197fe61301915524524dfdbd32fb1bfe",
+      "reviewedDate": "2026-11-24",
+      "reviewReason": "阅读遮罩 B：电影页的标题与筛选条落在更强的阅读遮罩上，文字区平均亮度由 0.327 降到 0.293，右侧画作仍保留亮度。网格列数、筛选项顺序、海报比例与滚动位置均未变化，玻璃只在按钮与筛选胶囊上参与，未改变可点区域与焦点顺序。"
     },
     {
       "file": "06-series.png",
@@ -72,17 +72,17 @@
           530
         ]
       ],
-      "sourceCommit": "80a91e3ae7605a96717c7a238b37cefd81264104",
-      "workflowRun": 41993059313,
-      "artifactId": 13400124111,
+      "sourceCommit": "5034b64649dae2caae460826efaaa89f03ee451a",
+      "workflowRun": 45324367460,
+      "artifactId": 14889319771,
       "rawCaptureSize": [
         3840,
         2160
       ],
-      "rawCaptureSha256": "b9363447b8514efd99200356129ff5f4b6c222ad3f47783b49dc4718a1447d97",
-      "baselineSha256": "bdfaa745d93b92bbb10b8e4515ae951ba4cc152542cf3ea084a4930f109c8e87",
-      "reviewedDate": "2026-11-05",
-      "reviewReason": "Reviewed independent selected underline and foreground focus ring on All, with clear label spacing. Wide card captions show the numeric rating, Synthetic source, year and category; navigation, card spacing and the next-row scroll continuation remain intact."
+      "rawCaptureSha256": "9a3a814aca47437e17bb1bb76110f0fd8462e086dfae907fe1f9bfc10575f9e2",
+      "baselineSha256": "0234bc0bc937f1edecc107c1b99d02561f3c414b75bff70ae3d63cc7d2fe8414",
+      "reviewedDate": "2026-11-24",
+      "reviewReason": "阅读遮罩 B：剧集页与电影页共用同一套阅读遮罩，文字区平均亮度由 0.327 降到 0.293，标题与筛选行的对比度提高。卡片尺寸、滚动位置与底部分页控件未变，分页按钮的禁用态、文案与可点区域保持原样。"
     },
     {
       "file": "07-discovery.png",
@@ -94,17 +94,17 @@
           530
         ]
       ],
-      "sourceCommit": "80a91e3ae7605a96717c7a238b37cefd81264104",
-      "workflowRun": 41993059313,
-      "artifactId": 13400124111,
+      "sourceCommit": "5034b64649dae2caae460826efaaa89f03ee451a",
+      "workflowRun": 45324367460,
+      "artifactId": 14889319771,
       "rawCaptureSize": [
         3840,
         2160
       ],
-      "rawCaptureSha256": "587893a692c2c879fd22a441fe4565cdb9f3d25276a6c23182f7f7289b9ed680",
-      "baselineSha256": "33f93a82041452862af78bfa24c82ac6e7cb6eaaf642d0e1a7287a55cf286121",
-      "reviewedDate": "2026-11-05",
-      "reviewReason": "Reviewed production glass navigation, centered focused poster outline, Noto labels and the Catalog and Loading action. The title, Synthetic score provenance and action remain readable and separate, with no new clipping or overlap."
+      "rawCaptureSha256": "caddf5fe463c808cd89cc0d31614721d80ef1be0e6500b647d17ed9fd7e5a9e8",
+      "baselineSha256": "87a38efa7fd77f4dc041decdb4ea94cb3aece6e42ee8ec6df7915bc9784d53ca",
+      "reviewedDate": "2026-11-24",
+      "reviewReason": "阅读遮罩 B：发现页属于文字密集路由，封面流与状态行之间的层次保持，文字区平均亮度由 0.231 降到约 0.195。画作可见度略降以换取文字底衬，封面流几何与焦点顺序未变，状态行与封面的相对位置保持一致。"
     },
     {
       "file": "11-settings.png",
@@ -117,23 +117,23 @@
         ],
         [
           455,
-          199,
+          262,
           515,
-          235
+          298
         ]
       ],
-      "sourceCommit": "80a91e3ae7605a96717c7a238b37cefd81264104",
-      "workflowRun": 41993059313,
-      "artifactId": 13400124111,
+      "sourceCommit": "5034b64649dae2caae460826efaaa89f03ee451a",
+      "workflowRun": 45324367460,
+      "artifactId": 14889319771,
       "rawCaptureSize": [
         3840,
         2160
       ],
-      "rawCaptureSha256": "be69fd0bc6fad07f2d9fb19d44a3fbf1a8ba06d830f9eee46f10d457dfe3eb2c",
-      "baselineSha256": "d86173e19bafc82bb9a6230ae6cd2f605df71df0bf3923082e88ba738f4bec36",
-      "reviewedDate": "2026-11-05",
-      "reviewReason": "Reviewed foreground two-tone sidebar focus ring and independent selected underline on Connection and Account. Labels, panel bounds and input spacing remain intact; the partially visible bottom field is the existing scroll-panel boundary, not a new crop."
+      "rawCaptureSha256": "9bfd85dd0c61ca12caf38a24945879b5b3cdaf895ac477c25e75ae426480102c",
+      "baselineSha256": "64f735fb15327e567aa32614af9dcb81c4b3980b89aec33798fe927c5583ee25",
+      "reviewedDate": "2026-11-24",
+      "reviewReason": "阅读遮罩 B：设置页的背景画作在文字密集路由上被压暗，分区侧栏与面板文字因此更稳。布局、焦点顺序、字段内容与更新入口未变，玻璃白面与高光提高后侧栏选中态更容易辨认，面板内控件保持原位，未改动滚动位置与焦点恢复路径。"
     }
   ],
-  "provenanceNotes": "Per-screen sourceCommit/workflowRun override the original manifest defaults. See ../REVIEW.md; masks and thresholds are unchanged."
+  "provenanceNotes": "Per-screen sourceCommit/workflowRun override the original manifest defaults. See ../REVIEW.md; comparison thresholds are unchanged, and the existing settings port mask follows its input without expanding."
 }

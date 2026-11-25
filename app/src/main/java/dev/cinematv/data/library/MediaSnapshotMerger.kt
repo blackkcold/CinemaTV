@@ -23,6 +23,7 @@ internal object MediaSnapshotMerger {
             rating = if (hasRatingUpdate) fresh.rating else old.rating,
             ratingSource = if (hasRatingUpdate) fresh.ratingSource else old.ratingSource,
             ratingLicenseExpiresAt = if (hasRatingUpdate) fresh.ratingLicenseExpiresAt else old.ratingLicenseExpiresAt,
+            ratingPublic = if (hasRatingUpdate) fresh.ratingPublic else old.ratingPublic,
             doubanTopRank = if (hasRatingUpdate) fresh.doubanTopRank else old.doubanTopRank,
             catalogProvider = if (hasCatalogUpdate) fresh.catalogProvider else old.catalogProvider,
             catalogAttribution = if (hasCatalogUpdate) fresh.catalogAttribution else old.catalogAttribution,
