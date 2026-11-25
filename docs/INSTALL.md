@@ -2,16 +2,16 @@
 
 ## 下载与兼容性
 
-- 下载 [v0.8.0 Stable](https://github.com/blackkcold/CinemaTV/releases/tag/v0.8.0)，或选择 [v0.9.0-dev.3 Dev](https://github.com/blackkcold/CinemaTV/releases/tag/v0.9.0-dev.3)。核对对应 Release 的 APK SHA-256 与生产证书指纹。历史 v0.7 预览和截图仍保留原版本归属。
+- 下载 [v0.9.0 Stable](https://github.com/blackkcold/CinemaTV/releases/tag/v0.9.0)（code 16），或选择 [v0.9.0-dev.3 Dev](https://github.com/blackkcold/CinemaTV/releases/tag/v0.9.0-dev.3)（code 15）。核对对应 Release 的 APK SHA-256 与生产证书指纹。历史 v0.7 预览和截图仍保留原版本归属。
 - 同一 APK 支持 Android TV / Google TV 和 Android 手机；最低 Android 8.0（API 26），包名 `dev.cinematv`。
 - 本次stable APK使用固定生产签名。旧调试预览的签名可能不同，不能保证从旧预览覆盖安装到正式包。
 - 出现 `INSTALL_FAILED_UPDATE_INCOMPATIBLE` 时请停止安装，不要为了消除报错直接卸载。卸载会删除本地设置、收藏、片库和观看进度；当前没有通用导出恢复或跨设备同步。
 
 ### 发布通道与升级边界
 
-已公开 Stable `0.8.0 / code 10` 与 Dev `0.9.0-dev.3 / code 15` APK。Stable 更新清单已公开；Dev 暂需手动下载，channel-dev 尚未公开。两者包含订阅设置与显式检查/下载更新功能，但 APK 或 feed 发布不代表生产安装全链路通过。Stable 清单有效期至 2026年11月12日14:40:12 UTC；过期仅阻止获取更新，不影响已安装 APK 使用。豆瓣个人账号模块只存在于开发线，本 Stable 源码与 `main` 都不包含它。
+已公开 Stable `0.9.0 / code 16` 与 Dev `0.9.0-dev.3 / code 15` APK。Stable 更新清单已公开；Dev 暂需手动下载，channel-dev 尚未公开。两者包含订阅设置与显式检查/下载更新功能，但 APK 或 feed 发布不代表生产安装全链路通过。Stable 清单有效期至 2026年12月2日09:33:33 UTC；过期仅阻止获取更新，不影响已安装 APK 使用。豆瓣个人账号模块只存在于开发线，本 Stable 源码与 `main` 都不包含它。
 
-两通道同包名、同证书，不能并排安装。订阅选择不等于已安装通道，只有实际升级后才改变安装版本及图标。只接受更大的 versionCode：Dev code 15 不能直接降级覆盖当前 Stable code 10，需要等待更高 code 的 Stable，不要为切换渠道先卸载。
+两通道同包名、同证书，不能并排安装。订阅选择不等于已安装通道，只有实际升级后才改变安装版本及图标。只接受更大的 versionCode：当前 Stable code 16 已高于 Dev code 15，可直接从 Dev 升级；反向降级需要等待更高的 Dev code，不要为切换渠道先卸载。
 
 Stable 未明确保存渠道选择时，升级 Dev 后默认渠道变为 Dev。已验证的是在 Dev 内明确选择 Stable 后重启保留，不是升级前明确偏好的迁移，也不代表所有设置或数据兼容。
 
@@ -19,7 +19,7 @@ Stable 未明确保存渠道选择时，升级 Dev 后默认渠道变为 Dev。�
 
 ## 首次使用
 
-1. 通过 U 盘、设备文件管理器，或 `adb install -r CinemaTV-0.8.0-code10-stable.apk` 安装。
+1. 通过 U 盘、设备文件管理器，或 `adb install -r CinemaTV-0.9.0-code16-stable.apk` 安装。
 2. 打开设置 →「连接与账户」，输入自建 LibreTV 地址；如服务需要密码，完成登录。
 3. 使用服务器已配置的片源，或在「片源与订阅」添加有权访问的 Apple CMS JSON API。
 4. 直播添加 M3U 订阅；XMLTV 节目单地址可选。只有可访问的订阅和媒体流才可播放。

@@ -88,7 +88,7 @@ not tested. This distinction must not be reported as universal preference retent
    read permission. There is no storage permission, DownloadManager, trust-all TLS,
    unsigned fallback, untrusted URL setting, background polling or silent install.
 
-The public stable manifest expires at **2026-11-12 14:40:12 UTC**. Its exact
+The public stable manifest expires at **2026-12-02 09:33:33 UTC**. Its exact
 payload-byte signature and publicly downloaded bytes were independently verified.
 The prepared Dev manifest is not public and has no active feed validity period
 to report. Expiry blocks obtaining updates from a manifest, not use of an already
@@ -248,22 +248,20 @@ dev11, not the Dev12 download/build path. Dev12 was built separately from the
 dev branch with the account-candidate workflow; its source and build receipt are
 linked in the [Dev12 release](https://github.com/blackkcold/CinemaTV/releases/tag/v0.8.0-dev.2).
 
-`build-unsigned-candidate.sh` supports these two reserved entries in one global
+`build-unsigned-candidate.sh` supports these two entries in one global
 versionCode sequence:
 
-| Invocation | Channel | Version | Code | Output |
-|---|---|---|---|---|
-| no argument (unchanged default), or `stable` | stable | `0.9.0` | `16` | `candidate/` |
-| `dev` | dev | `0.9.0-dev.3` | `15` | `candidate-dev/` |
+| Invocation | Channel | Version | Code | Output | Published |
+|---|---|---|---|---|---|
+| no argument (unchanged default), or `stable` | stable | `0.9.0` | `16` | `candidate/` | yes, `v0.9.0` |
+| `dev` | dev | `0.9.0-dev.3` | `15` | `candidate-dev/` | yes, `v0.9.0-dev.3` |
 
-The stable candidate is built from `stable/v0.9.0-candidate`, which merges the accepted
-`dev-compose` payload and still refuses the Douban personal-account sources. The dev
-candidate is built from `dev-compose` and may include that dev-only experiment, matching
-the Gradle channel guard. Codes 10 (`v0.8.0`), 12 (`v0.8.0-dev.2`), 13 (the archived TV
-Web build) and 14 (`v0.9.0-dev.2`) are already public; code 16 cannot downgrade to any of
-them, and code 15 (`v0.9.0-dev.3`) is the highest published dev build.
-These reservations do not change the ordinary Gradle defaults or the provenance of
-earlier public previews.
+The stable candidate is built from `main`, which carries the accepted `dev-compose`
+payload and still refuses the Douban personal-account sources. The dev candidate is
+built from `dev-compose` and may include that dev-only experiment, matching the Gradle
+channel guard. Codes 10 (`v0.8.0`), 12 (`v0.8.0-dev.2`), 13 (the archived TV Web build),
+14 (`v0.9.0-dev.2`) and 15 (`v0.9.0-dev.3`) are public. Code 16 (`v0.9.0`) is the highest
+published build, so the next candidate in either channel must reserve a higher code.
 
 The dedicated stable and dev CI jobs check out the exact workflow SHA (the tested
 merge commit on a PR), not a moving branch. Each builds release bytes with the

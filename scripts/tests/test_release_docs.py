@@ -8,7 +8,7 @@ from pathlib import Path
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
-STABLE_RELEASE = 'https://github.com/blackkcold/CinemaTV/releases/tag/v0.8.0'
+STABLE_RELEASE = 'https://github.com/blackkcold/CinemaTV/releases/tag/v0.9.0'
 DEV_RELEASE = 'https://github.com/blackkcold/CinemaTV/releases/tag/v0.9.0-dev.3'
 
 
@@ -22,7 +22,7 @@ class ReleaseDocsTest(unittest.TestCase):
             with self.subTest(document=path):
                 text = self.read(path)
                 self.assertIn('main', text)
-                self.assertIn('0.8.0', text)
+                self.assertIn('0.9.0', text)
                 for stale in ('channel-dev冻结', 'channel-dev未启用本次发布',
                               '开发通道等待后续候选', 'contains only production-signed stable',
                               'channel-dev publication is frozen', 'only stable is published'):
@@ -37,6 +37,7 @@ class ReleaseDocsTest(unittest.TestCase):
         self.assertIn('不进入 Stable 源码范围', readme)
         install = self.read('docs/INSTALL.md')
         self.assertIn(DEV_RELEASE, install)
+        self.assertIn('code 16', install)
         self.assertIn('code 15', install)
         self.assertIn('本 Stable 源码与 `main` 都不包含它', install)
 
@@ -49,7 +50,8 @@ class ReleaseDocsTest(unittest.TestCase):
 
     def test_upgrade_preference_and_downgrade_limits_remain_explicit(self):
         install = self.read('docs/INSTALL.md')
-        for value in ('Stable 未明确保存渠道选择时', '更高 code 的 Stable', '卸载',
+        for value in ('Stable 未明确保存渠道选择时', '当前 Stable code 16 已高于 Dev code 15',
+                      '反向降级需要等待更高的 Dev code', '卸载',
                       '升级前明确渠道偏好', 'code 15'):
             self.assertIn(value, install)
         channels = self.read('docs/UPDATE_CHANNELS.md')
@@ -57,8 +59,8 @@ class ReleaseDocsTest(unittest.TestCase):
         self.assertIn('do not\n  guarantee complete Room or preference migration', channels)
         self.assertIn('pre-upgrade explicit preference migration was\nnot tested', channels)
         self.assertIn('wait for a higher-code stable APK, without uninstalling', channels)
-        self.assertIn('2026-11-12 14:40:12 UTC', channels)
-        self.assertNotIn('2026-11-12 17:25:47 UTC', channels)
+        self.assertIn('2026-12-02 09:33:33 UTC', channels)
+        self.assertNotIn('2026-11-12 14:40:12 UTC', channels)
         self.assertIn('channel-dev has not been published', channels)
         self.assertIn('reserved, not an active feed', channels)
         self.assertIn('one increasing versionCode ledger across both channels', channels)
