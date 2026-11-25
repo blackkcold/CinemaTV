@@ -54,7 +54,7 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-          cache-dependency-path: frontend/tv-web/package-lock.json
+          cache-dependency-path: backend/tv-bff/package-lock.json
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -140,7 +140,7 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-          cache-dependency-path: frontend/tv-web/package-lock.json
+          cache-dependency-path: backend/tv-bff/package-lock.json
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -194,7 +194,7 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-          cache-dependency-path: frontend/tv-web/package-lock.json
+          cache-dependency-path: backend/tv-bff/package-lock.json
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -303,7 +303,7 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-          cache-dependency-path: frontend/tv-web/package-lock.json
+          cache-dependency-path: backend/tv-bff/package-lock.json
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -342,7 +342,7 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-          cache-dependency-path: frontend/tv-web/package-lock.json
+          cache-dependency-path: backend/tv-bff/package-lock.json
       - uses: actions/setup-java@v4
         with:
           distribution: temurin

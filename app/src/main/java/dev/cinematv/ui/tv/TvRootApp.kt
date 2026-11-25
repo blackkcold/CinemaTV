@@ -28,7 +28,7 @@ import dev.cinematv.ui.tv.pages.*
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun TvRootApp(model: CinemaViewModel, settingsInitialSection: Int = 0, libraryManagement: Boolean = false, onCloseLibraryManagement: () -> Unit = {}, onSceneDecoded: (String?) -> Unit = {}) {
+fun TvRootApp(model: CinemaViewModel, onSceneDecoded: (String?) -> Unit = {}) {
     CinemaTvTheme(model.reducedMotion, model.glassQuality) {
       PosterMotionProvider(resetKey = model.focusRoute) { posterInput ->
         val keyboard = LocalSoftwareKeyboardController.current
@@ -48,8 +48,8 @@ fun TvRootApp(model: CinemaViewModel, settingsInitialSection: Int = 0, libraryMa
         val registry = remember { TvFocusRegistry() }
         val navigation = remember { FocusRequester() }
         val content = remember(model.focusRoute) { FocusRequester() }
-        val navigationFocusOwner = remember(model, libraryManagement) {
-            TvNavigationFocusOwner { !libraryManagement && model.page !in listOf(Page.DETAIL, Page.PLAYER, Page.SETTINGS) }
+        val navigationFocusOwner = remember(model) {
+            TvNavigationFocusOwner { model.page !in listOf(Page.DETAIL, Page.PLAYER, Page.SETTINGS) }
         }
         val focusObserver = LocalTvFocusOwnerObserver.current
         // Measurement lane only: a volatile read in production, the applied-state timeline
@@ -90,8 +90,8 @@ fun TvRootApp(model: CinemaViewModel, settingsInitialSection: Int = 0, libraryMa
                         Page.DETAIL -> DetailScreen(model)
                         Page.PLAYER -> TvPlayerPage(model)
                         Page.LIVE -> LiveScreen(model)
-                        Page.LIBRARY -> if (libraryManagement) LibraryProgressReviewScreen(model, onCloseLibraryManagement) else LibraryScreen(model)
-                        Page.SETTINGS -> SettingsScreen(model, initialSection = settingsInitialSection)
+                        Page.LIBRARY -> LibraryScreen(model)
+                        Page.SETTINGS -> SettingsScreen(model)
                     }
                 }
                 }
