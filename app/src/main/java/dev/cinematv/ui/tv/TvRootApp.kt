@@ -16,6 +16,7 @@ import androidx.compose.ui.unit.sp
 import dev.cinematv.ui.typography.CinemaTvText as Text
 import dev.cinematv.CinemaViewModel
 import dev.cinematv.Page
+import dev.cinematv.perf.LocalPerfProbePage
 import dev.cinematv.perf.NativePerfProbe
 import dev.cinematv.ui.*
 import dev.cinematv.ui.shared.presentationKey
@@ -68,7 +69,8 @@ fun TvRootApp(model: CinemaViewModel, settingsInitialSection: Int = 0, libraryMa
             LocalNavigationFocusOwner provides navigationFocusOwner,
             LocalTvContentFocusOwner provides navigationFocusOwner,
             LocalBackdropArt provides decodedArt,
-            LocalProductionGlassScene provides glassScene) {
+            LocalProductionGlassScene provides glassScene,
+            LocalPerfProbePage provides model.page.name) {
             val layout = LocalTvLayout.current
             if (model.page != Page.PLAYER) ArtworkPrefetch(model.featured + model.tvShows, model.focused)
             Box(Modifier.fillMaxSize().testTag("tv-root").then(posterInput).background(TvColors.Background)) {

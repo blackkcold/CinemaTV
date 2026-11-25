@@ -129,10 +129,12 @@ class UiFixtureServer(private val context: Context) : AutoCloseable {
         val uri = Uri.parse(request[1])
         requests += uri.toString()
         var length = 0
+        var range: String? = null
         while (true) {
             val header = line(input)
             if (header.isEmpty()) break
             if (header.startsWith("Content-Length:", true)) length = header.substringAfter(':').trim().toInt()
+            if (header.startsWith("Range:", true)) range = header.substringAfter(':').trim()
         }
         val bytes = ByteArray(length.coerceIn(0, 65536))
         var read = 0
@@ -142,6 +144,7 @@ class UiFixtureServer(private val context: Context) : AutoCloseable {
         var status = "200 OK"
         val unavailable: () -> ByteArray = { status = "503 Service Unavailable"; "{}".toByteArray() }
         val now = System.currentTimeMillis()
+        val extraHeaders = mutableMapOf<String, String>()
         val response: ByteArray = when (uri.path) {
             "/v1/catalog" -> if (catalogFails) unavailable() else catalog(uri).toByteArray()
             "/api/status" -> JSONObject().put("passwordRequired", false).put("verified", true)
@@ -174,11 +177,55 @@ class UiFixtureServer(private val context: Context) : AutoCloseable {
                 JSONObject().put("title", listOf("山海之间", "远方的故事", "光影时刻")[i % 3])
                     .put("start", now - 900000 + i * 1800000L).put("stop", now + 900000 + i * 1800000L)
             })).toString().toByteArray()
-            "/stream.mp4" -> { type = "video/mp4"; context.assets.open("playback-fixture.mp4").use { it.readBytes() } }
+            "/stream.mp4" -> {
+                type = "video/mp4"
+                extraHeaders["Accept-Ranges"] = "bytes"
+                val full = context.assets.open("playback-fixture.mp4").use { it.readBytes() }
+                val match = Regex("bytes=(\\d*)-(\\d*)").matchEntire(range.orEmpty())
+                if (match == null) full else {
+                    val total = full.size
+                    val startText = match.groupValues[1]
+                    val endText = match.groupValues[2]
+                    val valid = if (startText.isEmpty()) {
+                        endText.toIntOrNull()?.let { it > 0 } == true
+                    } else {
+                        startText.toIntOrNull()?.let { it in 0 until total } == true
+                    }
+                    if (!valid) {
+                        status = "416 Range Not Satisfiable"
+                        extraHeaders["Content-Range"] = "bytes */$total"
+                        ByteArray(0)
+                    } else {
+                        // RFC 7233 suffix ranges ("bytes=-500") must keep the tail, not the head.
+                        val start = if (startText.isEmpty()) {
+                            (total - (endText.toIntOrNull() ?: 0)).coerceAtLeast(0)
+                        } else startText.toIntOrNull() ?: 0
+                        val end = if (startText.isEmpty()) {
+                            total - 1
+                        } else endText.toIntOrNull()?.coerceIn(0, total - 1) ?: (total - 1)
+                        if (start <= end) {
+                            status = "206 Partial Content"
+                            extraHeaders["Content-Range"] = "bytes $start-$end/$total"
+                            full.copyOfRange(start, end + 1)
+                        } else {
+                            status = "416 Range Not Satisfiable"
+                            extraHeaders["Content-Range"] = "bytes */$total"
+                            ByteArray(0)
+                        }
+                    }
+                }
+            }
             else -> "{}".toByteArray()
         }
         val output = socket.getOutputStream()
-        output.write("HTTP/1.1 $status\r\nContent-Type: $type\r\nContent-Length: ${response.size}\r\nConnection: close\r\n\r\n".toByteArray())
+        val headerText = buildString {
+            append("HTTP/1.1 $status\r\n")
+            append("Content-Type: $type\r\n")
+            append("Content-Length: ${response.size}\r\n")
+            extraHeaders.forEach { (name, value) -> append("$name: $value\r\n") }
+            append("Connection: close\r\n\r\n")
+        }
+        output.write(headerText.toByteArray())
         output.write(response); output.flush()
     }
     override fun close() { running = false; server.close(); workers.shutdownNow() }

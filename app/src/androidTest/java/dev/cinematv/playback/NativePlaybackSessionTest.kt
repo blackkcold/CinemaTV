@@ -58,6 +58,11 @@ class NativePlaybackSessionTest {
             val remote = controllerFuture.get(10, TimeUnit.SECONDS)
             controller = remote
             await("foreground playback") { playback.player.isPlaying && playback.player.currentPosition > 150 }
+            // 150 ms only proves the first buffer arrived. A stalled renderer used to pass that
+            // bar, so require continued clock and decoder progress before lifecycle assertions.
+            await("clock and video advance beyond the first buffered region", 20_000) {
+                playback.player.currentPosition >= 3_000L
+            }
             main {
                 assertEquals(C.USAGE_MEDIA, playback.player.audioAttributes.usage)
                 assertEquals(C.AUDIO_CONTENT_TYPE_MOVIE, playback.player.audioAttributes.contentType)
