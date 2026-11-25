@@ -21,7 +21,7 @@ Native Compose TV, native playback and a separate touch interface.
 
 CinemaTV 连接你自建的 [LibreTV](https://github.com/LibreSpark/LibreTV)，把浏览、搜索、选集、播放和本地片库放在同一个应用里。电视与手机各自使用原生 Kotlin 与 Jetpack Compose 界面，Media3 负责播放；两者共享同一套业务状态、片源身份与本地片库。
 
-**已发布 Stable：[v0.8.0](https://github.com/blackkcold/CinemaTV/releases/tag/v0.8.0)；已发布 Dev：[v0.9.0-dev.2](https://github.com/blackkcold/CinemaTV/releases/tag/v0.9.0-dev.2)。** 本分支 `dev-compose` 是唯一长期开发主线，电视界面为原生 Jetpack Compose；旧版 Hybrid TV Web 层已在 G4 删除，归档于 `archive/tv-web-5c24360`。下方主画廊是 v0.7.0-preview 的旧原生界面截图，不代表当前电视界面。
+**已发布 Stable：[v0.8.0](https://github.com/blackkcold/CinemaTV/releases/tag/v0.8.0)；已发布 Dev：[v0.9.0-dev.3](https://github.com/blackkcold/CinemaTV/releases/tag/v0.9.0-dev.3)。** 本分支 `dev-compose` 是唯一长期开发主线，电视界面为原生 Jetpack Compose；旧版 Hybrid TV Web 层已在 G4 删除，归档于 `archive/tv-web-5c24360`。下方主画廊是 v0.7.0-preview 的旧原生界面截图，不代表当前电视界面。
 
 应用不附带公共片源、账号或影视内容。使用前需要配置自己的服务和有权访问的内容来源。本项目与 LibreTV、DpadTV 及下列第三方服务均无隶属关系。
 

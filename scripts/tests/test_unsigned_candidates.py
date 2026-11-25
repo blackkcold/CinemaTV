@@ -134,7 +134,7 @@ print((pathlib.Path(os.environ['ANDROID_HOME']) / 'manifest.xml').read_text())
         self.check_candidate(['stable'], 'stable', 10, '0.8.0', 'candidate')
 
     def test_dev_reservation_and_provenance(self):
-        self.check_candidate(['dev'], 'dev', 14, '0.9.0-dev.2', 'candidate-dev')
+        self.check_candidate(['dev'], 'dev', 15, '0.9.0-dev.3', 'candidate-dev')
 
     def test_invalid_arguments_reject_before_build(self):
         for args in [('preview',), ('dev', 'arbitrary-version')]:
@@ -168,7 +168,7 @@ print((pathlib.Path(os.environ['ANDROID_HOME']) / 'manifest.xml').read_text())
         self.commit()
         self.assert_no_build(self.run_script('stable'), 'unaccepted Douban personal-account sources')
         # The build Gradle guard and AGENTS allow the experiment on the dev channel only.
-        self.check_candidate(['dev'], 'dev', 14, '0.9.0-dev.2', 'candidate-dev')
+        self.check_candidate(['dev'], 'dev', 15, '0.9.0-dev.3', 'candidate-dev')
 
     def test_source_mutation_during_build_rejected(self):
         result = self.run_script('dev', SYNTHETIC_MUTATE_SOURCE='1')
