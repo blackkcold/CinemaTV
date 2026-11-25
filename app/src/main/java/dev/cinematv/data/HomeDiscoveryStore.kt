@@ -4,6 +4,8 @@ import android.content.Context
 import dev.cinematv.data.library.MediaItemCodec
 import java.io.File
 import java.security.MessageDigest
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -23,37 +25,41 @@ class HomeDiscoveryStore(context: Context, private val now: () -> Long = System:
 
     data class Cached(val query: String, val fetchedAt: Long, val items: List<MediaItem>)
 
-    fun read(key: String): Cached? = runCatching {
-        val file = File(directory, "$key.json")
-        if (!file.isFile) return null
-        val root = JSONObject(file.readText())
-        val fetchedAt = root.optLong("fetchedAt")
-        val age = now() - fetchedAt
-        if (age !in 0..TTL_MS) {
-            runCatching { file.delete() }
-            return null
-        }
-        val items = root.optJSONArray("items") ?: JSONArray()
-        Cached(
-            query = root.optString("query"),
-            fetchedAt = fetchedAt,
-            items = (0 until items.length()).mapNotNull { index ->
-                runCatching { MediaItemCodec.decode(items.getJSONObject(index)) }.getOrNull()
-            }
-        )
-    }.getOrNull()?.takeIf { it.items.isNotEmpty() }
-
-    fun write(query: String, fetchedAt: Long, items: List<MediaItem>, key: String) {
+    suspend fun read(key: String): Cached? = withContext(Dispatchers.IO) {
         runCatching {
-            if (items.isEmpty()) return
-            directory.mkdirs()
-            val array = JSONArray(items.take(MAX_ITEMS).map { MediaItemCodec.json(it) })
-            File(directory, "$key.json").writeText(
-                JSONObject().put("query", query).put("fetchedAt", fetchedAt).put("items", array).toString()
+            val file = File(directory, "$key.json")
+            if (!file.isFile) return@runCatching null
+            val root = JSONObject(file.readText())
+            val fetchedAt = root.optLong("fetchedAt")
+            val age = now() - fetchedAt
+            if (age !in 0..TTL_MS) {
+                runCatching { file.delete() }
+                return@runCatching null
+            }
+            val items = root.optJSONArray("items") ?: JSONArray()
+            Cached(
+                query = root.optString("query"),
+                fetchedAt = fetchedAt,
+                items = (0 until items.length()).mapNotNull { index ->
+                    runCatching { MediaItemCodec.decode(items.getJSONObject(index)) }.getOrNull()
+                }
             )
-            directory.listFiles()?.filter { it.isFile }
-                ?.sortedByDescending { it.lastModified() }?.drop(MAX_FILES)
-                ?.forEach { file -> runCatching { file.delete() } }
+        }.getOrNull()?.takeIf { it.items.isNotEmpty() }
+    }
+
+    suspend fun write(query: String, fetchedAt: Long, items: List<MediaItem>, key: String) {
+        withContext(Dispatchers.IO) {
+            if (items.isEmpty()) return@withContext
+            runCatching {
+                directory.mkdirs()
+                val array = JSONArray(items.take(MAX_ITEMS).map { MediaItemCodec.json(it) })
+                File(directory, "$key.json").writeText(
+                    JSONObject().put("query", query).put("fetchedAt", fetchedAt).put("items", array).toString()
+                )
+                directory.listFiles()?.filter { it.isFile }
+                    ?.sortedByDescending { it.lastModified() }?.drop(MAX_FILES)
+                    ?.forEach { file -> runCatching { file.delete() } }
+            }
         }
     }
 
