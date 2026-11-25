@@ -39,6 +39,8 @@ import dev.cinematv.ui.Ivory
 import dev.cinematv.ui.shared.*
 import dev.cinematv.ui.tv.design.*
 import dev.cinematv.ui.tv.motion.*
+import dev.cinematv.perf.LocalPerfProbePage
+import dev.cinematv.perf.NativePerfProbe
 import dev.cinematv.ui.tv.focus.trackTvContentFocus
 
 enum class CardVisualState { DEFAULT, FOCUSED, PRESSED, SELECTED, LOADING, ERROR }
@@ -61,6 +63,7 @@ fun FocusMediaCard(
     val pressed by interactions.collectIsPressedAsState()
     val motion = rememberFocusPressMotion(focused, pressed)
     val observer = LocalPosterMotionObserver.current
+    val perfPage = LocalPerfProbePage.current
     SideEffect { observer?.onComposition(item.presentationKey) }
     val shape = RoundedCornerShape(12.dp)
     Column(modifier.zIndex(if (focused) 2f else 0f)
@@ -74,7 +77,13 @@ fun FocusMediaCard(
                 motion.depthY * PosterMotionTokens.ARTWORK_PARALLAX_DP))
         }
         .trackTvContentFocus()
-        .onFocusChanged { focused = it.isFocused; if (it.isFocused) onFocus() }
+        .onFocusChanged {
+            focused = it.isFocused
+            if (it.isFocused) {
+                onFocus()
+                NativePerfProbe.record(perfPage, item.presentationKey)
+            }
+        }
         .semantics(mergeDescendants = true) { contentDescription = item.title }
         .focusProperties { canFocus = true }
         .clickable(interactionSource = interactions, indication = null, role = Role.Button, onClick = onClick),

@@ -7,6 +7,7 @@ if [ "$#" -ne 4 ]; then
   exit 2
 fi
 TARGET=$1
+export CINEMA_TARGET="$TARGET"
 shift
 case "$TARGET" in
   phone|tv1080)

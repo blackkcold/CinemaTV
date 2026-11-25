@@ -54,7 +54,16 @@ data class MediaItem(
     val episodeIds: List<String> = emptyList(),
     /** True only when a successful detail response supplied an authoritative playlist, even empty. */
     val playlistKnown: Boolean = false
-)
+) {
+    /**
+     * Per-instance memo for the provider+id digest. Kept outside the data-class
+     * constructor so it never participates in equals/hashCode/copy; [Transient]
+     * keeps it out of Java serialization.
+     */
+    @kotlin.jvm.Transient
+    @kotlin.jvm.Volatile
+    internal var cachedEntryId: String? = null
+}
 
 data class TvChannel(
     val id: String,

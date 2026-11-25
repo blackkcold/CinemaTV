@@ -49,7 +49,6 @@ Gradle/Kotlin daemon. These are shared local resources, not background services.
 GRADLE=$TMPDIR/opencode/toolchain/gradle-8.13/bin/gradle   # no wrapper in this repo
 $GRADLE --no-daemon -PcinematvNativeTvAcceptance=true \
   :app:assembleRelease :app:assembleReleaseAndroidTest \
-  -x installTvWebDependencies -x buildTvWeb -x stageTvWeb
 ```
 
 Release output is unsigned; sign both APKs with the local debug keystore for installation

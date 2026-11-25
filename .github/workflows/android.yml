@@ -1,7 +1,7 @@
 name: Android TV APK
 on:
   push:
-    branches: [main]
+    branches: [main, dev-compose]
     tags: ['v*']
   pull_request:
   workflow_dispatch:
@@ -29,8 +29,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: npm
-          cache-dependency-path: frontend/tv-web/package-lock.json
       - uses: actions/setup-java@v4
         with:
           distribution: temurin

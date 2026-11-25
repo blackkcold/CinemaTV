@@ -14,8 +14,8 @@
 | 层 | 位置 | 行为 |
 |---|---|---|
 | 构建配置 | `app/build.gradle.kts` | `GITHUB_ACTIONS=true` 或 `cinematvUnsignedCandidate=true` 时，只要设置了任一 `CINEMATV_LIBRETV_*` 就配置失败 |
-| 候选脚本 | `scripts/hybrid/build-dev-candidate.sh`（冻结线，G4 迁移到 `scripts/updates/`） | 预检 `declare -p`，发现任一变量即退出，不进入构建 |
-| 产物校验 | `scripts/hybrid/artifacts.py`（冻结线，G4 迁移到 `scripts/updates/`） | 解码候选 manifest，要求 `dev.cinematv.PRIVATE_BUILD` 为 `false` |
+| 候选脚本 | `scripts/updates/build-unsigned-candidate.sh` | 预检 `declare -p`，发现签名凭证或 `CINEMATV_LIBRETV_*` 即退出，不进入构建 |
+| 产物校验 | `scripts/updates/build-unsigned-candidate.sh` 的解码闸门 | 解码候选 manifest，要求 `dev.cinematv.PRIVATE_BUILD=false`、无 `assets/tv-web/`，并绑定包名/minSdk/channel/证书身份 |
 
 `PRIVATE_BUILD` 由 Gradle 按是否注入默认值写入 manifest，是产物层面唯一可自动检查的"这是私人包"的证据。它不能阻止有人手工上传一个私人包，所以私人包必须改名保存、永不放进 Release。
 

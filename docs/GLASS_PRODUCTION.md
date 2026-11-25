@@ -5,6 +5,17 @@ It is native Compose, not a screenshot, WebView or a blur of the video surface.
 The standalone lab remains the visual reference; this document describes the
 production source graph and fallback contract rather than claiming device speed.
 
+## Measurement handoff (2026-11-25)
+
+The current E-gate baseline is one nondebuggable `glassBenchmark` APK on the local
+API34 Google TV AVD: 9/9 valid `glass-controls` trials, FULL/BLUR/BASIC all collected.
+On this configuration BLUR was more expensive at p95 than FULL, so the highest optical
+tier is not assumed to be the most expensive. The full numbers, APK/source identities
+and E-gate limits are in
+[`evidence/2026-11-25-g6-glass-baseline.md`](evidence/2026-11-25-g6-glass-baseline.md).
+This is not display FPS, a physical-TV budget or authority to degrade the material;
+policy changes still require target-device measurement and the T-gate.
+
 ## Materials and admission
 
 | Effective mode | Implementation | Admission |

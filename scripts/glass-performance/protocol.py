@@ -8,8 +8,9 @@ ORDERS = (("FULL", "BLUR", "BASIC"), ("BLUR", "BASIC", "FULL"), ("BASIC", "FULL"
 CYCLE = ((19, "HOME", "navigation-up"), (22, "HOME", "navigation-right"),
          (22, "HOME", "navigation-right"), (21, "HOME", "navigation-left"),
          (23, "MOVIES", "activate-movies"), (4, "HOME", "back-home-navigation-retained"),
-         (20, "HOME", "return-to-hero"), (22, "HOME", "hero-right"), (21, "HOME", "hero-left"),
-         (23, "DETAIL", "hero-open-detail"), (4, "HOME", "detail-back-home"))
+         (20, "HOME", "hero-down-rail"), (22, "HOME", "rail-right"), (21, "HOME", "rail-left"),
+         (23, "DETAIL", "rail-open-detail"), (4, "HOME", "detail-back-home"),
+         (19, "HOME", "rail-up-hero"))
 WARMUP_COUNT = 2 + len(CYCLE)
 MEASURED_COUNT = len(CYCLE) * 2
 EXPECTED_RUNS = [(f"r{index}-{tier.lower()}", tier) for index, order in enumerate(ORDERS, start=1) for tier in order]

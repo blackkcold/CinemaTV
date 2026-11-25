@@ -8,9 +8,9 @@ service. Source JSON parsing stays in `data/`; TV and mobile share the ViewModel
 identity, repository and playback factory. `MainActivity` dispatches on
 `UI_MODE_TYPE_TELEVISION`; `TvRootApp` is the only TV route owner.
 
-The frozen `hybrid/` host and `frontend/tv-web/` bundle are retained only as historical
-A/B evidence and are scheduled for deletion. They are not a TV mainline and must not be
-extended.
+The retired `hybrid/` host and `frontend/tv-web/` bundle were removed in G4. The original
+state remains recoverable from `archive/tv-web-5c24360`; it is not a TV mainline and must
+not be re-created in the working tree.
 
 | Layer | Responsibility |
 |---|---|
@@ -116,8 +116,8 @@ Emulator frame timings are E-gate evidence, not hardware certification. Physical
 low-end SoC, HDR/codec breadth, long soak, reference fidelity and production signing are
 separately tracked in `RELEASE_CHECKLIST.md`.
 
-The frozen hybrid lane and its workflows are historical. They are not TV evidence and
-must not gate a native-TV release.
+The hybrid lane and its workflows were removed in G4. They are not TV evidence and must
+not gate a native-TV release.
 
 ## Local discovery and provider provenance
 

@@ -159,9 +159,10 @@ class LocalMediaLibrary(
         }
     }
 
-    suspend fun saveProgress(item: MediaItem, positionMs: Long, episodeIndex: Int = 0, durationMs: Long = 0L) = mutate {
-        if (item.id.isNotBlank()) saveProgressLocked(item, positionMs, episodeIndex, durationMs, now())
-    }
+    suspend fun saveProgress(item: MediaItem, positionMs: Long, episodeIndex: Int = 0, durationMs: Long = 0L) =
+        mutateProgress {
+            if (item.id.isNotBlank()) saveProgressLocked(item, positionMs, episodeIndex, durationMs, now()) else null
+        }
 
     /** Refresh descriptive metadata/episode URLs without changing library flags or viewing history. */
     suspend fun cacheItem(item: MediaItem) = mutate {
@@ -229,7 +230,17 @@ class LocalMediaLibrary(
         }
     }
 
-    private fun saveProgressLocked(item: MediaItem, position: Long, index: Int, duration: Long, timestamp: Long) {
+    private data class ProgressWrite(val entryId: String, val episodeId: String)
+
+    private suspend fun mutateProgress(block: () -> ProgressWrite?) = withContext(io) {
+        mutex.withLock {
+            initializeLocked()
+            val write = db.runInTransaction(Callable { block() })
+            if (write != null) refreshProgressLocked(write)
+        }
+    }
+
+    private fun saveProgressLocked(item: MediaItem, position: Long, index: Int, duration: Long, timestamp: Long): ProgressWrite {
         // A late player callback is not a catalog refresh. Keep the newer cached playlist,
         // and never manufacture identity by borrowing its URLs/names for a legacy record.
         val current = currentItemOrBootstrapLocked(item)
@@ -252,6 +263,7 @@ class LocalMediaLibrary(
         }
         dao.upsertEntry(entry.copy(historyAt = timestamp, lastEpisodeIndex = identity.currentIndex ?: -1,
             updatedAt = maxOf(entry.updatedAt, timestamp)))
+        return ProgressWrite(entry.sourceMappingId, episodeId)
     }
 
     /** Flag/progress writes do not carry catalog authority, including delayed player callbacks. */
@@ -314,6 +326,41 @@ class LocalMediaLibrary(
             LibrarySnapshot(ready = true, records = records, episodeProgress = progress,
                 associations = LocalWorkAssociationCodec.decode(dao.metadata(LocalWorkAssociationCodec.KEY)))
         })
+    }
+
+    private fun progressSnapshotLocked(previous: LibrarySnapshot, write: ProgressWrite): LibrarySnapshot? {
+        val entry = dao.entry(write.entryId) ?: return null
+        val source = dao.source(write.entryId)?.itemJson?.let(MediaItemCodec::decode) ?: return null
+        val progress = dao.progress(write.episodeId)?.toDomain() ?: return null
+        val index = entry.lastEpisodeIndex
+        val last = if (entry.historyAt != null && index in source.episodes.indices &&
+            MediaDomainMapper.episodeIdentity(source, index) != null) {
+            progress.copy(episodeIndex = index)
+        } else {
+            null
+        }
+        val item = source.copy(
+            positionMs = last?.positionMs ?: 0L,
+            durationMs = last?.durationMs ?: 0L,
+            lastEpisode = last?.episodeIndex ?: -1,
+        )
+        val status = entry.status?.let { runCatching { LibraryStatus.valueOf(it) }.getOrNull() }
+        val record = LibraryRecord(item, status, entry.favorite, entry.updatedAt, entry.historyAt)
+        return previous.withProgress(write.entryId, record, progress)
+    }
+
+    private fun refreshProgressLocked(write: ProgressWrite) {
+        val previous = state.value
+        if (!previous.ready) {
+            refreshLocked()
+            return
+        }
+        val next = db.runInTransaction(Callable { progressSnapshotLocked(previous, write) })
+        if (next == null) {
+            refreshLocked()
+            return
+        }
+        state.value = next
     }
 
     companion object {

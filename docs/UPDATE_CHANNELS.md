@@ -176,12 +176,12 @@ versionCode sequence:
 | Invocation | Channel | Version | Code | Output |
 |---|---|---|---|---|
 | no argument (unchanged default), or `stable` | stable | `0.8.0` | `10` | `candidate/` |
-| `dev` | dev | `0.9.0-dev.2` | `14` | `candidate-dev/` |
+| `dev` | dev | `0.9.0-dev.3` | `15` | `candidate-dev/` |
 
 The stable candidate keeps main's accepted app payload and still refuses the Douban
 personal-account sources. The dev candidate is built from `dev-compose` and may include
-that dev-only experiment, matching the Gradle channel guard. Codes 12 (`v0.8.0-dev.2`)
-and 13 (the archived TV Web build) are already public; code 14 cannot downgrade to them.
+that dev-only experiment, matching the Gradle channel guard. Codes 12 (`v0.8.0-dev.2`), 13 (the archived TV Web build) and 14
+(`v0.9.0-dev.2`) are already public; code 15 cannot downgrade to them.
 These reservations do not change the ordinary Gradle defaults or the provenance of
 earlier public previews.
 

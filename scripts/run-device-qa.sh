@@ -187,12 +187,23 @@ if [[ "$3" == *OfficialLibreTvPlaybackAcceptanceTest* ]]; then
   run_stage official-instrumentation timeout --signal=TERM --kill-after=10s 9m \
     python3 scripts/libretv-contracts/run_android_test.py || CINEMA_OFFICIAL_STATUS=$?
 fi
+CINEMA_RESULTS_STATUS=0
+if [ -d app/build/outputs/androidTest-results/connected ]; then
+  CINEMA_RESULT_ARGS=(--results app/build/outputs/androidTest-results/connected)
+  if [ "${CINEMA_TARGET:-}" = "tvNative" ]; then
+    CINEMA_RESULT_ARGS+=(--require-executed TvLaunchSmokeTest,MainActivityPathSmokeTest --forbid-skipped --require-tv)
+    CINEMA_RESULT_ARGS+=(--characteristics "$(qa_adb shell getprop ro.build.characteristics | tr -d '\r')")
+  fi
+  run_stage results-audit timeout --kill-after=5s 30s python3 scripts/qa-results-audit.py \
+    "${CINEMA_RESULT_ARGS[@]}" || CINEMA_RESULTS_STATUS=$?
+fi
 CINEMA_EXPORT_STATUS=0
 run_stage evidence-export timeout --kill-after=5s 30s python3 scripts/merge-ui-evidence.py \
   --source app/build/outputs/connected_android_test_additional_output \
   --destination qa/ui-evidence || CINEMA_EXPORT_STATUS=$?
 if [ "$CINEMA_TEST_STATUS" -ne 0 ]; then exit "$CINEMA_TEST_STATUS"; fi
 if [ "$CINEMA_OFFICIAL_STATUS" -ne 0 ]; then exit "$CINEMA_OFFICIAL_STATUS"; fi
+if [ "$CINEMA_RESULTS_STATUS" -ne 0 ]; then exit "$CINEMA_RESULTS_STATUS"; fi
 if [ "$CINEMA_EXPORT_STATUS" -ne 0 ]; then exit "$CINEMA_EXPORT_STATUS"; fi
 
 if [[ "$3" == *TvUiRegressionTest* ]]; then

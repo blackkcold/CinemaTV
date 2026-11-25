@@ -42,7 +42,9 @@ import androidx.media3.common.Tracks
 import androidx.media3.ui.PlayerView
 import dev.cinematv.playback.NativePlaybackSession
 import dev.cinematv.playback.ObservePlaybackLifecycle
+import dev.cinematv.playback.PlaybackProgressWritePolicy
 import dev.cinematv.playback.togglePlayPause
+import java.util.concurrent.atomic.AtomicLong
 import dev.cinematv.ui.tv.components.CinemaGlassSurface
 import dev.cinematv.ui.tv.components.TvProgressBar
 import dev.cinematv.ui.tv.design.LocalTvLayout
@@ -137,6 +139,7 @@ fun TvPlayerPage(model: CinemaViewModel) {
     var duration by remember(session) { mutableLongStateOf(0L) }
     var error by remember(session) { mutableStateOf("") }
     var isPlaying by remember(session) { mutableStateOf(true) }
+    val lastSavedPosition = remember(session) { AtomicLong(model.playbackPosition.coerceAtLeast(0L)) }
     var buffering by remember(session) { mutableStateOf(player.playbackState == Player.STATE_BUFFERING) }
     var playRequested by remember(session) { mutableStateOf(player.playWhenReady) }
     var controlsVisible by remember(session) { mutableStateOf(true) }
@@ -169,6 +172,7 @@ fun TvPlayerPage(model: CinemaViewModel) {
     }
 
     DisposableEffect(player) {
+        var ended = false
         val listener = object : Player.Listener {
             override fun onPlayerError(exception: PlaybackException) {
                 error = exception.message ?: "视频解码或网络错误"
@@ -177,7 +181,10 @@ fun TvPlayerPage(model: CinemaViewModel) {
             }
             override fun onPlaybackStateChanged(state: Int) {
                 buffering = state == Player.STATE_BUFFERING
-                if (state == Player.STATE_ENDED) model.playerEnded(player.currentPosition, player.duration.coerceAtLeast(0L), episodeAtCreation, session)
+                if (state == Player.STATE_ENDED) {
+                    ended = true
+                    model.playerEnded(player.currentPosition, player.duration.coerceAtLeast(0L), episodeAtCreation, session)
+                }
             }
             override fun onIsLoadingChanged(loading: Boolean) { buffering = loading }
             override fun onIsPlayingChanged(playing: Boolean) { isPlaying = playing }
@@ -192,7 +199,13 @@ fun TvPlayerPage(model: CinemaViewModel) {
         }
         player.addListener(listener)
         onDispose {
-            model.savePlaybackPosition(player.currentPosition.coerceAtLeast(0L), episodeAtCreation, player.duration.coerceAtLeast(0L), session)
+            val finalPosition = player.currentPosition
+            val persistedPosition = finalPosition.coerceAtLeast(0L)
+            if (!ended && finalPosition != C.TIME_UNSET &&
+                PlaybackProgressWritePolicy.shouldPersistFinal(persistedPosition, lastSavedPosition.get())) {
+                model.savePlaybackPosition(persistedPosition, episodeAtCreation, player.duration.coerceAtLeast(0L), session)
+                lastSavedPosition.set(persistedPosition)
+            }
             player.removeListener(listener)
             playback.close()
         }
@@ -201,9 +214,17 @@ fun TvPlayerPage(model: CinemaViewModel) {
     LaunchedEffect(player) {
         var ticks = 0
         while (isActive) {
-            position = player.currentPosition.coerceAtLeast(0L)
+            val currentPosition = player.currentPosition
+            position = currentPosition.coerceAtLeast(0L)
             duration = player.duration.coerceAtLeast(0L)
-            if (++ticks % 5 == 0) model.savePlaybackPosition(position, episodeAtCreation, player.duration.coerceAtLeast(0L), session)
+            if (++ticks % 5 == 0 && currentPosition != C.TIME_UNSET &&
+                PlaybackProgressWritePolicy.shouldPersistWhilePlaying(
+                    currentPosition, lastSavedPosition.get(), player.isPlaying,
+                )) {
+                model.savePlaybackPosition(currentPosition.coerceAtLeast(0L), episodeAtCreation,
+                    player.duration.coerceAtLeast(0L), session)
+                lastSavedPosition.set(currentPosition.coerceAtLeast(0L))
+            }
             delay(1000)
         }
     }

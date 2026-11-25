@@ -86,18 +86,3 @@ internal fun LibraryProgressReviewDialog(model: CinemaViewModel, onDismiss: () -
         LaunchedEffect(Unit) { withFrameNanos { }; close.requestFocus() }
     }
 }
-
-@Composable
-fun LibraryProgressReviewScreen(model: CinemaViewModel, onBack: () -> Unit) {
-    val reviews = remember(model.libraryVersion) { LibraryProgressReviews.project(model.repo.library.snapshot) }
-    val entry = LocalContentFocus.current
-    val layout = LocalTvLayout.current
-    Column(Modifier.fillMaxSize().padding(horizontal = layout.gutter, vertical = 26.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text("资料管理", color = TvColors.Text, fontSize = 30.sp, fontWeight = FontWeight.SemiBold)
-        GlassAction("返回资料库", Modifier.focusRequester(entry).width(155.dp).height(40.dp)) { onBack() }
-        LazyColumn(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            libraryProgressReviewItems(reviews, model::open)
-        }
-    }
-    LaunchedEffect(Unit) { withFrameNanos { }; runCatching { entry.requestFocus() } }
-}

@@ -1,14 +1,26 @@
 package dev.cinematv
 
+import android.os.Handler
+import android.os.Looper
 import android.view.KeyEvent
 import android.view.Window
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.lifecycle.ViewModelProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import dev.cinematv.Page
+import dev.cinematv.data.MediaItem
+import dev.cinematv.data.TvSource
+import dev.cinematv.data.library.LocalMediaLibrary
 import dev.cinematv.perf.NativeGlassProbe
 import dev.cinematv.perf.NativePerfProbe
 import dev.cinematv.ui.tv.design.GlassQuality
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -42,6 +54,39 @@ class TvNativePerformanceAcceptanceTest {
         fun enableProbesBeforeTheActivityLaunches() {
             NativePerfProbe.enabled = true
             NativeGlassProbe.enabled = true
+            seedFocusableHomeContent()
+        }
+
+        /**
+         * A fresh install has no rails, so HOME exposes only the empty-state action and the
+         * floating navigation: D-pad presses can be handled without an applied content focus
+         * key, which makes an input-to-state receipt impossible. Seed a small local history
+         * so the production HOME renders real focus targets. Synthetic data stays on the
+         * disposable emulator; it is never shipped.
+         */
+        private fun seedFocusableHomeContent() {
+            val context = InstrumentationRegistry.getInstrumentation().targetContext
+            val library = LocalMediaLibrary(context)
+            runBlocking {
+                withTimeout(30_000) {
+                    library.initialize()
+                    repeat(4) { index ->
+                        val item = MediaItem(
+                            id = "acceptance-focus-$index",
+                            title = "验收片源 ${index + 1}",
+                            year = "2026",
+                            category = "剧情",
+                            source = TvSource("acceptance", "验收片源", "http://127.0.0.1/acceptance"),
+                            episodes = listOf("http://127.0.0.1/stream.mp4"),
+                        )
+                        library.cacheItem(item)
+                        library.saveProgress(item, 60_000L, 0, 600_000L)
+                    }
+                    val history = library.snapshot.history()
+                    android.util.Log.i("CinemaTVQa", "seedHistory=${history.size} titles=${history.map { it.title }}")
+                    check(history.isNotEmpty()) { "Seeded history is empty" }
+                }
+            }
         }
     }
 
@@ -51,6 +96,7 @@ class TvNativePerformanceAcceptanceTest {
         private val lastReceipt: AtomicLong,
         private val lastInputId: AtomicLong,
         private val route: () -> String,
+        private val handler: Handler = Handler(Looper.getMainLooper()),
     ) : Window.Callback by delegate {
         override fun dispatchKeyEvent(event: KeyEvent): Boolean {
             if (event.action != KeyEvent.ACTION_DOWN || event.repeatCount != 0) {
@@ -59,13 +105,24 @@ class TvNativePerformanceAcceptanceTest {
             val receivedNs = System.nanoTime()
             val inputId = recorder.beginInput(event.keyCode, route(), receivedNs)
             val handled = delegate.dispatchKeyEvent(event)
-            // The key is consumed synchronously on the UI thread; any focus or page state it
-            // caused is already written when dispatch returns. Recomposition and its frame
-            // follow, so this is a floor for the responding frame, never a ceiling.
-            recorder.attachState(inputId, System.nanoTime(), route(), null, "dispatch", handled)
+            val fallbackNs = System.nanoTime()
+            // The applied focus/page state is written by composition after dispatch. Poll the
+            // probe briefly, then fall back to the dispatch floor; never back-fill a later frame.
+            handler.postDelayed({ attachProbeState(inputId, receivedNs, handled, fallbackNs) }, 80L)
             lastReceipt.set(receivedNs)
             lastInputId.set(inputId)
             return handled
+        }
+
+        private fun attachProbeState(inputId: Long, receivedNs: Long, handled: Boolean, fallbackNs: Long) {
+            val state = NativePerfProbe.firstAfter(receivedNs)
+            if (state != null) {
+                recorder.attachState(inputId, state.appliedNs, state.page, state.focusKey, "probe", handled)
+            } else if (System.nanoTime() - fallbackNs < 240_000_000L) {
+                handler.postDelayed({ attachProbeState(inputId, receivedNs, handled, fallbackNs) }, 80L)
+            } else {
+                recorder.attachState(inputId, fallbackNs, route(), null, "dispatch", handled)
+            }
         }
     }
 
@@ -98,6 +155,10 @@ class TvNativePerformanceAcceptanceTest {
             rule.waitForIdle()
         }
 
+        rule.runOnUiThread {
+            ViewModelProvider(rule.activity)[CinemaViewModel::class.java].navigate(Page.HOME)
+        }
+        rule.waitForIdle()
         val recorder = FrameTimingRecorder(rule.activity)
         val lastReceipt = AtomicLong(-1L)
         val lastInputId = AtomicLong(-1L)
@@ -105,9 +166,13 @@ class TvNativePerformanceAcceptanceTest {
         NativePerfProbe.reset()
         NativePerfProbe.enabled = true
         NativeGlassProbe.reset()
-        // Warm-up outside the sample: the first press after launch only establishes focus and
-        // may legitimately draw nothing. It is never recorded as evidence.
-        InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_DOWN)
+        // Warm-up outside the sample: put focus on a real seeded card so the measured
+        // right/left presses change the model focus instead of only local nav focus.
+        rule.waitUntil(15_000) {
+            rule.onAllNodesWithContentDescription("验收片源 1").fetchSemanticsNodes().isNotEmpty()
+        }
+        rule.onNodeWithContentDescription("验收片源 1").performSemanticsAction(SemanticsActions.RequestFocus)
+        rule.waitForIdle()
         Thread.sleep(300)
         rule.runOnUiThread {
             val window = rule.activity.window
@@ -122,10 +187,13 @@ class TvNativePerformanceAcceptanceTest {
             val instrumentation = InstrumentationRegistry.getInstrumentation()
             // Alternate directions so a short page still has a reachable target for most
             // presses; unhandled presses are excluded by the host protocol, not counted.
+            // Enter the seeded history rail, then move between distinct cards. Vertical
+            // down/up alone can keep the same card focused, which changes no model state and
+            // cannot produce an input-to-state receipt.
             val keys = intArrayOf(
-                KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_UP,
-                KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_UP,
-                KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_UP,
+                KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_DPAD_LEFT,
+                KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_DPAD_LEFT,
+                KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_DPAD_LEFT,
             )
             keys.forEachIndexed { index, keyCode ->
                 lastReceipt.set(-1L)
@@ -173,10 +241,14 @@ class TvNativePerformanceAcceptanceTest {
         assertEquals(apkSha256, run.getString("apkSha256"))
         val inputs = run.getJSONArray("inputs")
         var paired = 0
+        var observedFocusKey = false
         for (index in 0 until inputs.length()) {
-            if (inputs.getJSONObject(index).optString("responseOutcome") == "paired") paired++
+            val input = inputs.getJSONObject(index)
+            if (input.optString("responseOutcome") == "paired") paired++
+            if (input.optString("stateFocusKey").isNotBlank()) observedFocusKey = true
         }
         assertTrue("At least five of six inputs must pair with their own frame", paired >= 5)
+        assertTrue("The lane must observe at least one applied focus key", observedFocusKey)
     }
 
     private fun awaitReceipt(value: AtomicLong): Long {

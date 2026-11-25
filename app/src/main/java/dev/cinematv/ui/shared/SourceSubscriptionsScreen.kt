@@ -29,7 +29,7 @@ import dev.cinematv.ui.tv.components.TvField
 import dev.cinematv.ui.mobile.MobileGlassOutlinedButton
 import dev.cinematv.ui.tv.design.TvColors
 
-/** All URL inputs and subscription snapshots stay on the native side of the hybrid boundary. */
+/** All URL inputs and subscription snapshots stay on the native side of the presentation boundary. */
 @Composable
 fun SourceSubscriptionsScreen(model: CinemaViewModel, tv: Boolean = true, modifier: Modifier = Modifier,
     onOpenConnection: () -> Unit = { model.navigate(Page.SETTINGS) }) {

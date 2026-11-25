@@ -32,6 +32,14 @@ import dev.cinematv.ui.typography.CinemaTvText as Text
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
+private val MAIN_TABS = listOf("精选" to Page.HOME, "电影" to Page.MOVIES, "剧集" to Page.SERIES,
+    "发现" to Page.EXPLORE, "直播" to Page.LIVE)
+private val NAV_ICONS = listOf(
+    Triple("搜索", CinemaSymbol.Search, Page.SEARCH),
+    Triple("片库", CinemaSymbol.Library, Page.LIBRARY),
+    Triple("设置", CinemaSymbol.Settings, Page.SETTINGS),
+)
+
 @Composable
 fun FloatingNavigation(model: CinemaViewModel, onFocusWithin: (Boolean) -> Unit, modifier: Modifier = Modifier) {
     val layout = LocalTvLayout.current
@@ -41,17 +49,16 @@ fun FloatingNavigation(model: CinemaViewModel, onFocusWithin: (Boolean) -> Unit,
         CinemaBrandStartup(Modifier.width(120.dp).height(29.dp))
         MainNavigationTabs(model)
         Row(Modifier.width(136.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            NavIcon("搜索", CinemaSymbol.Search, model, Page.SEARCH)
-            NavIcon("片库", CinemaSymbol.Library, model, Page.LIBRARY)
-            NavIcon("设置", CinemaSymbol.Settings, model, Page.SETTINGS)
+            NAV_ICONS.forEach { (label, symbol, destination) ->
+                NavIcon(label, symbol, model, destination)
+            }
         }
     }
 }
 
 @Composable
 private fun MainNavigationTabs(model: CinemaViewModel) {
-    val entries = listOf("精选" to Page.HOME, "电影" to Page.MOVIES, "剧集" to Page.SERIES,
-        "发现" to Page.EXPLORE, "直播" to Page.LIVE)
+    val entries = MAIN_TABS
     val selected = entries.indexOfFirst { it.second == model.section }
     val navigation = LocalNavigationFocus.current
     val content = LocalContentFocus.current

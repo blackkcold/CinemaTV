@@ -1,5 +1,10 @@
 package dev.cinematv.perf
 
+import androidx.compose.runtime.staticCompositionLocalOf
+
+/** Page label for the acceptance probe; only read when the probe records. */
+val LocalPerfProbePage = staticCompositionLocalOf { "HOME" }
+
 /**
  * Inert measurement probe for the native TV performance lane.
  *

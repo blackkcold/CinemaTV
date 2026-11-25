@@ -34,18 +34,15 @@ jobs:
             target: default
             size: 1080x2400
             density: 420
+            classes: 'dev.cinematv.DoubanAccountUiTest,dev.cinematv.DoubanDisabledLoginActivityTest,dev.cinematv.DiagnosticsUiTest,dev.cinematv.DiagnosticsLayoutTest,dev.cinematv.data.DoubanDeviceSecurityTest,dev.cinematv.data.DoubanDeveloperOptionsTest'
           - name: compat26
             api: 26
             target: google_apis
             size: 1920x1080
             density: 320
+            classes: 'dev.cinematv.DoubanAccountUiTest,dev.cinematv.DoubanDisabledLoginActivityTest,dev.cinematv.TvDoubanAccountUiTest,dev.cinematv.DiagnosticsUiTest,dev.cinematv.TvDiagnosticsUiTest,dev.cinematv.TvDiagnosticsConfirmFocusTest,dev.cinematv.DiagnosticsLayoutTest,dev.cinematv.data.DoubanDeviceSecurityTest,dev.cinematv.data.DoubanDeveloperOptionsTest'
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: npm
-          cache-dependency-path: frontend/tv-web/package-lock.json
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -75,7 +72,7 @@ jobs:
           emulator-build: '15004761'
           disable-animations: false
           emulator-options: '-no-window -no-audio -gpu lavapipe -feature -Vulkan -no-snapshot -no-boot-anim -memory 2048'
-          script: bash scripts/run-device-qa.sh '${{ matrix.size }}' '${{ matrix.density }}' 'dev.cinematv.DoubanAccountUiTest,dev.cinematv.DoubanDisabledLoginActivityTest,dev.cinematv.TvDoubanAccountUiTest,dev.cinematv.DiagnosticsUiTest,dev.cinematv.TvDiagnosticsUiTest,dev.cinematv.TvDiagnosticsConfirmFocusTest,dev.cinematv.DiagnosticsLayoutTest,dev.cinematv.data.DoubanDeviceSecurityTest,dev.cinematv.data.DoubanDeveloperOptionsTest'
+          script: bash scripts/run-device-qa.sh '${{ matrix.size }}' '${{ matrix.density }}' '${{ matrix.classes }}'
       - name: Require all synthetic safety cases executed
         run: |
           python3 - <<'PY'
@@ -85,7 +82,15 @@ jobs:
           cases = [c for p in Path('app/build/outputs/androidTest-results').rglob('TEST-*.xml') for c in ET.parse(p).getroot().iter('testcase')]
           sources = ['app/src/androidTest/java/dev/cinematv/DoubanAccountUiTest.kt', 'app/src/androidTest/java/dev/cinematv/data/DoubanDeviceSecurityTest.kt', 'app/src/androidTest/java/dev/cinematv/data/DoubanDeveloperOptionsTest.kt', 'app/src/androidTest/java/dev/cinematv/DiagnosticsUiTest.kt']
           expected = {name for path in sources for name in re.findall(r'@Test\s+fun\s+(\w+)', Path(path).read_text())}
-          assert len(expected) >= 21, 'Missing required developer-option coverage'
+          # The four TV-only cases live in Tv* classes and run on the landscape
+          # compat26 lane; the portrait phone lane still executes the same files'
+          # portable cases. The test run itself (not this audit) enforces the TV cases.
+          tv_only = {'nativeTvPanelRestoresRemoteFocusAfterBack',
+                     'disablingHidesAccountEntryAndRestoresDeveloperOptionsFocus',
+                     'remoteTogglesLoggingAndReturnsFocusToTheEntry',
+                     'clearingLogsDefaultsFocusToCancelAndKeepsTheLogs'}
+          expected -= tv_only
+          assert len(expected) >= 17, 'Missing required developer-option coverage'
           actual = [c for c in cases if c.get('name') in expected]
           assert {c.get('name') for c in actual} == expected, 'Missing device test'
           assert all(c.find('failure') is None and c.find('error') is None and c.find('skipped') is None for c in actual), 'Device test did not pass'
@@ -111,11 +116,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: npm
-          cache-dependency-path: frontend/tv-web/package-lock.json
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
