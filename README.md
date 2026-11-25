@@ -21,7 +21,7 @@ Native Compose TV, native playback and a separate touch interface.
 
 CinemaTV 连接你自建的 [LibreTV](https://github.com/LibreSpark/LibreTV)，把浏览、搜索、选集、播放和本地片库放在同一个应用里。电视与手机各自使用原生 Kotlin 与 Jetpack Compose 界面，Media3 负责播放；两者共享同一套业务状态、片源身份与本地片库。
 
-**已发布 Stable：[v0.8.0](https://github.com/blackkcold/CinemaTV/releases/tag/v0.8.0)；已发布 Dev：[v0.9.0-dev.2](https://github.com/blackkcold/CinemaTV/releases/tag/v0.9.0-dev.2)。** 本分支 `dev-compose` 是唯一长期开发主线，电视界面为原生 Jetpack Compose；旧版 Hybrid TV Web 层已冻结并计划删除。下方主画廊是 v0.7.0-preview 的旧原生界面截图，不代表当前电视界面。
+**已发布 Stable：[v0.8.0](https://github.com/blackkcold/CinemaTV/releases/tag/v0.8.0)；已发布 Dev：[v0.9.0-dev.2](https://github.com/blackkcold/CinemaTV/releases/tag/v0.9.0-dev.2)。** 本分支 `dev-compose` 是唯一长期开发主线，电视界面为原生 Jetpack Compose；旧版 Hybrid TV Web 层已在 G4 删除，归档于 `archive/tv-web-5c24360`。下方主画廊是 v0.7.0-preview 的旧原生界面截图，不代表当前电视界面。
 
 应用不附带公共片源、账号或影视内容。使用前需要配置自己的服务和有权访问的内容来源。本项目与 LibreTV、DpadTV 及下列第三方服务均无隶属关系。
 
@@ -90,7 +90,7 @@ CinemaTV 连接你自建的 [LibreTV](https://github.com/LibreSpark/LibreTV)，�
 - 安装下限保持 API26；电视运行时不依赖 WebView 内核或消息接口版本。构建期的 TV 前端接线仍在，会在 G4 与冻结代码一起移除。
 - 玻璃材质只采样 `BackdropLayer` 提供的静态画作场景，不读取视频 Surface、Dialog 窗口或玻璃消费者自身；Full / Blur / Basic 三档与减少动态按设备能力在运行中回退。
 - 焦点按稳定 key 记录；离屏目标先准备 Lazy 视口再请求焦点，被删除的条目回落到同区域最近的有效项。D-pad、OK 与 Back 覆盖每个页面。
-- 旧 Hybrid TV Web 层（`hybrid/`、`frontend/tv-web`）已冻结，只作历史 A/B 证据保留，将在门禁通过后删除；见 [Hybrid TV（历史）](docs/HYBRID_TV.md)。
+- 旧 Hybrid TV Web 层（`hybrid/`、`frontend/tv-web`）已在 G4 删除；需要历史 A/B 证据时从 `archive/tv-web-5c24360` 取回，不再作为主线或构建依赖。
 
 玻璃、动效与性能分档的实现边界见 [玻璃实现](docs/GLASS_PRODUCTION.md) 与 [动效实现](docs/MOTION_PRODUCTION.md)。模拟器验收不代表真实电视帧率认证。
 

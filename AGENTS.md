@@ -9,9 +9,9 @@ TV WebView browsing path is frozen and scheduled for removal under
 2026-11-06 hybrid direction recorded in the previous revision.
 
 Do not add new TV Web features or new hybrid bridge behavior. WebView remains only
-for non-TV surfaces such as Douban official login. Until the plan's G4 deletion, the
-legacy hybrid code may remain in the tree for A/B evidence, but it is not the TV
-mainline and must not be made the default again.
+for non-TV surfaces such as Douban official login. G4 deleted the legacy hybrid host
+and TV Web bundle on 2026-11-25 (owner-waived G3.4); recover historical evidence only
+from `archive/tv-web-5c24360`, never by re-creating the tree.
 
 ## Non-negotiable constraints
 
@@ -30,7 +30,7 @@ mainline and must not be made the default again.
 13. Keep the existing public package and fixed signing identity for installable Dev releases. All private signing material stays outside GitHub, Actions, artifacts and logs. Do not bypass signing gates, publish a differently signed same-package APK as an upgrade, or fabricate performance results.
 14. Performance claims require exact source SHA, APK SHA-256, device/AVD, actual renderer, material tier and valid samples. Never use vsync rate as FPS; never treat a `gfxinfo framestats` window as a 60-second distribution; never convert an unmeasured budget into a measured claim. E-gate is protocol/relative only; jank is deadline/refresh-rate based, never a fixed 16.67 ms; product acceptance is T-gate on an Android TV image, with the owner's physical-TV run recorded separately.
 15. Golden thresholds stay mean <= 0.020 and changed <= 0.08. Recapture and review; do not loosen to pass.
-16. Freeze the Web layer now: no new `frontend/tv-web` or `app/src/main/java/dev/cinematv/hybrid/` features. Delete in G4 after the owner's short physical-TV smoke and archive; migrate coverage first; preserve `archive/tv-web-5c24360`.
+16. The Web layer is deleted. G4 removed `frontend/tv-web`, `app/src/main/java/dev/cinematv/hybrid/`, its build wiring and hybrid lanes on 2026-11-25 under the owner G3.4 waiver; `archive/tv-web-5c24360` preserves the original. Do not re-create it.
 17. UX is the product gate. A performance or degradation change may not reduce focus clarity, text legibility, contrast safety or Back predictability. Fix the interface first; earn the budget second.
 
 ## Current plan and branch state
@@ -39,8 +39,8 @@ mainline and must not be made the default again.
 - Branch: `dev-compose` @ `7e2d831` (re-verified 2026-11-23). Ahead/behind counts change on every merge, so read them from git rather than from this file. The native TV surfaces, the reviewed plan, the capture protocol and the refreshed goldens are on this branch; `dev` carries no commits of its own and can fast-forward without history loss.
 - Branch roles: `dev-compose` develops and publishes the Dev channel; `dev` is a transitional mirror scheduled for retirement; `main` holds Stable. Dev and Stable share one package name and one signing identity, with a single monotonically increasing versionCode ledger.
 - Baseline tag: `baseline/native-tv-8787e1e` marks the G0 governance state (tested source `6bc1c7f`, identical tree). Never move it.
-- Web archive tag: `archive/tv-web-5c24360` does not exist yet. Create it once before G4 deletion; `5c24360` is the last commit of the TV Web experiment.
-- Gate order: G0 governance + baseline -> G1 components, glass interfaces and capture protocol -> G2 pages + full-surface glass -> G3 real-device lanes + root Back + cutover + short physical smoke + archive -> G4 Web deletion -> G5 feature-complete glass/visual polish -> G6 performance/degradation/T-gate. Do not skip G3.1 lanes, G3.2 root Back/IME, G3.4 pre-delete smoke, or G6.3 post-delete E-gate rerun.
+- Web archive tag: `archive/tv-web-5c24360` exists (created 2026-11-24; original hybrid APK and fingerprint in the same-named release). G4 deletion was completed 2026-11-25; do not move the tag.
+- Gate order: G0 governance + baseline -> G1 components, glass interfaces and capture protocol -> G2 pages + full-surface glass -> G3 real-device lanes + root Back + cutover + short physical smoke + archive -> G4 Web deletion -> G5 feature-complete glass/visual polish -> G6 performance/degradation/T-gate. G3.4 was explicitly owner-waived on 2026-11-25 (see `docs/evidence/2026-11-25-g3.4-waiver.md`); never treat emulator evidence as physical acceptance. G6.4 T-gate remains owner-run; G6.3 post-delete E-gate rerun is mandatory.
 - G3.4 and the T-gate are owner-run manual runs on a physical Android TV. They produce receipts and are not CI jobs. Emulator lanes cover remote input, focus, Back/IME and the 4K viewport; they never substitute for the owner's run.
 - `docs/NATIVE_TV_MIGRATION.md` is the branch migration input, not the current truth; the consolidated plan supersedes it where they conflict.
 - `docs/GLASS_PRODUCTION.md` is the authoritative current production glass description. `docs/GLASS_V4.md` holds the V4 depth/lens contract; merge its still-valid sections in G6.4, then mark it historical with a pointer.
@@ -75,10 +75,9 @@ Device QA:
 - `app/src/main/java/dev/cinematv/data/`: source schemas, authenticated adapters and persistence; provider decoding stays here.
 - `app/src/main/java/dev/cinematv/ui/douban/`: Douban official login using system WebView; no JS bridge; dev-only.
 - `app/src/main/java/dev/cinematv/ui/update/` and `data/update/`: updater and installer.
-- `app/src/main/java/dev/cinematv/hybrid/`: frozen legacy TV hybrid host; delete in G4; do not extend.
-- `frontend/tv-web/`: frozen TV Web experiment; delete in G4; do not extend.
+- `app/src/main/java/dev/cinematv/hybrid/` and `frontend/tv-web/`: removed in G4 on 2026-11-25; recover only from `archive/tv-web-5c24360`; never re-create on the mainline.
 - `backend/tv-bff/`: optional metadata service.
-- `docs/superpowers/plans/2026-11-07-native-tv-consolidation-reviewed.md`: current plan; the unreviewed original is retained beside it as history.
+- `docs/superpowers/plans/2026-11-07-native-tv-consolidation-reviewed.md`: current plan; G4 completed 2026-11-25 under the owner G3.4 waiver; G6 remains.
 - `docs/GLASS_PRODUCTION.md`: current glass doc; `docs/GLASS_V4.md`: V4 depth/lens contract, reconciled in G6.4.
 - `docs/UPDATE_CHANNELS.md`: external signing, versionCode ledger and channel safety.
 - `docs/TEST_PLAN.md`: the single test-plan entry point (layers, TV AVD, E-gate/T-gate boundaries, triage).

@@ -19,8 +19,8 @@
 > | G0 | 完成 | `docs/evidence/2026-11-09-g0-governance.md`；`baseline/native-tv-8787e1e`；`archive/tv-web-5c24360`（2026-11-24 创建；原 hybrid APK 与指纹见同名 release） |
 > | G1 | 完成 | PR #43–#45；`docs/evidence/2026-11-09-native-tv-drawn-tier.md`、`2026-11-09-native-tv-input-causality.md`；采集协议 v4 |
 > | G2 | 完成 | PR #46–#51；`TvPageStateTest`；`ui/tv/focus/` 与焦点恢复用例 |
-> | G3 | 代码完成，`G3.4` 待 owner | `TvRouteBackTest`、`TvImeBackTest`、`TvPlayerBackLadderTest`、`TvStatusDialogTest`、`MainActivityPathSmokeTest`；`archive/tv-web-5c24360` |
-> | G4 | 未开始 | 等 `G3.4` 真机短冒烟；owner 指示先完成 G5，本轮未触碰 TV Web 代码 |
+> | G3 | 代码完成；`G3.4` owner-waived 2026-11-25 | `TvRouteBackTest`、`TvImeBackTest`、`TvPlayerBackLadderTest`、`TvStatusDialogTest`、`MainActivityPathSmokeTest`；`archive/tv-web-5c24360` |
+> | G4 | 完成（owner waiver） | `docs/evidence/2026-11-25-g4-deletion.md`；`docs/evidence/2026-11-25-g3.4-waiver.md`；归档 tag `archive/tv-web-5c24360` |
 > | G5 | 完成（先于 G4，见下） | `docs/evidence/2026-11-24-g5-surface-audit.md`；tv1080 与 tv4k 金标均重录并复跑通过（PR #54） |
 > | G6 | 未开始 | G5 已定稿；等 G4 删除后在同一源码上测完整效果 |
 >
@@ -162,20 +162,25 @@ G0 治理与基线
 
 先迁移、跑绿，再删除对应旧文件；删除后在新 SHA 上重新构建。
 
-- [ ] **G4.1 Dev 候选链迁移。** 将 `scripts/hybrid/build-dev-candidate.sh`、`release.json` 和 `artifacts.py` 中仍有用的逻辑迁到 `scripts/updates/`。目标为 `build-native-dev-candidate.sh`、`native-dev-release.json`、`native_artifacts.py`；不把当前 Dev 分支塞入只接受 account-free main 的通用候选脚本。
-- [ ] 迁移测试到 `scripts/tests/test_native_artifacts.py`：PRIVATE_BUILD 必须 false；签名凭据/个人默认值拒绝；损坏签名不能冒充 unsigned；版本递增、固定包名/minSdk/channel/certificate、干净源码、构建前后 source/tree 不变、来源与 APK hash、输出不覆盖。删除 Web inventory 检查，增加 APK 无 `assets/tv-web/` 检查。
-- [ ] 迁移前核对全局 versionCode 账本与公开产物；原 `release.json` 的 code13 只是 reserved 状态，不能直接当作新版本可复用。保留现有 stable/main 源码隔离，不降低闸门来让当前分支通过。
-- [ ] 将原 hybrid workflow 的 Dev unsigned 构建接入非 hybrid CI，验证精确源码；之后才删除旧 workflow，确保候选检查没有消失。
-- [ ] **G4.2 EPG 与仍需覆盖。** 新建 `ui/tv/pages/ProgramGuideWindow.kt`，接口 `window(programs: List<TvProgram>, nowMs: Long, limit: Int = 48): List<TvProgram>`；迁移现有 filter/distinct/sort/limit逻辑与三个测试，补 limit负值/0/超48。LiveScreen 改用它，删除重复实现。
-- [ ] 对 `HybridHostUiTest` / `HybridAuditUiTest` 逐项列映射：页面遥控、搜索/设置返回、收藏/进度/播放返回、故障恢复中仍适用的功能须有原生覆盖；bridge/React/WebView 专属断言随功能退役。保留 `UiFixtureServer` 与原生播放测试。
-- [ ] **G4.3 删源码与死管道。** 删除 `app/src/main/java/dev/cinematv/hybrid/`、四个 hybrid androidTest 辅助/测试文件、迁移后的 hybrid 单测；删除 `LibraryProgressReviewScreen` 和仅 hybrid 使用的 `settingsInitialSection/libraryManagement/onCloseLibraryManagement` 根参数。保留 LibraryDialog 和真正仍被调用的观测接口。
-- [ ] **G4.4 删构建接线。** 删除 `app/tv-web.gradle`、`stageTvWeb/preBuild` 依赖、generated tvWebAssets srcDir、`frontend/tv-web/`。确认全仓调用后移除 `androidx.webkit`；豆瓣 `android.webkit.WebView` 保留。
-- [ ] **G4.5 删脚本与 CI 引用。** 删除已迁完的 `scripts/hybrid/`、`hybrid-web.yml`、`hybrid-android.yml`。当前共10个 workflow/15处前端缓存路径，删两文件后尚有8文件/13处，执行时重新检索，不依赖固定计数。
-- [ ] Android-only job 移除仅服务 TV Web 的 setup-node/cache；`android.yml` 的 BFF 测试保留 Node，或拆成独立 BFF job。官方 LibreTV 下载、固定 Node runtime、契约服务及测试继续保留。
-- [ ] **G4.6 文档与删后验证。** 更新 README、ARCHITECTURE、LOCAL_BUILD_DEFAULTS、DEV_AUDIT、LIBRETV_PROTOCOL、设置中的开源组件文案；移除在当前主线已无用途的 HYBRID_TV 文档，历史 release notes 和归档不改。
-- [ ] 精确删除 SHA 跑完整构建、phone/tv1080/tv4k/compat26/新增lane、原生 E-gate。另用无 Node 的 Android构建job验证 Gradle已解耦，不能用仍含BFF测试的整个workflow证明“不需要Node”。
+- [x] **G4.1 Dev 候选链迁移。** 将 `scripts/hybrid/build-dev-candidate.sh`、`release.json` 和 `artifacts.py` 中仍有用的逻辑迁到 `scripts/updates/`。目标为 `build-native-dev-candidate.sh`、`native-dev-release.json`、`native_artifacts.py`；不把当前 Dev 分支塞入只接受 account-free main 的通用候选脚本。
+- [x] 迁移测试到 `scripts/tests/test_native_artifacts.py`：PRIVATE_BUILD 必须 false；签名凭据/个人默认值拒绝；损坏签名不能冒充 unsigned；版本递增、固定包名/minSdk/channel/certificate、干净源码、构建前后 source/tree 不变、来源与 APK hash、输出不覆盖。删除 Web inventory 检查，增加 APK 无 `assets/tv-web/` 检查。
+- [x] 迁移前核对全局 versionCode 账本与公开产物；原 `release.json` 的 code13 只是 reserved 状态，不能直接当作新版本可复用。保留现有 stable/main 源码隔离，不降低闸门来让当前分支通过。
+- [x] 将原 hybrid workflow 的 Dev unsigned 构建接入非 hybrid CI，验证精确源码；之后才删除旧 workflow，确保候选检查没有消失。
+- [x] **G4.2 EPG 与仍需覆盖。** 新建 `ui/tv/pages/ProgramGuideWindow.kt`，接口 `window(programs: List<TvProgram>, nowMs: Long, limit: Int = 48): List<TvProgram>`；迁移现有 filter/distinct/sort/limit逻辑与三个测试，补 limit负值/0/超48。LiveScreen 改用它，删除重复实现。
+- [x] 对 `HybridHostUiTest` / `HybridAuditUiTest` 逐项列映射：页面遥控、搜索/设置返回、收藏/进度/播放返回、故障恢复中仍适用的功能须有原生覆盖；bridge/React/WebView 专属断言随功能退役。保留 `UiFixtureServer` 与原生播放测试。
+- [x] **G4.3 删源码与死管道。** 删除 `app/src/main/java/dev/cinematv/hybrid/`、四个 hybrid androidTest 辅助/测试文件、迁移后的 hybrid 单测；删除 `LibraryProgressReviewScreen` 和仅 hybrid 使用的 `settingsInitialSection/libraryManagement/onCloseLibraryManagement` 根参数。保留 LibraryDialog 和真正仍被调用的观测接口。
+- [x] **G4.4 删构建接线。** 删除 `app/tv-web.gradle`、`stageTvWeb/preBuild` 依赖、generated tvWebAssets srcDir、`frontend/tv-web/`。确认全仓调用后移除 `androidx.webkit`；豆瓣 `android.webkit.WebView` 保留。
+- [x] **G4.5 删脚本与 CI 引用。** 删除已迁完的 `scripts/hybrid/`、`hybrid-web.yml`、`hybrid-android.yml`。当前共10个 workflow/15处前端缓存路径，删两文件后尚有8文件/13处，执行时重新检索，不依赖固定计数。
+- [x] Android-only job 移除仅服务 TV Web 的 setup-node/cache；`android.yml` 的 BFF 测试保留 Node，或拆成独立 BFF job。官方 LibreTV 下载、固定 Node runtime、契约服务及测试继续保留。
+- [x] **G4.6 文档与删后验证。** 更新 README、ARCHITECTURE、LOCAL_BUILD_DEFAULTS、DEV_AUDIT、LIBRETV_PROTOCOL、设置中的开源组件文案；移除在当前主线已无用途的 HYBRID_TV 文档，历史 release notes 和归档不改。
+- [x] 精确删除 SHA 跑完整构建、phone/tv1080/tv4k/compat26/新增lane、原生 E-gate。另用无 Node 的 Android构建job验证 Gradle已解耦，不能用仍含BFF测试的整个workflow证明“不需要Node”。
 
 **Gate 4：** 生产/构建/活动CI无旧TV Web引用；原生覆盖、Dev候选闸门、E-gate均执行；手机与非TV WebView保留。提交历史可恢复旧Web，不移动归档tag或重写历史。
+
+> **2026-11-25 execution:** G4.1–G4.6 landed under the owner G3.4 waiver. Post-delete
+> host build/lint, release acceptance, production-entry focus receipt and
+> `NativePlaybackSessionTest` passed. The full CI device matrix and the no-Node Android
+> job remain CI verification items; G6.4 T-gate remains owner-run.
 
 ### G5 — 完整玻璃与视觉定稿
 
