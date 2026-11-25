@@ -111,7 +111,7 @@ CinemaTV 连接你自建的 [LibreTV](https://github.com/LibreSpark/LibreTV)，�
 
 完整配置、遥控器操作和设备测试范围见 [安装指南](docs/INSTALL.md)。
 
-**更新通道：** Stable 与 Dev 沿用同一个包名和固定签名，版本码全局递增。`dev-compose` 是唯一开发主线，并直接产出 Dev 通道；`dev` 是过渡镜像，后续弃用；`main` 是 Stable 发布线。Dev 的豆瓣个人账户实验默认关闭，只存在于开发线，不进入 Stable 源码范围，其验收与电视界面验收分开记录。手动下载版本和自动更新清单分别发布，是否可安装以实际 Release 和签名说明为准，详见 [更新通道](docs/UPDATE_CHANNELS.md)。
+**更新通道：** Stable 与 Dev 沿用同一个包名和固定签名，版本码全局递增。`dev-compose` 是唯一开发主线，并直接产出 Dev 通道；`dev` 已退役，历史提交保留在 `dev-compose`，TV Web 由 `archive/tv-web-5c24360` 保留；`main` 是 Stable 发布线。Dev 的豆瓣个人账户实验默认关闭，只存在于开发线，不进入 Stable 源码范围，其验收与电视界面验收分开记录。手动下载版本和自动更新清单分别发布，是否可安装以实际 Release 和签名说明为准，详见 [更新通道](docs/UPDATE_CHANNELS.md)。
 
 ## 数据与隐私
 

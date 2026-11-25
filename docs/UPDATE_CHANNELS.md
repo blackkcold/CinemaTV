@@ -60,7 +60,7 @@ A compromised signing key is outside this v1 mechanism's recovery capability.
 
 ## Branch/version policy
 
-- `main`: tested integration; `dev` releases are prereleases from a reviewed commit.
+- `main`: tested integration. Dev releases are prereleases from a reviewed commit on `dev-compose`; the transitional `dev` branch is retired.
 - Stable release tags: `vMAJOR.MINOR.PATCH`; dev tags:
   `vMAJOR.MINOR.PATCH-dev.N`. These are separate from the movable feed pointer tags.
 - Maintain **one increasing versionCode ledger across both channels**. Reserve a
