@@ -34,9 +34,14 @@ The local unsigned Dev candidate was built from the release branch head `b8bc75c
 The merge/tag tree differs only in workflow/audit files; the external signer should
 rebuild from `ed3a18a` and use that source receipt.
 
-**No signed APK or GitHub Release was created by this session.** Production signing is
-performed only on the approved non-GitHub machine; GitHub Actions must not receive the
-key. The external signer must:
+**Published signed Dev prerelease:** <https://github.com/blackkcold/CinemaTV/releases/tag/v0.9.0-dev.3>.
+The external production signer completed the signature from the unsigned candidate:
+44,238,648 bytes, SHA-256
+`6607c30ce61877ee168dc894f1dc62053031b38858e56177ba2a02a09e4b16f1`, certificate
+`0798f1686a28ae4a386a376efcabba3a4c4bb547de760210d944a58455092e8c`, v2/v3 verified
+and 16 KiB aligned. The downloaded release asset matches the signed local bytes.
+Production signing remains outside GitHub; the private key was not stored in the repo,
+Actions, artifacts or logs. The completed external-signer checklist was:
 
 1. Build the unsigned candidate from `ed3a18a` and verify the exact source/tree/hash.
 2. Sign with the fixed identity whose certificate SHA-256 is
@@ -48,7 +53,7 @@ key. The external signer must:
    debug-signed APK as a Dev upgrade.
 5. Update the release acceptance with the signed APK SHA-256 and the known limits
    (tvNative CI failure, missing tv31/tv1080/tv4k, no physical T-gate, no full golden
-   review).
+   review). — completed in the published acceptance asset.
 
 ## Known limits
 
