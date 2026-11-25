@@ -9,6 +9,10 @@ import dev.cinematv.ui.shared.*
 import dev.cinematv.ui.tv.design.GlassQuality
 import dev.cinematv.ui.tv.design.LocalTvEffects
 
+/** Shared with BackdropLayer so prefetch keys and consumer keys describe one decode. */
+internal const val BACKDROP_DECODE_WIDTH = 1600
+internal const val BACKDROP_DECODE_HEIGHT = 900
+
 /** Adjacent stills only, cancellable and disabled by the low-memory policy. */
 @Composable
 fun ArtworkPrefetch(items: List<MediaItem>, focused: MediaItem?) {

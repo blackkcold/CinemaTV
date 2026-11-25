@@ -62,6 +62,7 @@ fun TvRootApp(model: CinemaViewModel, onSceneDecoded: (String?) -> Unit = {}) {
         var navigationHasFocus by remember { mutableStateOf(false) }
         var decodedArt by remember { mutableStateOf<String?>(null) }
         val glassScene = rememberProductionGlassScene(model.page != Page.PLAYER)
+        val artworkItems = remember(model.featured, model.tvShows) { model.featured + model.tvShows }
         val showNav = navigationFocusOwner.available
         LaunchedEffect(showNav) { if (!showNav) { navigationFocusOwner.update(false); navigationHasFocus = false } }
         CompositionLocalProvider(LocalTvFocusRegistry provides registry, LocalNavigationFocus provides navigation,
@@ -72,7 +73,7 @@ fun TvRootApp(model: CinemaViewModel, onSceneDecoded: (String?) -> Unit = {}) {
             LocalProductionGlassScene provides glassScene,
             LocalPerfProbePage provides model.page.name) {
             val layout = LocalTvLayout.current
-            if (model.page != Page.PLAYER) ArtworkPrefetch(model.featured + model.tvShows, model.focused)
+            if (model.page != Page.PLAYER) ArtworkPrefetch(artworkItems, model.focused)
             Box(Modifier.fillMaxSize().testTag("tv-root").then(posterInput).background(TvColors.Background)) {
                 if (model.page != Page.PLAYER) BackdropLayer(
                     if (model.page == Page.DETAIL) model.selected else model.focused ?: model.featured.firstOrNull(),

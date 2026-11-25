@@ -1,6 +1,7 @@
 package dev.cinematv
 
 import android.app.Application
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -171,8 +172,14 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
     private val discoveryStore by lazy { HomeDiscoveryStore(application) }
     private var catalogMovies by mutableStateOf<List<MediaItem>>(emptyList())
     private var catalogSeries by mutableStateOf<List<MediaItem>>(emptyList())
-    val browseMovies get() = catalogMovies.ifEmpty { featured }.mapNotNull { it.usableMetadata() }
-    val browseSeries get() = catalogSeries.ifEmpty { tvShows }.mapNotNull { it.usableMetadata() }
+    private val browseMoviesState = derivedStateOf {
+        catalogMovies.ifEmpty { featured }.mapNotNull { it.usableMetadata() }
+    }
+    private val browseSeriesState = derivedStateOf {
+        catalogSeries.ifEmpty { tvShows }.mapNotNull { it.usableMetadata() }
+    }
+    val browseMovies get() = browseMoviesState.value
+    val browseSeries get() = browseSeriesState.value
     var movieBrowse by mutableStateOf(CatalogBrowseState())
         private set
     var seriesBrowse by mutableStateOf(CatalogBrowseState())
@@ -1469,7 +1476,15 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
     fun libraryByStatus(status: LibraryStatus): List<MediaItem> = WorkNavigationProjection.deduplicate(repo.libraryByStatus(status), associations = workAssociations)
 
     fun favorites() = WorkNavigationProjection.deduplicate(repo.favorites(), associations = workAssociations)
-    fun history() = repo.history().map { it.withoutDoubanHomeBadges() }
+    private var historyCacheVersion = -1
+    private var historyCache: List<MediaItem> = emptyList()
+    fun history(): List<MediaItem> {
+        if (historyCacheVersion != libraryVersion) {
+            historyCache = repo.history().map { it.withoutDoubanHomeBadges() }
+            historyCacheVersion = libraryVersion
+        }
+        return historyCache
+    }
 
     fun back() {
         val target = when (page) {

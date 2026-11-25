@@ -48,8 +48,8 @@ fun BackdropLayer(
 ) {
     val context = LocalContext.current
     val effects = LocalTvEffects.current
-    val decodeWidth = if (effects.glass == GlassQuality.BASIC) 960 else 1600
-    val decodeHeight = if (effects.glass == GlassQuality.BASIC) 540 else 900
+    val decodeWidth = if (effects.glass == GlassQuality.BASIC) 960 else BACKDROP_DECODE_WIDTH
+    val decodeHeight = if (effects.glass == GlassQuality.BASIC) 540 else BACKDROP_DECODE_HEIGHT
     val requested = landscapeArt(item)
     val latest by rememberUpdatedState(requested)
     val decodedObserver = LocalProductionSceneDecoded.current
