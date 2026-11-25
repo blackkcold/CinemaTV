@@ -1,7 +1,7 @@
 name: Android TV APK
 on:
   push:
-    branches: [main]
+    branches: [main, dev-compose]
     tags: ['v*']
   pull_request:
   workflow_dispatch:

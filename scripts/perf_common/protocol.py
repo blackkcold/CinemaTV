@@ -9,7 +9,9 @@ from dataclasses import dataclass, field
 PROTOCOL_VERSION = 4
 DEFAULT_ACTIVE_WINDOW_NS = 450_000_000
 PURPOSES = ("input-causality", "tier-direct")
-MIN_PAIRED_INPUTS = 1
+# Native E-gate lanes must pair at least five of their six inputs. A single pair is not
+# enough to validate the lane; the acceptance test asserts the same floor.
+PAIRED_FLOOR = {"input-causality": 5, "tier-direct": 5}
 
 
 @dataclass
@@ -142,7 +144,7 @@ def validate_run(run):
             errors.append("response-shared-frame")
         claimed.add(response)
         paired += 1
-    if paired < MIN_PAIRED_INPUTS:
+    if paired < PAIRED_FLOOR.get(purpose, 1):
         errors.append("not-enough-paired-inputs")
     return errors
 

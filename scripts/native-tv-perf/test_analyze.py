@@ -8,7 +8,20 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def run_document(frames):
+def run_document(frames=None):
+    if frames is None:
+        frames = [
+            {"vsyncNs": 20, "intendedVsyncNs": 20, "totalNs": 15_000_000, "deadlineNs": 10_000_000, "firstDraw": False},
+            {"vsyncNs": 30, "intendedVsyncNs": 30, "totalNs": 8_000_000, "deadlineNs": 10_000_000, "firstDraw": False},
+            {"vsyncNs": 40, "intendedVsyncNs": 40, "totalNs": 20_000_000, "deadlineNs": 10_000_000, "firstDraw": False},
+            {"vsyncNs": 50, "intendedVsyncNs": 50, "totalNs": 6_000_000, "deadlineNs": 10_000_000, "firstDraw": False},
+            {"vsyncNs": 60, "intendedVsyncNs": 60, "totalNs": 7_000_000, "deadlineNs": 10_000_000, "firstDraw": False},
+        ]
+    inputs = [
+        {"id": index + 1, "receivedNs": 5, "stateAppliedNs": 15, "responseDrawNs": vsync,
+         "latencyNs": 15, "responseOutcome": "paired"}
+        for index, vsync in enumerate((20, 30, 40, 50, 60))
+    ]
     return {
         "schema": 4, "protocolVersion": 4, "runId": "r", "sourceSha": "a" * 40,
         "apkSha256": "b" * 64, "buildType": "release", "device": "tv", "renderer": "lavapipe",
@@ -16,8 +29,7 @@ def run_document(frames):
         "refreshHz": 60.0, "activeWindowNs": 450_000_000,
         "metricCallbackDrops": 0, "truncated": False,
         "windows": [{"startNs": 5, "endNs": 450_000_005}],
-        "inputs": [{"id": 1, "receivedNs": 5, "stateAppliedNs": 15, "responseDrawNs": 20,
-                    "latencyNs": 15, "responseOutcome": "paired"}],
+        "inputs": inputs,
         "frames": frames,
     }
 
@@ -31,14 +43,11 @@ class AnalyzeTest(unittest.TestCase):
                                   capture_output=True, text=True, timeout=10)
 
     def test_valid_run_exits_zero(self):
-        result = self.invoke(run_document([
-            {"vsyncNs": 20, "intendedVsyncNs": 20, "totalNs": 4_000_000, "deadlineNs": 10_000_000, "firstDraw": False},
-            {"vsyncNs": 30, "intendedVsyncNs": 30, "totalNs": 5_000_000, "deadlineNs": 10_000_000, "firstDraw": False},
-        ]))
+        result = self.invoke(run_document())
         self.assertEqual(0, result.returncode, result.stderr)
         summary = json.loads(result.stdout)
         self.assertTrue(summary["valid"])
-        self.assertEqual(1, summary["paired_inputs"])
+        self.assertEqual(5, summary["paired_inputs"])
         self.assertAlmostEqual(15.0, summary["latency_p95_ns"])
 
     def test_empty_frames_exit_nonzero(self):

@@ -10,6 +10,13 @@ def base_run():
         {"vsyncNs": 20, "intendedVsyncNs": 20, "totalNs": 15_000_000, "deadlineNs": 10_000_000, "firstDraw": False},
         {"vsyncNs": 30, "intendedVsyncNs": 30, "totalNs": 8_000_000, "deadlineNs": 10_000_000, "firstDraw": False},
         {"vsyncNs": 40, "intendedVsyncNs": 40, "totalNs": 20_000_000, "deadlineNs": 10_000_000, "firstDraw": False},
+        {"vsyncNs": 50, "intendedVsyncNs": 50, "totalNs": 6_000_000, "deadlineNs": 10_000_000, "firstDraw": False},
+        {"vsyncNs": 60, "intendedVsyncNs": 60, "totalNs": 7_000_000, "deadlineNs": 10_000_000, "firstDraw": False},
+    ]
+    inputs = [
+        {"id": index + 1, "receivedNs": 5, "stateAppliedNs": 15, "responseDrawNs": vsync,
+         "latencyNs": 15, "responseOutcome": "paired"}
+        for index, vsync in enumerate((20, 30, 40, 50, 60))
     ]
     return {
         "schema": 4, "protocolVersion": 4, "runId": "r1", "sourceSha": "a" * 40,
@@ -19,8 +26,7 @@ def base_run():
         "refreshHz": 60.0, "activeWindowNs": 450_000_000,
         "metricCallbackDrops": 0, "truncated": False,
         "windows": [{"startNs": 5, "endNs": 450_000_005}],
-        "inputs": [{"id": 1, "receivedNs": 5, "stateAppliedNs": 15, "responseDrawNs": 20,
-                    "latencyNs": 15, "responseOutcome": "paired"}],
+        "inputs": inputs,
         "frames": frames,
     }
 
@@ -29,13 +35,13 @@ class ProtocolTest(unittest.TestCase):
     def test_valid_run_summarizes_deadline_jank_and_percentiles(self):
         summary = protocol.summarize(base_run())
         self.assertTrue(summary.valid, summary.errors)
-        self.assertEqual(3, summary.frames)
-        self.assertEqual(4, summary.raw_frames)
-        self.assertAlmostEqual(2 / 3, summary.jank_ratio)
+        self.assertEqual(5, summary.frames)
+        self.assertEqual(6, summary.raw_frames)
+        self.assertAlmostEqual(2 / 5, summary.jank_ratio)
         self.assertAlmostEqual(20_000_000.0, summary.p95_ns)
         self.assertAlmostEqual(20_000_000.0, summary.p99_ns)
         self.assertEqual(1, summary.first_draw_frames)
-        self.assertEqual(1, summary.paired_inputs)
+        self.assertEqual(5, summary.paired_inputs)
         self.assertAlmostEqual(15.0, summary.latency_p95_ns)
 
     def test_no_frames_never_becomes_evidence(self):
@@ -47,7 +53,7 @@ class ProtocolTest(unittest.TestCase):
         run = base_run()
         run["frames"].append(copy.deepcopy(run["frames"][0]))
         summary = protocol.summarize(run)
-        self.assertEqual(4, summary.raw_frames)
+        self.assertEqual(6, summary.raw_frames)
         self.assertEqual(1, summary.duplicate_frames)
 
     def test_callback_drops_truncation_scene_and_source_fail_closed(self):
@@ -113,9 +119,9 @@ class ProtocolTest(unittest.TestCase):
         run = base_run()
         run["inputs"] = [dict(run["inputs"][0], handled=False)]
         self.assertIn("not-enough-paired-inputs", protocol.summarize(run).errors)
-        # An unhandled press next to a proven one is excluded, not a hard failure.
+        # An unhandled press next to a proven five is excluded, not a hard failure.
         run = base_run()
-        run["inputs"] = [run["inputs"][0], dict(run["inputs"][0], id=2, handled=False,
+        run["inputs"] = run["inputs"] + [dict(run["inputs"][0], id=6, handled=False,
                                                stateAppliedNs=16, responseDrawNs=30, latencyNs=25)]
         self.assertNotIn("not-enough-paired-inputs", protocol.summarize(run).errors)
 
