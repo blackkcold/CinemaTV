@@ -11,7 +11,7 @@ Android TV · Google TV · Android 手机
 Native Compose TV, native playback and a separate touch interface.
 
 [![Android 8.0+](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white)](docs/INSTALL.md)
-[![Stable](https://img.shields.io/github/v/release/blackkcold/CinemaTV?label=stable)](https://github.com/blackkcold/CinemaTV/releases/tag/v0.8.0)
+[![Stable](https://img.shields.io/github/v/release/blackkcold/CinemaTV?label=stable)](https://github.com/blackkcold/CinemaTV/releases/tag/v0.9.0)
 [![Build](https://github.com/blackkcold/CinemaTV/actions/workflows/android.yml/badge.svg?branch=main)](https://github.com/blackkcold/CinemaTV/actions/workflows/android.yml)
 [![License: MIT](https://img.shields.io/badge/project%20license-MIT-blue.svg)](LICENSE)
 
@@ -21,7 +21,7 @@ Native Compose TV, native playback and a separate touch interface.
 
 CinemaTV 连接你自建的 [LibreTV](https://github.com/LibreSpark/LibreTV)，把浏览、搜索、选集、播放和本地片库放在同一个应用里。电视与手机各自使用原生 Kotlin 与 Jetpack Compose 界面，Media3 负责播放；两者共享同一套业务状态、片源身份与本地片库。
 
-**已发布 Stable：[v0.8.0](https://github.com/blackkcold/CinemaTV/releases/tag/v0.8.0)；已发布 Dev：[v0.9.0-dev.3](https://github.com/blackkcold/CinemaTV/releases/tag/v0.9.0-dev.3)。** 两者同包名、同一生产签名。`main` 是 Stable 发布线，`dev-compose` 是唯一长期开发主线并直接产出 Dev 通道；旧版 Hybrid TV Web 层已在 G4 删除，归档于 `archive/tv-web-5c24360`。Dev 的豆瓣个人账号实验默认关闭、只存在于开发线，不进入 Stable 源码范围。下方主画廊是 v0.7.0-preview 的旧原生界面截图，不代表当前电视界面。
+**已发布 Stable：[v0.9.0](https://github.com/blackkcold/CinemaTV/releases/tag/v0.9.0)（code 16）；已发布 Dev：[v0.9.0-dev.3](https://github.com/blackkcold/CinemaTV/releases/tag/v0.9.0-dev.3)（code 15）。** 两者同包名、同一生产签名。`main` 是 Stable 发布线，`dev-compose` 是唯一长期开发主线并直接产出 Dev 通道；旧版 Hybrid TV Web 层已在 G4 删除，归档于 `archive/tv-web-5c24360`。Dev 的豆瓣个人账号实验默认关闭、只存在于开发线，不进入 Stable 源码范围。下方主画廊是 v0.7.0-preview 的旧原生界面截图，不代表当前电视界面。
 
 应用不附带公共片源、账号或影视内容。使用前需要配置自己的服务和有权访问的内容来源。本项目与 LibreTV、DpadTV 及下列第三方服务均无隶属关系。
 

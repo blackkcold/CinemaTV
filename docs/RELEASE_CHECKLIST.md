@@ -12,12 +12,17 @@ A stable channel label does not mean every possible device or workflow was teste
 
 | Item | Recorded value |
 |---|---|
-| Main release commit | `95a6704e1c7298eb5aa11a74106d0f25573c5232` |
-| Source tree | `4aa3a187e711dd024caa7c5fc5bddc38baad2c8e` |
-| Unsigned CI checkout embedded in both APKs | `2c119ce4d7926bbb2252ed2c0e0afa67a98a0dcd` |
+| Stable release commit (0.9.0) | `4ff32d99c5d2b8e516f114d3e1a227d7db5009c7` |
+| Source tree (0.9.0) | `8671343ad8d5c1d958de96b04b11b3f470ea2210` |
 | Production certificate SHA-256 | `0798f1686a28ae4a386a376efcabba3a4c4bb547de760210d944a58455092e8c` |
-| Stable | `0.8.0`, code `10`, `CinemaTV-0.8.0-code10-stable.apk` |
-| Stable final signed SHA-256 | `5bf5d7ff746ccde281286365e138d12050a67d8ad23d5893b3570b6127607236` |
+| Stable (0.9.0) | `0.9.0`, code `16`, `CinemaTV-0.9.0-code16-stable.apk`, 43,697,734 bytes |
+| Stable final signed SHA-256 (0.9.0) | `afbd143f0e82bff486b2415e7353d05de9031c6a0b1434c1518f2d475f36d97a` |
+| Unsigned candidate SHA-256 (0.9.0) | `c46ea39996932aaf76662adbd9f9a328681065d2fd46817bf1acbab15a4a38e9` |
+| Main release commit (0.8.0) | `95a6704e1c7298eb5aa11a74106d0f25573c5232` |
+| Source tree (0.8.0) | `4aa3a187e711dd024caa7c5fc5bddc38baad2c8e` |
+| Unsigned CI checkout embedded in both 0.8.0 APKs | `2c119ce4d7926bbb2252ed2c0e0afa67a98a0dcd` |
+| Stable (0.8.0) | `0.8.0`, code `10`, `CinemaTV-0.8.0-code10-stable.apk` |
+| Stable final signed SHA-256 (0.8.0) | `5bf5d7ff746ccde281286365e138d12050a67d8ad23d5893b3570b6127607236` |
 | Unpublished acceptance target | `0.8.0-dev.1`, code `11`; not a download/release |
 | Unpublished dev target signed SHA-256 | `1bd9f3f6fb28d7d9c62fb14bfa79682e5a0c6213e79081a132298c1063249262` |
 
