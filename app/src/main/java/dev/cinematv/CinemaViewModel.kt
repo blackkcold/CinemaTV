@@ -8,6 +8,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import dev.cinematv.data.*
 import dev.cinematv.data.douban.public.toMediaItem
+import dev.cinematv.data.library.LibraryChange
 import dev.cinematv.data.recommendation.LocalRecommendationPipeline
 import dev.cinematv.data.recommendation.LocalRecommendationSnapshot
 import kotlinx.coroutines.Dispatchers
@@ -340,10 +341,12 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
 
     init {
         viewModelScope.launch {
-            repo.library.snapshots.collect {
+            repo.library.snapshots.collect { snapshot ->
                 libraryVersion++
-                rebuildRecommendations()
-                if (completedSearchQuery.isNotBlank() || searchFilters.doubanTopOnly) rebuildSearch()
+                if (snapshot.change != LibraryChange.PROGRESS) {
+                    rebuildRecommendations()
+                    if (completedSearchQuery.isNotBlank() || searchFilters.doubanTopOnly) rebuildSearch()
+                }
             }
         }
         viewModelScope.launch {

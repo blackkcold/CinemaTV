@@ -20,6 +20,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.C
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.ui.PlayerView
@@ -28,7 +29,9 @@ import dev.cinematv.CinemaViewModel
 import dev.cinematv.Page
 import dev.cinematv.playback.NativePlaybackSession
 import dev.cinematv.playback.ObservePlaybackLifecycle
+import dev.cinematv.playback.PlaybackProgressWritePolicy
 import dev.cinematv.playback.togglePlayPause
+import java.util.concurrent.atomic.AtomicLong
 import dev.cinematv.ui.Ink
 import dev.cinematv.ui.Ivory
 import dev.cinematv.ui.Muted
@@ -53,14 +56,19 @@ fun MobilePlayerPage(model: CinemaViewModel) {
     var error by remember(session) { mutableStateOf("") }
     var position by remember(session) { mutableLongStateOf(0L) }
     var playRequested by remember(session) { mutableStateOf(player.playWhenReady) }
+    val lastSavedPosition = remember(session) { AtomicLong(model.playbackPosition.coerceAtLeast(0L)) }
     DisposableEffect(player) {
+        var ended = false
         val listener = object : Player.Listener {
             override fun onPlayerError(exception: PlaybackException) {
                 error = exception.message ?: "播放失败"
                 model.recoverPlayback(error, player.currentPosition, session)
             }
             override fun onPlaybackStateChanged(state: Int) {
-                if (state == Player.STATE_ENDED) model.playerEnded(player.currentPosition, player.duration.coerceAtLeast(0L), episodeAtCreation, session)
+                if (state == Player.STATE_ENDED) {
+                    ended = true
+                    model.playerEnded(player.currentPosition, player.duration.coerceAtLeast(0L), episodeAtCreation, session)
+                }
             }
             override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
                 playRequested = playWhenReady
@@ -72,7 +80,13 @@ fun MobilePlayerPage(model: CinemaViewModel) {
         }
         player.addListener(listener)
         onDispose {
-            model.savePlaybackPosition(player.currentPosition.coerceAtLeast(0L), episodeAtCreation, player.duration.coerceAtLeast(0L), session)
+            val finalPosition = player.currentPosition
+            val persistedPosition = finalPosition.coerceAtLeast(0L)
+            if (!ended && finalPosition != C.TIME_UNSET &&
+                PlaybackProgressWritePolicy.shouldPersistFinal(persistedPosition, lastSavedPosition.get())) {
+                model.savePlaybackPosition(persistedPosition, episodeAtCreation, player.duration.coerceAtLeast(0L), session)
+                lastSavedPosition.set(persistedPosition)
+            }
             player.removeListener(listener)
             playback.close()
         }
@@ -81,8 +95,16 @@ fun MobilePlayerPage(model: CinemaViewModel) {
     LaunchedEffect(player) {
         var seconds = 0
         while (isActive) {
-            position = player.currentPosition.coerceAtLeast(0L)
-            if (++seconds % 5 == 0) model.savePlaybackPosition(position, episodeAtCreation, player.duration.coerceAtLeast(0L), session)
+            val currentPosition = player.currentPosition
+            position = currentPosition.coerceAtLeast(0L)
+            if (++seconds % 5 == 0 && currentPosition != C.TIME_UNSET &&
+                PlaybackProgressWritePolicy.shouldPersistWhilePlaying(
+                    currentPosition, lastSavedPosition.get(), player.isPlaying,
+                )) {
+                model.savePlaybackPosition(currentPosition.coerceAtLeast(0L), episodeAtCreation,
+                    player.duration.coerceAtLeast(0L), session)
+                lastSavedPosition.set(currentPosition.coerceAtLeast(0L))
+            }
             delay(1000)
         }
     }

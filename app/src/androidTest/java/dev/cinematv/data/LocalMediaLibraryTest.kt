@@ -7,6 +7,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import dev.cinematv.data.library.CinemaLibraryDatabase
 import dev.cinematv.data.library.LegacyLibraryImport
+import dev.cinematv.data.library.LibraryChange
 import dev.cinematv.data.library.LocalMediaLibrary
 import dev.cinematv.data.library.MediaItemCodec
 import kotlinx.coroutines.Dispatchers
@@ -79,7 +80,9 @@ class LocalMediaLibraryTest {
     @Test fun progressIsPerEpisodeAndFavoritesSurviveHistoryClear() = runBlocking {
         val store = library()
         store.initialize()
+        store.cacheItem(first)
         store.saveProgress(first, 2500, 0, 10_000)
+        assertEquals(LibraryChange.PROGRESS, store.snapshot.change)
         store.saveProgress(first, 750, 1, 4000)
         store.saveProgress(first, 900, 1, 0)
         assertEquals(2500L, store.snapshot.progress(first, 0)?.positionMs)
