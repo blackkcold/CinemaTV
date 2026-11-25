@@ -216,11 +216,11 @@ A stable label is not hardware certification. Each stable publication records:
    APK hash for a release APK.
 4. Acceptance tied to the **final signed APK bytes and certificate**: explicit
    installer permissions/cancel/return, same-key channel upgrades, real library data
-   preservation, API26/current Android and physical TV. Distinguish adb upgrades from
-   user-facing installer flows, and individual retained records from complete
-   migration coverage. Run those checks on the signed artifact, then publish those
-   unchanged bytes. Do not re-sign or rebuild after acceptance and call it the tested
-   binary.
+   preservation and API26/current Android. Distinguish adb upgrades from user-facing
+   installer flows, and individual retained records from complete migration coverage.
+   A physical-TV run is optional and recorded separately; a release without one says so.
+   Run those checks on the signed artifact, then publish those unchanged bytes. Do not
+   re-sign or rebuild after acceptance and call it the tested binary.
 5. Public APK hash, certificate fingerprint, source commit/tree and acceptance
    evidence recorded together. Feed payload preparation is not a substitute for
    this review, and no current workflow automatically publishes stable.

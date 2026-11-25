@@ -21,10 +21,11 @@ A stable channel label does not mean every possible device or workflow was teste
 | Unpublished acceptance target | `0.8.0-dev.1`, code `11`; not a download/release |
 | Unpublished dev target signed SHA-256 | `1bd9f3f6fb28d7d9c62fb14bfa79682e5a0c6213e79081a132298c1063249262` |
 
-## Mandatory TV hardware QA
+## Optional physical-TV QA (owner-run)
 
-This is the gate for the next stable candidate. It is not certification, and no
-emulator lane satisfies it.
+This list is optional. CI device lanes and the signed-artifact checks are the release
+gate; the items below are for a physical run when the owner chooses to do one, and
+nothing here is certification.
 
 - [ ] 2GB RAM TV box: model / Android version / build fingerprint
 - [ ] Mainstream Google TV: model / Android version / build fingerprint

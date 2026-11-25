@@ -14,7 +14,7 @@ and `docs/GLASS_PRODUCTION.md` (the glass contract).
 | Instrumentation compile | `:app:assembleDebugAndroidTest` | Test code compiles for the exact candidate | That any test ran |
 | Device lanes | `tv-smoke.yml` matrix (`phone`, `tv1080`, `tv4k`, `tvNative`, `tv29`, `tv31`, `tv36`, `compat26`) | D-pad/OK/Back, focus restoration, IME, playback intent, golden screenshots on those viewports | Physical TV behaviour |
 | Native perf E-gate | `scripts/native-tv-perf/` + `FrameTimingRecorder` + `NativePerfProbe` | Input → state → drawn-frame causality, paired latency, drawn glass tier, protocol validity | Frame rate on a TV SoC |
-| T-gate (owner) | Manual run on a physical Android TV | Product acceptance for the release candidate | — |
+| T-gate (optional, owner) | Manual run on a physical Android TV | Physical-TV confidence for whoever runs it | Release acceptance; it is not a release gate |
 
 Emulator evidence is E-gate only: protocol/relative, never a 60 fps or TV certification claim.
 
@@ -113,7 +113,7 @@ conclusion. Full is still unproven on TV hardware until a physical run draws it.
 | Glass material invariants | `GlassMaterialSmokeTest`, `GlassActionLayoutTest` | CI |
 | Golden screenshots (6 screens × 1080p/4K) | `TvUiRegressionTest` + `compare-ui-goldens.py` | CI, human review on change |
 | Production entry + perf causality | `TvNativePerformanceAcceptanceTest` on `tvNative` and the local TV AVD | E-gate |
-| Physical TV acceptance | Owner run with the receipt template below | T-gate |
+| Physical TV acceptance | Optional owner run with the receipt template below | Not required; T-gate |
 
 Only `tvNative` (Android TV image, `isTv=true`, production `MainActivity`) is television
 evidence for the production entry. `tv1080`/`tv4k` use phone images at wide viewports and
@@ -130,7 +130,8 @@ composition only through a debug-only entry, and that is never TV certification.
 4. For perf/glass changes: a valid `analyze.py` run with the real drawn tier, plus the
    before/after numbers.
 5. Evidence file records source SHA, APK SHA-256, device/AVD, renderer, tier and limitations.
-6. T-gate receipt is recorded separately by the owner; no emulator result is relabeled.
+6. A T-gate receipt is optional. When no physical run happened, the release notes say so;
+   no emulator result is ever relabeled as physical.
 
 ## Known open items (2026-11-23)
 
@@ -138,11 +139,12 @@ composition only through a debug-only entry, and that is never TV certification.
   build paired 6/6 and 5/6. Treat `tier-direct` as a tier check and `input-causality` as the
   latency sample; investigate the 450 ms window under FULL before tightening anything.
 - `TvFrameTrace` is not wired; `FrameTimingRecorder` is the only frame source.
-- Physical TV T-gate, 4K/HDR and thermal coverage remain owner-run.
+- Physical TV T-gate (optional, owner-run), 4K/HDR and thermal coverage remain unmeasured.
 
-## T-gate receipt (owner-run)
+## T-gate receipt (optional, owner-run)
 
-The T-gate is a manual run on a physical Android TV. Collect the surrounding facts first;
+The T-gate is an optional manual run on a physical Android TV; it is not a release
+blocker. Collect the surrounding facts first;
 the script installs nothing and changes no device setting:
 
 ```sh
