@@ -5,7 +5,8 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[2]
-SOURCE = ROOT / "app/src/main/java/dev/cinematv/ui/CinemaWidgets.kt"
+SOURCE = ROOT / "app/src/main/java/dev/cinematv/ui/tv/components/GlassAction.kt"
+PALETTE = ROOT / "app/src/main/java/dev/cinematv/ui/CinemaWidgets.kt"
 NATIVE = ROOT / "app/src/androidTest/java/dev/cinematv/GlassActionLayoutTest.kt"
 
 
@@ -22,16 +23,17 @@ def contrast(a, b):
 
 class GlassActionSelectionTest(unittest.TestCase):
     def test_selection_stays_on_the_existing_native_button(self):
-        source = SOURCE.read_text().split("fun GlassAction(", 1)[1].split("fun TvInput(", 1)[0]
-        self.assertIn(".semantics { this.selected = selected }", source)
+        source = SOURCE.read_text().split("fun GlassAction(", 1)[1]
+        self.assertIn(".semantics { this.selected = selected; if (!enabled) disabled() }", source)
         self.assertIn("role = Role.Button, onClick = onClick", source)
-        self.assertIn(".heightIn(min = 40.dp)", source)
-        self.assertIn("selected = selected, prominent = prominent, layerBlock", source)
+        self.assertIn(".heightIn(min = TvHeight.button)", source)
+        self.assertIn("selected = selected, prominent = prominent", source)
+        self.assertIn("layerBlock", source)
         self.assertNotIn("label +", source)
         self.assertNotIn("✓", source)
 
     def test_marker_is_conditional_non_interactive_and_outside_label_measurement(self):
-        source = SOURCE.read_text().split("fun GlassAction(", 1)[1].split("fun TvInput(", 1)[0]
+        source = SOURCE.read_text().split("fun GlassAction(", 1)[1]
         marker = source.split("if (selected) {", 1)[1]
         self.assertLess(source.index("Row("), source.index("if (selected) {"))
         for required in ("Box(Modifier.matchParentSize())", "Alignment.BottomCenter",
@@ -45,7 +47,7 @@ class GlassActionSelectionTest(unittest.TestCase):
             self.assertNotIn(forbidden, marker)
 
     def test_opaque_two_tone_palette_has_contrast_over_any_backdrop_luminance(self):
-        source = SOURCE.read_text()
+        source = PALETTE.read_text()
         colors = [int(re.search(r"val " + name + r" = Color\(0x([0-9A-F]+)\)", source)[1], 16)
                   for name in ("Ink", "Ivory")]
         self.assertTrue(all(color >> 24 == 255 for color in colors))
@@ -71,7 +73,7 @@ class GlassActionSelectionTest(unittest.TestCase):
             self.assertNotIn(forbidden, source)
 
     def test_focus_outline_is_foreground_two_tone_and_uses_existing_geometry(self):
-        source = SOURCE.read_text().split("fun GlassAction(", 1)[1].split("fun TvInput(", 1)[0]
+        source = SOURCE.read_text().split("fun GlassAction(", 1)[1]
         ring = source.split("Box(Modifier.matchParentSize().drawBehind {", 1)[1].split("if (selected) {", 1)[0]
         self.assertLess(source.index("Row("), source.index("Box(Modifier.matchParentSize().drawBehind {"))
         for required in ("if (focused)", "scaleCanvas(scale)", "minOf(26.dp.toPx(), size.width / 2, size.height / 2)",

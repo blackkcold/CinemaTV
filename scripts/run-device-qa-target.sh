@@ -7,6 +7,7 @@ if [ "$#" -ne 4 ]; then
   exit 2
 fi
 TARGET=$1
+export CINEMA_TARGET="$TARGET"
 shift
 case "$TARGET" in
   phone|tv1080)
@@ -15,7 +16,7 @@ case "$TARGET" in
       --directory "$RUNNER_TEMP/official-libretv-android" \
       --report qa/official-lifecycle.json -- bash scripts/run-device-qa.sh "$@"
     ;;
-  tv4k|compat26)
+  tv4k|compat26|tvNative|tv29|tv31|tv36)
     exec bash scripts/run-device-qa.sh "$@"
     ;;
   *)

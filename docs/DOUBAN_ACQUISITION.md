@@ -1,5 +1,10 @@
 # Douban acquisition: scope and activation gate
 
+> 2026-11-06: the app now has a separate, account-free public-page channel for lists,
+> tags and top charts. It is documented in [DOUBAN_PUBLIC_ACCESS.md](DOUBAN_PUBLIC_ACCESS.md)
+> and is not governed by the BFF declaration below. The BFF adapter described here
+> remains the licensed, default-off server-side path; the client no longer depends on it.
+
 CinemaTV keeps Douban metadata separate from LibreTV. A LibreTV-compatible server is not assumed to provide charts, licensed ratings, or a complete Top 250.
 
 ## What the implementation does

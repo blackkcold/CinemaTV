@@ -88,8 +88,9 @@ class UpdatePipelineHarnessTest(unittest.TestCase):
     def test_release_test_sources_and_dependency_are_explicit_opt_in(self):
         build = (ROOT / 'app/build.gradle.kts').read_text()
         self.assertIn('gradleProperty("cinematvUpdateAcceptance").getOrElse("false")', build)
-        self.assertIn('if (updateAcceptance) testBuildType = "release"', build)
+        self.assertIn('if (updateAcceptance || nativeTvAcceptance) testBuildType = "release"', build)
         self.assertIn('sourceSets["androidTest"].setRoot("src/updateAcceptance")', build)
+        self.assertIn('sourceSets["androidTest"].setRoot("src/nativeTvAcceptance")', build)
         self.assertIn('if (updateAcceptance) androidTestImplementation("com.squareup.okhttp3:mockwebserver:', build)
         self.assertFalse((ROOT / 'app/src/main/java/dev/cinematv/data/update/UpdateRepositoryAcceptanceTest.kt').exists())
         source = (ROOT / 'scripts/updates/build-installer-fixtures.sh').read_text()

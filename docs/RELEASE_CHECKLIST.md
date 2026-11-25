@@ -21,6 +21,27 @@ A stable channel label does not mean every possible device or workflow was teste
 | Unpublished acceptance target | `0.8.0-dev.1`, code `11`; not a download/release |
 | Unpublished dev target signed SHA-256 | `1bd9f3f6fb28d7d9c62fb14bfa79682e5a0c6213e79081a132298c1063249262` |
 
+## Mandatory TV hardware QA
+
+This is the gate for the next stable candidate. It is not certification, and no
+emulator lane satisfies it.
+
+- [ ] 2GB RAM TV box: model / Android version / build fingerprint
+- [ ] Mainstream Google TV: model / Android version / build fingerprint
+- [ ] Physical 4K Android TV: model / Android version / build fingerprint
+- [ ] Full 1080p and 4K screenshot comparisons to the current native TV golden images
+- [ ] Full Glass effect performance and low-end fallback verified on hardware
+- [ ] D-pad navigation, keyboard/IME, focus and scroll restoration across routes
+- [ ] 4-hour continuous playback without crash, OOM, or sustained memory growth
+- [ ] MP4, HLS, DASH, H.264, H.265 and 4K/HDR on explicitly capable hardware
+- [ ] Player audio, subtitle, video track override and decoder failover
+- [ ] Network 401/403/404, offline/online, source failover and session recovery
+- [ ] Series episode indexing, progress, resume, next episode, library after restart
+- [ ] Live TV channel switch, M3U, XMLTV timezones and EPG now/next
+- [ ] Production signing, fresh install, debug-to-release migration and update paths
+- [ ] Instrumented remote smoke tests and a native-tv-perf report that records the drawn tier and `sourceReady`
+- [ ] Permissions, OSS license notices, metadata credit and lawful asset audit
+
 The main merge and CI checkout have the same source tree. The APKs retain the
 actual CI checkout revision; merging documentation does not rewrite that provenance.
 Both final signed APKs are 42,839,907 bytes. Public certificates are not private keys.

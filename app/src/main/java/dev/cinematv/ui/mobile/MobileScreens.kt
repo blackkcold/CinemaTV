@@ -29,6 +29,7 @@ import dev.cinematv.ui.tv.components.ProductionGlassProvider
 import dev.cinematv.ui.tv.components.recordProductionGlass
 import dev.cinematv.ui.tv.components.rememberProductionGlassScene
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -47,15 +48,23 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.ImeAction
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import coil3.compose.AsyncImage
 import dev.cinematv.ui.icons.CinemaIcon
 import dev.cinematv.ui.icons.CinemaSymbol
 import dev.cinematv.CinemaViewModel
+import dev.cinematv.ConnectionCopy
 import dev.cinematv.Page
 import dev.cinematv.data.LibraryStatus
+import dev.cinematv.data.ChannelIdentity
+import dev.cinematv.data.EpisodePlaybackAction
 import dev.cinematv.data.MediaItem
 import dev.cinematv.data.SearchFilters
 import dev.cinematv.ui.shared.metadataLine
+import dev.cinematv.ui.shared.doubanRankLabel
+import dev.cinematv.ui.shared.cardMetadataLine
 import dev.cinematv.ui.shared.ManualWorkAssociationPanel
 import dev.cinematv.ui.shared.WorkNavigationPanel
 import dev.cinematv.ui.shared.TmdbLogo
@@ -66,6 +75,8 @@ import dev.cinematv.ui.Ink
 import dev.cinematv.ui.Ivory
 import dev.cinematv.ui.Muted
 import dev.cinematv.ui.Accent
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 
 private val surface = Color(0xFF191B21)
 private val stroke = Color(0xFF424650)
@@ -179,10 +190,16 @@ private fun MobileMediaCard(item: MediaItem, model: CinemaViewModel, modifier: M
                 contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
             ) else Text(item.title, Modifier.align(Alignment.Center).padding(12.dp),
                 color = Ivory, fontSize = 15.sp, maxLines = 3)
+            item.doubanRankLabel()?.let { rank ->
+                Text(rank, color = Ivory, fontSize = 11.sp, fontWeight = FontWeight.Medium,
+                    modifier = Modifier.align(Alignment.TopStart).padding(7.dp)
+                        .background(Ink.copy(alpha = .8f), RoundedCornerShape(5.dp))
+                        .padding(horizontal = 7.dp, vertical = 4.dp))
+            }
         }
         Text(item.title, color = Ivory, fontSize = 14.sp, maxLines = 1,
             overflow = TextOverflow.Ellipsis)
-        Text(listOf(item.year, item.category).filter(String::isNotBlank).joinToString(" · "),
+        Text(item.cardMetadataLine().ifBlank { listOf(item.year, item.category).filter(String::isNotBlank).joinToString(" · ") },
             color = Muted, fontSize = 12.sp, maxLines = 1)
     }
 }
@@ -328,7 +345,15 @@ private fun MobileSearch(model: CinemaViewModel) {
                 onClick = { model.updateSearchFilters(model.searchFilters.copy(minRating = null, ratingSource = "Douban", doubanTopOnly = true)) }, label = { Text("豆瓣 TOP250") }) }
             item { TextButton(onClick = { model.updateSearchFilters(SearchFilters()) }) { Text("重置") } }
         }
-        if (model.searchFilters.ratingSource == "Douban") Text("仅使用有效授权目录；未配置时无豆瓣结果。", color = Muted,
+        if (model.searchFilters.ratingSource == "Douban") LazyRow(
+            contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(dev.cinematv.data.douban.public.DoubanPublicCatalog.uiTags, key = { it }) { tag ->
+                val selected = model.searchFilters.doubanTag == tag
+                FilterChip(selected = selected, onClick = { model.selectDoubanTag(if (selected) null else tag) },
+                    label = { Text(tag) })
+            }
+        }
+        if (model.searchFilters.ratingSource == "Douban") Text("豆瓣榜单与评分来自公开页面，个人使用；登录后可读取个人片单。", color = Muted,
             fontSize = 11.sp, modifier = Modifier.padding(horizontal = 20.dp))
         if (model.catalogStatus.isNotBlank()) Text(model.catalogStatus, color = Muted,
             fontSize = 11.sp, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
@@ -380,6 +405,13 @@ private fun MobileSearch(model: CinemaViewModel) {
 private fun MobileDetail(model: CinemaViewModel) {
     val libraryVersion = model.libraryVersion
     val item = model.selected ?: return
+    val resumeEpisode = item.lastEpisode.coerceIn(0, (item.episodes.size - 1).coerceAtLeast(0))
+    val resumeProgress = model.episodeProgress(resumeEpisode)
+    val playLabel = when {
+        resumeProgress?.completed == true -> "重新播放"
+        (resumeProgress?.positionMs ?: 0L) > 0L -> "继续播放"
+        else -> "播放"
+    }
     var showAlternates by remember(item.id) { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())
         .padding(bottom = 28.dp)) {
@@ -401,10 +433,15 @@ private fun MobileDetail(model: CinemaViewModel) {
             if (model.selectedRecommendationReason.startsWith("因为") || model.selectedRecommendationReason.startsWith("来自"))
                 Text(model.selectedRecommendationReason, color = Accent, fontSize = 12.sp)
             Row(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
-                MobileGlassButton(onClick = {
-                    model.playEpisode(item.lastEpisode.coerceIn(0, (item.episodes.size - 1).coerceAtLeast(0)))
-                }) { MobileIconLabel(CinemaSymbol.Play, "播放 / 续播") }
+                MobileGlassButton(onClick = { model.playEpisode(resumeEpisode) },
+                    modifier = Modifier.testTag("mobile-play-primary")) {
+                    MobileIconLabel(CinemaSymbol.Play, playLabel)
+                }
                 MobileGlassOutlinedButton(onClick = { model.toggleFavorite() }) { MobileIconLabel(CinemaSymbol.Bookmark, if (model.repo.isFavorite(item)) "已收藏" else "收藏", selected = model.repo.isFavorite(item)) }
+            }
+            if (resumeProgress != null && resumeProgress.positionMs > 0L && !resumeProgress.completed) {
+                TextButton(onClick = { model.playEpisode(resumeEpisode, EpisodePlaybackAction.RESTART) },
+                    modifier = Modifier.testTag("mobile-play-restart")) { Text("从头播放") }
             }
             MobileGlassOutlinedButton(onClick = { showAlternates = !showAlternates; model.findAlternatives() }) {
                 Text("选择片源")
@@ -439,7 +476,8 @@ private fun MobileDetail(model: CinemaViewModel) {
                             modifier = Modifier.weight(1f),
                             contentPadding = PaddingValues(horizontal = 3.dp, vertical = 8.dp),
                             onClick = { model.playEpisode(index) }
-                        ) { Text(model.episodeLabel(index), fontSize = 12.sp, maxLines = 2) }
+                        ) { Text(model.episodeLabel(index) + if (model.episodeProgress(index)?.completed == true) " · 重播" else "",
+                            fontSize = 12.sp, maxLines = 2) }
                     }
                 }
             }
@@ -486,6 +524,16 @@ private fun MobileLibrary(model: CinemaViewModel) {
 
 @Composable
 private fun MobileLive(model: CinemaViewModel) {
+    val activeKey = model.activeChannel?.let { ChannelIdentity.key(model.activeLiveSource, it) }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val now by produceState(System.currentTimeMillis(), lifecycle) {
+        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (isActive) {
+                value = System.currentTimeMillis()
+                delay(30_000L)
+            }
+        }
+    }
     Column(Modifier.fillMaxSize()) {
         MobileHeading("直播电视", "M3U 频道 · XMLTV 节目单")
         LazyRow(contentPadding = PaddingValues(horizontal = 16.dp),
@@ -497,7 +545,6 @@ private fun MobileLive(model: CinemaViewModel) {
             }
         }
         if (model.activeChannel != null) {
-            val now = System.currentTimeMillis()
             val current = model.epgPrograms.firstOrNull { now >= it.start && now < it.stop }
             Text("当前节目：" + (current?.title ?: "暂无节目单"),
                 modifier = Modifier.padding(18.dp), color = Accent)
@@ -505,13 +552,17 @@ private fun MobileLive(model: CinemaViewModel) {
         if (model.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
         LazyColumn(contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            items(model.channels, key = { it.id }) { channel ->
-                Surface(color = surface, shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth()) {
+            items(model.channels, key = { ChannelIdentity.key(model.activeLiveSource, it) }) { channel ->
+                val channelKey = ChannelIdentity.key(model.activeLiveSource, channel)
+                val selected = channelKey == activeKey
+                Surface(color = if (selected) Accent.copy(alpha = .16f) else surface, shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth().testTag("mobile-live-channel")
+                        .selectable(selected = selected, role = Role.RadioButton, onClick = { model.focusChannel(channel) })
+                        .semantics { contentDescription = "选择频道 ${channel.name}" }) {
                     Row(Modifier.padding(9.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f).clickable { model.focusChannel(channel) }) {
+                        Column(Modifier.weight(1f)) {
                             Text(channel.name, fontWeight = FontWeight.SemiBold)
-                            Text(channel.group, color = Muted, fontSize = 12.sp)
+                            Text((if (selected) "已选 · " else "") + channel.group, color = Muted, fontSize = 12.sp)
                         }
                         MobileGlassButton(onClick = { model.playChannel(channel) }) { Text("播放") }
                     }
@@ -539,6 +590,9 @@ private fun MobileField(
 @Composable
 private fun MobileSettings(model: CinemaViewModel) {
     var recommendationOpen by remember { mutableStateOf(false) }
+    var subscriptionsOpen by rememberSaveable { mutableStateOf(false) }
+    if (subscriptionsOpen) dev.cinematv.ui.shared.SourceSubscriptionsDialog(
+        model, tv = false, onDismiss = { subscriptionsOpen = false })
     if (recommendationOpen) dev.cinematv.ui.recommendation.RecommendationDashboardDialog(
         model.recommendationSnapshots, tv = false, onDismiss = { recommendationOpen = false },
         onOpenItem = { recommendationOpen = false; model.open(it) })
@@ -549,6 +603,7 @@ private fun MobileSettings(model: CinemaViewModel) {
         Text("CinemaTV 设置", fontSize = 27.sp, fontWeight = FontWeight.Bold)
         dev.cinematv.ui.update.UpdateSettings(tv = false)
         HorizontalDivider(color = stroke)
+        dev.cinematv.ui.douban.DoubanDeveloperOptionsEntry(model, tv = false)
         MobileGlassOutlinedButton(onClick = { recommendationOpen = true }, modifier = Modifier.testTag("recommendation-dashboard-open")) {
             Text("本地推荐看板")
         }
@@ -561,8 +616,10 @@ private fun MobileSettings(model: CinemaViewModel) {
             MobileField("服务器密码", model.password, { model.password = it }, secret = true)
             MobileGlassButton(onClick = { model.login() }) { Text("登录 LibreTV") }
         }
-        Text(if (model.authorized) "连接正常" else "未认证或未连接", color = Accent)
+        Text(ConnectionCopy.summary(model.connectionState), color = Accent)
         HorizontalDivider(color = stroke)
+        MobileGlassOutlinedButton(onClick = { subscriptionsOpen = true },
+            modifier = Modifier.testTag("source-subscriptions-open")) { Text("片源列表订阅") }
         Text("添加点播源", fontWeight = FontWeight.SemiBold, fontSize = 18.sp)
         MobileField("名称", model.sourceName, { model.sourceName = it })
         MobileField("Apple CMS API URL", model.sourceAddress, { model.sourceAddress = it })

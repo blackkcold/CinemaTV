@@ -271,6 +271,11 @@ class TvUiRegressionTest {
         rule.onNodeWithContentDescription(server.title(1)).assertIsFocused()
 
         rule.onNodeWithContentDescription("打开搜索").performClick()
+        // The shared TV field keeps D-pad focus on its shell until OK. Enter the
+        // editor explicitly, exactly as a remote user does, before typing.
+        rule.onNodeWithTag("search-field-shell").assertIsFocused()
+        key(KeyEvent.KEYCODE_DPAD_CENTER)
+        rule.waitUntil(5_000) { rule.onAllNodes(hasSetTextAction()).fetchSemanticsNodes().isNotEmpty() }
         rule.onNode(hasSetTextAction()).performTextReplacement(server.title(0))
         // Exercise the real visible editor before invoking its Search action;
         // otherwise an early hide can race with the keyboard's pending show.
@@ -289,7 +294,7 @@ class TvUiRegressionTest {
         key(KeyEvent.KEYCODE_BACK)
         assertEquals(Page.SEARCH, model.page)
         assertTrue(model.results.isNotEmpty())
-        rule.onNode(hasSetTextAction()).assertIsFocused()
+        rule.onNodeWithTag("search-field-shell").assertIsFocused()
         // Leave the restored editor immediately, including its pending IME show.
         // The destination must recover without a test-only keyboard dismissal.
         rule.runOnIdle { model.navigate(Page.LIVE) }
@@ -305,6 +310,9 @@ class TvUiRegressionTest {
 
         // Also cover a fully visible keyboard exit, not only a pending show.
         rule.runOnIdle { model.navigate(Page.SEARCH) }
+        rule.onNodeWithTag("search-field-shell").assertIsFocused()
+        key(KeyEvent.KEYCODE_DPAD_CENTER)
+        rule.waitUntil(5_000) { rule.onAllNodes(hasSetTextAction()).fetchSemanticsNodes().isNotEmpty() }
         rule.onNode(hasSetTextAction()).assertIsFocused()
         awaitPlatformImeVisible("search-exit")
         android.util.Log.i("CinemaTVQa", "search-exit-visible-ime; navigating LIVE")
@@ -312,9 +320,11 @@ class TvUiRegressionTest {
         awaitHiddenImeAndFullScreen()
         assertEquals(Page.LIVE, model.page)
         rule.onNode(hasSetTextAction()).assertDoesNotExist()
-        rule.onNode(hasText(model.channels.first().name) and hasClickAction()).assertIsFocused()
-        key(KeyEvent.KEYCODE_DPAD_DOWN)
+        // The first LIVE visit left focus on channel two; returning must restore
+        // that stable channel key, not silently jump back to the first row.
         rule.onNode(hasText(model.channels[1].name) and hasClickAction()).assertIsFocused()
+        key(KeyEvent.KEYCODE_DPAD_DOWN)
+        rule.onNode(hasText(model.channels[2].name) and hasClickAction()).assertIsFocused()
         rule.waitUntil(15000) { model.epgPrograms.isNotEmpty() }
         awaitHiddenImeAndFullScreen()
         android.util.Log.i("CinemaTVQa", "search-visible-ime-exit-complete; LIVE D-pad focus preserved")

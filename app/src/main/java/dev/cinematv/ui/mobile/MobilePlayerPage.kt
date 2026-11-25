@@ -20,15 +20,18 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.media3.common.MediaItem
+import androidx.media3.common.C
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.ui.PlayerView
 import dev.cinematv.ui.icons.CinemaSymbol
 import dev.cinematv.CinemaViewModel
 import dev.cinematv.Page
-import dev.cinematv.playback.PlaybackFactory
+import dev.cinematv.playback.NativePlaybackSession
 import dev.cinematv.playback.ObservePlaybackLifecycle
+import dev.cinematv.playback.PlaybackProgressWritePolicy
+import dev.cinematv.playback.togglePlayPause
+import java.util.concurrent.atomic.AtomicLong
 import dev.cinematv.ui.Ink
 import dev.cinematv.ui.Ivory
 import dev.cinematv.ui.Muted
@@ -43,43 +46,65 @@ import kotlinx.coroutines.isActive
 fun MobilePlayerPage(model: CinemaViewModel) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val session = model.playbackSession ?: return
-    val uri = session.url
     val episodeAtCreation = session.episodeIndex
-    val player = remember(session) {
-        PlaybackFactory.create(context, cacheVod = session.item != null).apply {
-            setMediaItem(MediaItem.fromUri(uri))
-            prepare()
-            playWhenReady = true
-            if (model.playbackPosition > 0L) seekTo(model.playbackPosition)
-        }
+    val playback = remember(session) {
+        NativePlaybackSession(context, mediaId = "playback-${session.generation}", uri = session.url,
+            title = model.playbackTitle, positionMs = model.playbackPosition, cacheVod = session.item != null,
+            autoPlay = session.autoPlay)
     }
-    ObservePlaybackLifecycle(player)
+    val player = playback.player
     var error by remember(session) { mutableStateOf("") }
     var position by remember(session) { mutableLongStateOf(0L) }
-    var playing by remember(session) { mutableStateOf(true) }
+    var playRequested by remember(session) { mutableStateOf(player.playWhenReady) }
+    val lastSavedPosition = remember(session) { AtomicLong(model.playbackPosition.coerceAtLeast(0L)) }
     DisposableEffect(player) {
+        var ended = false
         val listener = object : Player.Listener {
             override fun onPlayerError(exception: PlaybackException) {
                 error = exception.message ?: "播放失败"
                 model.recoverPlayback(error, player.currentPosition, session)
             }
             override fun onPlaybackStateChanged(state: Int) {
-                if (state == Player.STATE_ENDED) model.playerEnded(player.currentPosition, player.duration.coerceAtLeast(0L), episodeAtCreation, session)
+                if (state == Player.STATE_ENDED) {
+                    ended = true
+                    model.playerEnded(player.currentPosition, player.duration.coerceAtLeast(0L), episodeAtCreation, session)
+                }
             }
-            override fun onIsPlayingChanged(isPlaying: Boolean) { playing = isPlaying }
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                playRequested = playWhenReady
+                session.recordPlayIntent(playWhenReady, player.playbackSuppressionReason != Player.PLAYBACK_SUPPRESSION_REASON_NONE)
+            }
+            override fun onPlaybackSuppressionReasonChanged(playbackSuppressionReason: Int) {
+                session.recordPlayIntent(player.playWhenReady, playbackSuppressionReason != Player.PLAYBACK_SUPPRESSION_REASON_NONE)
+            }
         }
         player.addListener(listener)
         onDispose {
-            model.savePlaybackPosition(player.currentPosition.coerceAtLeast(0L), episodeAtCreation, player.duration.coerceAtLeast(0L), session)
+            val finalPosition = player.currentPosition
+            val persistedPosition = finalPosition.coerceAtLeast(0L)
+            if (!ended && finalPosition != C.TIME_UNSET &&
+                PlaybackProgressWritePolicy.shouldPersistFinal(persistedPosition, lastSavedPosition.get())) {
+                model.savePlaybackPosition(persistedPosition, episodeAtCreation, player.duration.coerceAtLeast(0L), session)
+                lastSavedPosition.set(persistedPosition)
+            }
             player.removeListener(listener)
-            player.release()
+            playback.close()
         }
     }
+    ObservePlaybackLifecycle(playback)
     LaunchedEffect(player) {
         var seconds = 0
         while (isActive) {
-            position = player.currentPosition.coerceAtLeast(0L)
-            if (++seconds % 5 == 0) model.savePlaybackPosition(position, episodeAtCreation, player.duration.coerceAtLeast(0L), session)
+            val currentPosition = player.currentPosition
+            position = currentPosition.coerceAtLeast(0L)
+            if (++seconds % 5 == 0 && currentPosition != C.TIME_UNSET &&
+                PlaybackProgressWritePolicy.shouldPersistWhilePlaying(
+                    currentPosition, lastSavedPosition.get(), player.isPlaying,
+                )) {
+                model.savePlaybackPosition(currentPosition.coerceAtLeast(0L), episodeAtCreation,
+                    player.duration.coerceAtLeast(0L), session)
+                lastSavedPosition.set(currentPosition.coerceAtLeast(0L))
+            }
             delay(1000)
         }
     }
@@ -124,8 +149,8 @@ fun MobilePlayerPage(model: CinemaViewModel) {
                 if (player.isCurrentMediaItemSeekable) player.seekTo((player.currentPosition - 10000L).coerceAtLeast(0L))
             }) { Text("−10秒") }
             MobileGlassButton(onClick = {
-                if (player.isPlaying) player.pause() else player.play()
-            }) { MobileIconLabel(if (playing) CinemaSymbol.Pause else CinemaSymbol.Play, if (playing) "暂停" else "播放") }
+                player.togglePlayPause()
+            }) { MobileIconLabel(if (playRequested) CinemaSymbol.Pause else CinemaSymbol.Play, if (playRequested) "暂停" else "播放") }
             MobileGlassOutlinedButton(onClick = {
                 if (player.isCurrentMediaItemSeekable) player.seekTo(player.currentPosition + 10000L)
             }) { Text("+10秒") }

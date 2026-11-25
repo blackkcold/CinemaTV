@@ -100,7 +100,7 @@ A compromised signing key is outside this v1 mechanism's recovery capability.
 
 ## Branch/version policy
 
-- `main`: tested integration; `dev` releases are prereleases from a reviewed commit.
+- `main`: tested integration. Dev releases are prereleases from a reviewed commit on `dev-compose`; the transitional `dev` branch is retired.
 - Stable release tags: `vMAJOR.MINOR.PATCH`; dev tags:
   `vMAJOR.MINOR.PATCH-dev.N`. These are separate from the movable feed pointer tags.
 - Maintain **one increasing versionCode ledger across both channels**. Reserve a
@@ -194,9 +194,11 @@ Official references:
 Until the personal-account integration is accepted, `main` and stable candidates
 must exclude `feature/douban-personal-account`. Its account data/UI directories
 (`data/douban` and `ui/douban`) cause any `cinematvChannel=stable` build to fail.
-This is a source-presence guard, not a hidden runtime toggle. Existing public
-catalogue ratings/Top250 are unrelated and remain supported. Dev may integrate
-that branch independently; do not merge its unaccepted code into `main`.
+This is a source-presence guard, not a hidden runtime toggle. The account-free
+public list channel lives under `data/douban/public`, so it is also excluded;
+exposing it in stable requires moving that package out and reviewing the remaining
+account references. Dev may integrate that branch independently; do not merge its
+unaccepted code into `main`.
 
 A stable label is not hardware certification. Each stable publication records:
 
@@ -204,13 +206,17 @@ A stable label is not hardware certification. Each stable publication records:
    stable channel, and no unaccepted personal-account sources.
 2. The fixed externally held production key matching the published certificate
    fingerprint. Disposable debug certificates and retired keys are not that identity.
-3. Build/lint/unit/backend checks plus complete phone/API26/TV1080/TV4K UI evidence
-   for the candidate source. Do not reuse a debug APK hash for a release APK.
-4. Acceptance tied to the **final signed APK bytes and certificate**, listing
-   completed checks and remaining limitations separately. Distinguish adb upgrades
-   from user-facing installer flows, individual retained records from complete
-   migration coverage, and emulators from physical TV. Publish the unchanged
-   tested bytes; re-signing or rebuilding requires a new hash and evidence record.
+3. Build/lint/unit/backend checks plus complete phone/API26 UI evidence and
+   tvNative/MainActivity television evidence for the candidate source. `tv1080` and
+   `tv4k` use phone system images and are not television lanes. Do not reuse a debug
+   APK hash for a release APK.
+4. Acceptance tied to the **final signed APK bytes and certificate**: explicit
+   installer permissions/cancel/return, same-key channel upgrades, real library data
+   preservation, API26/current Android and physical TV. Distinguish adb upgrades from
+   user-facing installer flows, and individual retained records from complete
+   migration coverage. Run those checks on the signed artifact, then publish those
+   unchanged bytes. Do not re-sign or rebuild after acceptance and call it the tested
+   binary.
 5. Public APK hash, certificate fingerprint, source commit/tree and acceptance
    evidence recorded together. Feed payload preparation is not a substitute for
    this review, and no current workflow automatically publishes stable.
@@ -244,12 +250,14 @@ versionCode sequence:
 | Invocation | Channel | Version | Code | Output |
 |---|---|---|---|---|
 | no argument (unchanged default), or `stable` | stable | `0.8.0` | `10` | `candidate/` |
-| `dev` | dev | `0.8.0-dev.1` | `11` | `candidate-dev/` |
+| `dev` | dev | `0.9.0-dev.3` | `15` | `candidate-dev/` |
 
-Both use the same accepted main app source with no Douban personal-account code.
-Code 11 cannot downgrade to stable code 10; a subsequent stable release needs a
-new globally higher code. These reservations do not change the ordinary Gradle
-defaults or the provenance of earlier public previews.
+The stable candidate keeps main's accepted app payload and still refuses the Douban
+personal-account sources. The dev candidate is built from `dev-compose` and may include
+that dev-only experiment, matching the Gradle channel guard. Codes 12 (`v0.8.0-dev.2`), 13 (the archived TV Web build) and 14
+(`v0.9.0-dev.2`) are already public; code 15 cannot downgrade to them.
+These reservations do not change the ordinary Gradle defaults or the provenance of
+earlier public previews.
 
 The dedicated stable and dev CI jobs check out the exact workflow SHA (the tested
 merge commit on a PR), not a moving branch. Each builds release bytes with the

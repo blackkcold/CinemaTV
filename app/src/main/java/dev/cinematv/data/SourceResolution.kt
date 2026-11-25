@@ -36,7 +36,8 @@ data class ResolutionProgress(
     val maxAttempts: Int = 6,
     val sourceName: String = ""
 )
-class LibreTvHttpException(val status: Int, val serverMessage: String) :
+class LibreTvHttpException(val status: Int, val serverMessage: String,
+    val connection: LibreTvConnection? = null, val sessionRevision: Long? = null) :
     IOException("HTTP $status: ${serverMessage.ifBlank { "服务暂不可用" }}")
 class LibreTvProtocolException(message: String) : IOException(message)
 class SourceResolutionException(message: String) : IOException(message)
@@ -57,7 +58,8 @@ object SourceResolutionPolicy {
 
     fun usableUrl(value: String): Boolean = runCatching {
         val uri = URI(value)
-        uri.scheme?.lowercase() in setOf("http", "https") && !uri.host.isNullOrBlank() && uri.userInfo == null
+        uri.scheme?.lowercase() in setOf("http", "https") && !uri.host.isNullOrBlank() && uri.userInfo == null &&
+            (uri.port == -1 || uri.port in 1..65_535)
     }.getOrDefault(false)
 
     fun accessDenied(message: String): Boolean = Regex(
@@ -131,7 +133,7 @@ internal suspend fun <T> withCancellableCall(
                 send(read(response))
                 close()
             }
-        } catch (cancelled: CancellationException) { throw cancelled }
+        } catch (cancelled: CancellationException) { close(cancelled); throw cancelled }
         catch (error: Exception) { close(error) }
         finally { call.cancel() }
     }

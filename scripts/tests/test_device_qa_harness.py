@@ -53,14 +53,22 @@ class DeviceWindowReadinessTest(unittest.TestCase):
 class DeviceMatrixTest(unittest.TestCase):
     def test_default_retains_all_acceptance_targets_and_classes(self):
         self.assertEqual(matrix.select("all"), {"include": [
-            {"name": "phone", "target": "google_apis", "api": 30, "size": "1080x1920", "density": 420,
-             "classes": "dev.cinematv.MobileNavigationSmokeTest,dev.cinematv.OfficialLibreTvPlaybackAcceptanceTest,dev.cinematv.TvLaunchSmokeTest,dev.cinematv.MobilePlaybackSmokeTest,dev.cinematv.data.LocalMediaLibraryTest,dev.cinematv.data.LocalWorkAssociationPersistenceTest,dev.cinematv.data.RepositoryContractTest,dev.cinematv.data.LibreTvProtocolTest,dev.cinematv.MobileWorkNavigationTest,dev.cinematv.MobileManualWorkAssociationTest,dev.cinematv.MobileLibraryCatalogControlsTest,dev.cinematv.MobileRecommendationDashboardTest,dev.cinematv.MobileGlassButtonTest,dev.cinematv.CinemaBrandStartupTest,dev.cinematv.ui.typography.NotoFontsDeviceTest"},
-            {"name": "tv1080", "target": "default", "api": 33, "size": "1920x1080", "density": 320,
-             "classes": "dev.cinematv.TvUiRegressionTest,dev.cinematv.OfficialLibreTvPlaybackAcceptanceTest,dev.cinematv.TvWorkNavigationTest,dev.cinematv.TvManualWorkAssociationTest,dev.cinematv.TvLibraryCatalogControlsTest,dev.cinematv.TvRecommendationDashboardTest,dev.cinematv.GlassMaterialSmokeTest,dev.cinematv.ui.typography.NotoFontsDeviceTest,dev.cinematv.FocusMediaCardMotionTest,dev.cinematv.InterruptedFocusRestorationTest,dev.cinematv.GlassActionLayoutTest,dev.cinematv.ContentRailTraversalTest,dev.cinematv.ContentRailVisibilityTest,dev.cinematv.FocusBoundRelocationTest"},
-            {"name": "tv4k", "target": "default", "api": 33, "size": "3840x2160", "density": 640,
-             "classes": "dev.cinematv.TvUiRegressionTest,dev.cinematv.TvWorkNavigationTest,dev.cinematv.TvManualWorkAssociationTest,dev.cinematv.TvLibraryCatalogControlsTest,dev.cinematv.TvRecommendationDashboardTest,dev.cinematv.GlassMaterialSmokeTest,dev.cinematv.ui.typography.NotoFontsDeviceTest"},
-            {"name": "compat26", "target": "google_apis", "api": 26, "size": "1920x1080", "density": 320,
-             "classes": "dev.cinematv.ui.typography.NotoFontsDeviceTest,dev.cinematv.GlassMaterialSmokeTest#materialSurvivesFocusPressReducedMotionMissingArtAndFailure,dev.cinematv.CinemaBrandStartupTest,dev.cinematv.TvRecommendationDashboardTest,dev.cinematv.FocusMediaCardMotionTest,dev.cinematv.GlassActionLayoutTest,dev.cinematv.ContentRailVisibilityTest,dev.cinematv.FocusBoundRelocationTest"},
+            {"name": 'phone', "target": 'google_apis', "api": 30, "size": '1080x1920', "density": 420,
+             "classes": 'dev.cinematv.MobileNavigationSmokeTest,dev.cinematv.OfficialLibreTvPlaybackAcceptanceTest,dev.cinematv.MobilePlaybackSmokeTest,dev.cinematv.data.LocalMediaLibraryTest,dev.cinematv.data.LocalWorkAssociationPersistenceTest,dev.cinematv.data.RepositoryContractTest,dev.cinematv.data.LibreTvProtocolTest,dev.cinematv.MobileWorkNavigationTest,dev.cinematv.MobileManualWorkAssociationTest,dev.cinematv.MobileLibraryCatalogControlsTest,dev.cinematv.MobileRecommendationDashboardTest,dev.cinematv.MobileGlassButtonTest,dev.cinematv.CinemaBrandStartupTest,dev.cinematv.ui.typography.NotoFontsDeviceTest'},
+            {"name": 'tv1080', "target": 'default', "api": 33, "size": '1920x1080', "density": 320,
+             "classes": 'dev.cinematv.TvUiRegressionTest,dev.cinematv.OfficialLibreTvPlaybackAcceptanceTest,dev.cinematv.TvWorkNavigationTest,dev.cinematv.TvManualWorkAssociationTest,dev.cinematv.TvLibraryCatalogControlsTest,dev.cinematv.TvRecommendationDashboardTest,dev.cinematv.GlassMaterialSmokeTest,dev.cinematv.ui.typography.NotoFontsDeviceTest,dev.cinematv.FocusMediaCardMotionTest,dev.cinematv.InterruptedFocusRestorationTest,dev.cinematv.GlassActionLayoutTest,dev.cinematv.ContentRailTraversalTest,dev.cinematv.ContentRailVisibilityTest,dev.cinematv.FocusBoundRelocationTest,dev.cinematv.TvPageStateTest'},
+            {"name": 'tv4k', "target": 'default', "api": 33, "size": '3840x2160', "density": 640,
+             "classes": 'dev.cinematv.TvUiRegressionTest,dev.cinematv.TvWorkNavigationTest,dev.cinematv.TvManualWorkAssociationTest,dev.cinematv.TvLibraryCatalogControlsTest,dev.cinematv.TvRecommendationDashboardTest,dev.cinematv.GlassMaterialSmokeTest,dev.cinematv.ui.typography.NotoFontsDeviceTest,dev.cinematv.TvPageStateTest'},
+            {"name": 'tvNative', "target": 'google-tv', "api": 33, "size": '1920x1080', "density": 320,
+             "classes": 'dev.cinematv.TvLaunchSmokeTest,dev.cinematv.MainActivityPathSmokeTest,dev.cinematv.TvRouteBackTest,dev.cinematv.TvImeBackTest,dev.cinematv.TvPlayerBackLadderTest,dev.cinematv.TvStatusDialogTest,dev.cinematv.playback.NativePlaybackSessionTest,dev.cinematv.SourceSubscriptionsUiTest#nativeTvRemoteCanReadLongPreviewAndFailedRefreshKeepsImportedSources,dev.cinematv.GlassMaterialSmokeTest'},
+            {"name": 'tv29', "target": 'default', "api": 29, "size": '1920x1080', "density": 320,
+             "classes": 'dev.cinematv.GlassMaterialSmokeTest,dev.cinematv.TvFieldChipTest,dev.cinematv.ui.typography.NotoFontsDeviceTest'},
+            {"name": 'tv31', "target": 'default', "api": 31, "size": '1920x1080', "density": 320,
+             "classes": 'dev.cinematv.GlassMaterialSmokeTest,dev.cinematv.TvStatusDialogTest'},
+            {"name": 'tv36', "target": 'default', "api": 36, "size": '1920x1080', "density": 320,
+             "classes": 'dev.cinematv.GlassMaterialSmokeTest,dev.cinematv.TvHeroTest'},
+            {"name": 'compat26', "target": 'google_apis', "api": 26, "size": '1920x1080', "density": 320,
+             "classes": 'dev.cinematv.ui.typography.NotoFontsDeviceTest,dev.cinematv.GlassMaterialSmokeTest#materialSurvivesFocusPressReducedMotionMissingArtAndFailure,dev.cinematv.CinemaBrandStartupTest,dev.cinematv.TvRecommendationDashboardTest,dev.cinematv.FocusMediaCardMotionTest,dev.cinematv.GlassActionLayoutTest,dev.cinematv.ContentRailVisibilityTest,dev.cinematv.FocusBoundRelocationTest'},
         ]})
 
     def test_catalog_library_navigation_and_protocol_suites_are_registered(self):
@@ -99,7 +107,7 @@ class DeviceMatrixTest(unittest.TestCase):
     def test_workflow_offers_every_target_and_all_test_classes_exist(self):
         root = SCRIPTS.parent
         workflow = (root / ".github/workflows/tv-smoke.yml").read_text()
-        self.assertIn("options: [all, phone, tv1080, tv4k, compat26]", workflow)
+        self.assertIn("options: [all, phone, tv1080, tv4k, tvNative, tv29, tv31, tv36, compat26]", workflow)
         for device in matrix.DEVICES:
             for selector in device["classes"].split(","):
                 class_name, _, method = selector.partition("#")
@@ -442,9 +450,9 @@ class DeviceRunnerTest(unittest.TestCase):
             "-Pandroid.testInstrumentationRunnerArguments.class=dev.cinematv.MobileNavigationSmokeTest",
         ]])
 
-    def test_only_4k_receives_twenty_four_minute_instrumentation_budget(self):
+    def test_only_4k_receives_forty_minute_instrumentation_budget(self):
         for viewport, tv, expected in (("1080x1920", False, "12m"), ("1920x1080", True, "12m"),
-                                       ("1920x1080", False, "12m"), ("3840x2160", True, "24m")):
+                                       ("1920x1080", False, "12m"), ("3840x2160", True, "40m")):
             with self.subTest(viewport=viewport, tv=tv):
                 code, _, _, _ = self.run_harness(viewport=viewport, tv=tv)
                 self.assertEqual(code, 0)
@@ -464,7 +472,7 @@ class DeviceRunnerTest(unittest.TestCase):
                 self.assertTrue(diagnostics)
                 self.assertIn("live-log-stopped", self.files)
                 invocation = [args for args in self.calls["timeout"] if "gradle" in args]
-                self.assertEqual(invocation[0][:4], ["--signal=TERM", "--kill-after=30s", "24m", "gradle"])
+                self.assertEqual(invocation[0][:4], ["--signal=TERM", "--kill-after=30s", "40m", "gradle"])
 
     def test_4k_trace_and_heartbeat_outlive_instrumentation_and_are_cleaned_up(self):
         for status in (0, 124):
@@ -473,15 +481,15 @@ class DeviceRunnerTest(unittest.TestCase):
                 self.assertEqual(code, status)
                 self.assertIn(f"device-total\t{status}\t", stages)
                 calls = self.calls["timeout"]
-                self.assertTrue(any(args[:4] == ["--signal=TERM", "--kill-after=30s", "24m", "gradle"] for args in calls))
-                self.assertTrue(any(args[:4] == ["--signal=TERM", "--kill-after=5s", "26m", "adb"] for args in calls))
-                self.assertTrue(any(args[:4] == ["--signal=TERM", "--kill-after=5s", "28m", "python3"] for args in calls))
+                self.assertTrue(any(args[:4] == ["--signal=TERM", "--kill-after=30s", "40m", "gradle"] for args in calls))
+                self.assertTrue(any(args[:4] == ["--signal=TERM", "--kill-after=5s", "42m", "adb"] for args in calls))
+                self.assertTrue(any(args[:4] == ["--signal=TERM", "--kill-after=5s", "44m", "python3"] for args in calls))
                 self.assertIn("live-log-stopped", self.files)
         source = (SCRIPTS / "run-device-qa.sh").read_text()
         self.assertIn('kill "$QA_HEARTBEAT_PID"', source)
         self.assertIn('wait "$QA_HEARTBEAT_PID"', source)
         workflow = (SCRIPTS.parent / ".github/workflows/tv-smoke.yml").read_text()
-        self.assertIn("timeout-minutes: ${{ matrix.name == 'tv4k' && 30 || 25 }}", workflow)
+        self.assertIn("timeout-minutes: ${{ matrix.name == 'tv4k' && 55 || (matrix.name == 'tvNative' && 30 || 25) }}", workflow)
         self.assertIn('timeout-minutes: 45', workflow)
 
     def test_process_budgets_keep_kill_grace_and_stage_limits(self):

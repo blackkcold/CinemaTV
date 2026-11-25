@@ -4,11 +4,11 @@
 
 # CinemaTV
 
-**为遥控器与触屏分别设计的原生影视客户端**
+**为遥控器与触屏分别设计的 Android 影视客户端**
 
 Android TV · Google TV · Android 手机
 
-Native LibreTV client with separate TV and touch interfaces.
+Native Compose TV, native playback and a separate touch interface.
 
 [![Android 8.0+](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white)](docs/INSTALL.md)
 [![Stable](https://img.shields.io/github/v/release/blackkcold/CinemaTV?label=stable)](https://github.com/blackkcold/CinemaTV/releases/tag/v0.8.0)
@@ -19,9 +19,9 @@ Native LibreTV client with separate TV and touch interfaces.
 
 </div>
 
-CinemaTV 连接你自建的 [LibreTV](https://github.com/LibreSpark/LibreTV)，把浏览、搜索、选集、播放和本地片库放在同一个应用里。使用 Kotlin、Jetpack Compose 和 Media3，电视与手机各有适合自己的界面。
+CinemaTV 连接你自建的 [LibreTV](https://github.com/LibreSpark/LibreTV)，把浏览、搜索、选集、播放和本地片库放在同一个应用里。电视与手机各自使用原生 Kotlin 与 Jetpack Compose 界面，Media3 负责播放；两者共享同一套业务状态、片源身份与本地片库。
 
-**稳定版为 [v0.8.0](https://github.com/blackkcold/CinemaTV/releases/tag/v0.8.0)，实验版为 [v0.8.0-dev.2](https://github.com/blackkcold/CinemaTV/releases/tag/v0.8.0-dev.2)。** 两者使用同一生产签名，包含原生玻璃、电视卡片动效与通道订阅设置。Stable 更新清单已公开；Dev 暂需手动下载，channel-dev 尚未公开。Dev 新增默认关闭的豆瓣个人账号实验；Stable 与 main 不含该账号模块。发布采用下方明确列出的验收范围，不代表实体电视或性能认证。
+**已发布 Stable：[v0.8.0](https://github.com/blackkcold/CinemaTV/releases/tag/v0.8.0)；已发布 Dev：[v0.9.0-dev.3](https://github.com/blackkcold/CinemaTV/releases/tag/v0.9.0-dev.3)。** 两者同包名、同一生产签名。`main` 是 Stable 发布线，`dev-compose` 是唯一长期开发主线并直接产出 Dev 通道；旧版 Hybrid TV Web 层已在 G4 删除，归档于 `archive/tv-web-5c24360`。Dev 的豆瓣个人账号实验默认关闭、只存在于开发线，不进入 Stable 源码范围。下方主画廊是 v0.7.0-preview 的旧原生界面截图，不代表当前电视界面。
 
 应用不附带公共片源、账号或影视内容。使用前需要配置自己的服务和有权访问的内容来源。本项目与 LibreTV、DpadTV 及下列第三方服务均无隶属关系。
 
@@ -38,7 +38,7 @@ CinemaTV 连接你自建的 [LibreTV](https://github.com/LibreSpark/LibreTV)，�
 </tr>
 </table>
 
-以上为 **v0.7.0-preview** 在 Android 模拟器中实际运行的界面，非设计稿。展示使用虚构片名、原创测试画面和合成媒体，不代表内置影视资源。拍摄版本、运行环境与原始证据见 [截图说明](docs/images/README.md)。
+以上为 **v0.7.0-preview** 的旧原生界面在 Android 模拟器中实际运行的照片，非设计稿，也不代表当前 `dev-compose` 的电视界面。展示使用虚构片名、原创测试画面和合成媒体，不代表内置影视资源。拍摄版本、运行环境与原始证据见 [截图说明](docs/images/README.md)。
 
 <details>
 <summary>查看手机推荐看板</summary>
@@ -79,24 +79,20 @@ CinemaTV 连接你自建的 [LibreTV](https://github.com/LibreSpark/LibreTV)，�
 ### 适配与显示
 
 - 电视遥控器与手机触屏分别设计，提供分层玻璃控件、减少动态效果和性能降级。
-- 离线打包 Noto 字体，按内容语言与地区选择中日韩字形，不转换简繁内容。
+- 电视与手机界面共用离线打包的 Noto 字体，按内容语言与地区选择中日韩字形，不转换简繁内容。
 - 原创 A1 品牌与静态启动图标；应用内简短品牌动态不阻塞操作。
 
-### Dev：豆瓣个人账号实验
+## 电视界面架构
 
-仅 [0.8.0-dev.2 / code 12](https://github.com/blackkcold/CinemaTV/releases/tag/v0.8.0-dev.2) 提供：官方扫码登录入口、本机加密会话存储，以及手动读取个人片单、评分和按豆瓣作品 ID 导入片库的实现。真实账号登录、完整同步与真实会话清理尚未验收。
+电视与手机是两套独立原生界面，共享同一条业务与数据链路：`CinemaViewModel` 负责路由与页面状态，`data/` 负责 LibreTV 协议、片源身份与本地片库，`playback/` 与 `ui/TvPlayerPage.kt` 负责 Media3 会话、缓存与播放器生命周期。
 
-- TV：设置 → 连接与账户 → 开发者选项 · Dev；手机：设置 → 开发者选项 · Dev。
-- 默认关闭。点击「开启豆瓣账号实验」并确认「开启实验」后才显示「豆瓣个人账号与片单」。开启入口不等于授权账号访问，不会自动登录、同步或开启局域网服务。
-- 切回 Stable 前先选择「关闭并清理豆瓣账号」，确认清理完成；已导入片库保留。安装 Dev code 12 后需等待更高 code 的 Stable，不能直接覆盖降级到当前 code 10，也不要先卸载。
+- `ui/tv/` 是电视唯一入口。`TvRootApp` 拥有路由、焦点与返回处理；页面在 `ui/tv/pages/`，语义控件在 `ui/tv/components/`，设计 Token 在 `ui/tv/design/`。
+- 安装下限保持 API26；电视运行时不依赖 WebView 内核或消息接口版本。构建期的 TV 前端接线仍在，会在 G4 与冻结代码一起移除。
+- 玻璃材质只采样 `BackdropLayer` 提供的静态画作场景，不读取视频 Surface、Dialog 窗口或玻璃消费者自身；Full / Blur / Basic 三档与减少动态按设备能力在运行中回退。
+- 焦点按稳定 key 记录；离屏目标先准备 Lazy 视口再请求焦点，被删除的条目回落到同区域最近的有效项。D-pad、OK 与 Back 覆盖每个页面。
+- 旧 Hybrid TV Web 层（`hybrid/`、`frontend/tv-web`）已在 G4 删除；需要历史 A/B 证据时从 `archive/tv-web-5c24360` 取回，不再作为主线或构建依赖。
 
-## v0.8 的玻璃与电视动效
-
-新的原生玻璃与电视卡片动效已包含在 v0.8.0 stable 中。**上方画廊仍是 v0.7.0-preview 截图，不能当成本版截图。**
-
-- Basic / Blur / Full 分档：Blur 需要 API 31+，Full 为 API 33+ 的显式选择；自动模式保守降级。
-- 电视焦点抬升、按压和层次动效支持减少动态；播放器 Surface 和独立弹窗不冒充可采样的电影画面。
-- 代码与限制见 [玻璃实现](docs/GLASS_PRODUCTION.md)、[动效实现](docs/MOTION_PRODUCTION.md)。模拟器验收不代表真实电视帧率认证。
+玻璃、动效与性能分档的实现边界见 [玻璃实现](docs/GLASS_PRODUCTION.md) 与 [动效实现](docs/MOTION_PRODUCTION.md)。模拟器验收不代表真实电视帧率认证。
 
 ## 安装与首次使用
 
@@ -115,20 +111,20 @@ CinemaTV 连接你自建的 [LibreTV](https://github.com/LibreSpark/LibreTV)，�
 
 完整配置、遥控器操作和设备测试范围见 [安装指南](docs/INSTALL.md)。
 
-**发布与更新：** Stable `0.8.0 / code 10` 与 Dev `0.8.0-dev.2 / code 12` 为同包名、同签名，不能并排安装。订阅选择不会立即换包或改图标，只接受更大的 versionCode。Stable 未明确保存渠道选择时，升级 Dev 后默认渠道变为 Dev；不能据此宣称所有渠道偏好已迁移。正式包支持显式检查更新，APK 或清单可下载不等于生产更新全链路已验收。Stable 清单有效期至 2026年11月12日14:40:12 UTC，到期需续签，只影响获取更新，不影响已安装 APK 使用。详见 [更新通道](docs/UPDATE_CHANNELS.md)。
+**更新通道：** Stable 与 Dev 沿用同一个包名和固定签名，版本码全局递增。`dev-compose` 是唯一开发主线，并直接产出 Dev 通道；`dev` 已退役，历史提交保留在 `dev-compose`，TV Web 由 `archive/tv-web-5c24360` 保留；`main` 是 Stable 发布线。Dev 的豆瓣个人账户实验默认关闭，只存在于开发线，不进入 Stable 源码范围，其验收与电视界面验收分开记录。手动下载版本和自动更新清单分别发布，是否可安装以实际 Release 和签名说明为准，详见 [更新通道](docs/UPDATE_CHANNELS.md)。
 
 ## 数据与隐私
 
 - 不附带服务器凭据、公共片源、豆瓣目录数据或商业影视海报。
 - 本地片库、设置和播放链接不进入 Android 云备份或设备迁移；不上传偏好与推荐历史。
 - 播放链接不会发送给 TMDB。可选元数据服务仍须由运营者遵守其使用条件。
-- 豆瓣获取默认关闭，需要适用授权与获准端点验证；不能把配置声明当成授权证明。
+- 豆瓣获取默认关闭；BFF 采集需要适用授权与获准端点验证，不能把配置声明当成授权证明。客户端另有个人使用的公开列表通道，授权口径与边界见 [豆瓣公开页面访问](docs/DOUBAN_PUBLIC_ACCESS.md)。
 
 [本地数据说明](docs/LOCAL_LIBRARY.md) · [来源与授权边界](docs/DOUBAN_ACQUISITION.md)
 
 ## 开发
 
-环境：JDK 17、Gradle 8.13、Android SDK 36、Build Tools 36.0.0。测试媒体已随源码提供，普通构建无需 FFmpeg。
+环境：JDK 17、Gradle 8.13、Android SDK 36、Build Tools 36.0.0、Node 22.12+。测试媒体已随源码提供，普通构建无需 FFmpeg。Gradle 目前仍会构建已冻结的 TV 前端（G4 移除该接线）；Node 不进入 APK，但它生成的 Web 资源在 G4 前仍会打进 APK，并用于可选的 TV BFF 测试。
 
 ```bash
 bash scripts/generate-test-media.sh
@@ -138,15 +134,18 @@ npm --prefix backend/tv-bff test
 
 调试 APK 输出到 `app/build/outputs/apk/debug/app-debug.apk`。
 
-- [架构](docs/ARCHITECTURE.md)：共享数据与播放逻辑，独立 TV / 手机界面。
+单独迭代电视界面：页面在 `app/src/main/java/dev/cinematv/ui/tv/pages/`，控件在 `ui/tv/components/`，设计 Token 在 `ui/tv/design/`。设备 QA 使用 [tv-smoke](.github/workflows/tv-smoke.yml) 与 `scripts/qa-device-matrix.py`；其中只有 `tvNative` lane 使用 Android TV 系统镜像，宽屏手机镜像只能证明几何与渲染，不是电视设备。
+
+- [架构](docs/ARCHITECTURE.md)：共享数据与播放逻辑，独立 TV / 手机原生界面。
 - [构建与测试](https://github.com/blackkcold/CinemaTV/actions/workflows/android.yml)：编译、Lint、单元与协议测试。
 - [验收与发布边界](docs/RELEASE_CHECKLIST.md)：模拟器 UI、真实播放协议、硬件覆盖与签名要求。
+- [测试计划](docs/TEST_PLAN.md)：分层测试、TV 模拟器（宿主 GPU）与 E-gate / T-gate 的边界。
 
 欢迎提交可复现的问题或改进建议。反馈时请附上版本、设备型号、Android 版本与操作步骤，并移除密码、令牌、私有地址和播放链接。
 
 ## 当前边界
 
-模拟器测试不能替代实体电视认证。最终签名包已在 API26 完成 Stable code 10 → Dev code 12 覆盖升级，一条通过实际界面创建的收藏/想看记录和测试服务器设置在升级、重启后保留；默认关闭与空账号开关流程已验。Dev 内明确选择 Stable 后重启仍保留，但升级前明确渠道偏好的迁移、完整数据库迁移、历史进度和生产更新全链路均未验证。低内存盒子、实体4K电视、四小时播放、HDR/编解码器覆盖与硬件帧率仍未验证。当前不提供跨设备同步、扫码配对或额外播放内核。详见 [本版验收范围](docs/RELEASE_CHECKLIST.md)。
+模拟器测试不能替代实体电视认证。低内存盒子、长时间播放、HDR/编解码器覆盖与硬件图形性能仍需真机验证。当前不提供跨设备同步、扫码配对或额外播放内核。
 
 功能与验收范围集中维护在本文及对应文档中；逐版变更请查看 [发布记录](https://github.com/blackkcold/CinemaTV/releases)。
 
@@ -156,6 +155,7 @@ CinemaTV 原创代码和测试画面采用 [MIT License](LICENSE)。没有复制
 
 - [LibreTV](https://github.com/LibreSpark/LibreTV)：连接的上游服务。
 - [AndroidX Media3](https://github.com/androidx/media)、Jetpack Compose：播放与原生界面。
+- React / React DOM / Scheduler：MIT；仅由已冻结、待删除的 TV Web 层使用。
 - RankSys：MPL-2.0；fastutil / jOOL：Apache-2.0，保留对应版本的附加声明。APK 提供完整许可及匹配版本的 RankSys 源码包，详见 [第三方推荐组件](docs/RANKSYS_INTEGRATION.md)。
 - 主分支的 AndroidLiquidGlass / Backdrop 复用部分采用 Apache-2.0，保留 [许可证](backdrop/LICENSE)、[上游与修改声明](backdrop/NOTICE.md)，不归入 CinemaTV 原创 MIT 代码。
 - Noto Sans / Noto Sans CJK：SIL Open Font License，详见 [字体说明](docs/NOTO_TYPOGRAPHY.md)。

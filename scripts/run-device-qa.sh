@@ -75,7 +75,7 @@ device_window_ready() {
        "$windows" == *"mScreenOnFully=true"* &&
        "$windows" == *"mWindowManagerDrawComplete=true"* &&
        "$windows" != *"mDisplayFrozen=true"* ]] &&
-    printf '%s\n' "$windows" | grep -E 'mCurrentFocus=Window\{[^}]+ (com.google.android.apps.nexuslauncher|com.android.launcher3)/' > /dev/null
+    printf '%s\n' "$windows" | grep -E 'mCurrentFocus=Window\{[^}]+ (com.google.android.apps.nexuslauncher|com.android.launcher3|com.google.android.tvlauncher|com.android.tvlauncher|com.google.android.apps.tv.launcherx)/' > /dev/null
 }
 
 wait_for_device_window() {
@@ -126,18 +126,20 @@ run_stage device-setup configure_device "$1" "$2"
 timeout --kill-after=5s 5s free -m > qa/host-memory-before.txt || true
 
 # 4K software rendering is a functional gate, not a device latency benchmark.
-# Run 41964523868 completed the expanded suite in about 17m; 41967681737
-# reached seven passing cases at 18m and was killed while the next was active
-# (stage exit 124, no assertion failure). Allow a finite 24m for this target's
-# shared-runner variance, with live diagnostics and kill grace intact. Keep
-# all classes/pixel gates and the other targets' existing limits unchanged.
+# The suite grew from 18 to 21 with the page-state coverage; run 45317328519 reached
+# 14 passing cases at the old 24m deadline (stage exit 124, no assertion failure).
+# Give this target a finite 40m shared-runner allowance while the job timeout above
+# outlives the stage. Keep all classes/pixel gates and other targets' limits unchanged.
 CINEMA_INSTRUMENTATION_BUDGET=12m
 CINEMA_TRACE_BUDGET=14m
 CINEMA_HEARTBEAT_BUDGET=18m
 if [ "$1" = 3840x2160 ]; then
-  CINEMA_INSTRUMENTATION_BUDGET=24m
-  CINEMA_TRACE_BUDGET=26m
-  CINEMA_HEARTBEAT_BUDGET=28m
+  # The 4K lane grew from 18 to 21 suites with the page-state coverage; 24m measured
+  # 14/21 with zero failures before the deadline. The extra time only lets the same
+  # assertions finish, so no gate and no threshold changes.
+  CINEMA_INSTRUMENTATION_BUDGET=40m
+  CINEMA_TRACE_BUDGET=42m
+  CINEMA_HEARTBEAT_BUDGET=44m
 fi
 
 # Keep main's continuously captured trace, with a finite lifetime and cleanup.
@@ -185,12 +187,23 @@ if [[ "$3" == *OfficialLibreTvPlaybackAcceptanceTest* ]]; then
   run_stage official-instrumentation timeout --signal=TERM --kill-after=10s 9m \
     python3 scripts/libretv-contracts/run_android_test.py || CINEMA_OFFICIAL_STATUS=$?
 fi
+CINEMA_RESULTS_STATUS=0
+if [ -d app/build/outputs/androidTest-results/connected ]; then
+  CINEMA_RESULT_ARGS=(--results app/build/outputs/androidTest-results/connected)
+  if [ "${CINEMA_TARGET:-}" = "tvNative" ]; then
+    CINEMA_RESULT_ARGS+=(--require-executed TvLaunchSmokeTest,MainActivityPathSmokeTest --forbid-skipped --require-tv)
+    CINEMA_RESULT_ARGS+=(--characteristics "$(qa_adb shell getprop ro.build.characteristics | tr -d '\r')")
+  fi
+  run_stage results-audit timeout --kill-after=5s 30s python3 scripts/qa-results-audit.py \
+    "${CINEMA_RESULT_ARGS[@]}" || CINEMA_RESULTS_STATUS=$?
+fi
 CINEMA_EXPORT_STATUS=0
 run_stage evidence-export timeout --kill-after=5s 30s python3 scripts/merge-ui-evidence.py \
   --source app/build/outputs/connected_android_test_additional_output \
   --destination qa/ui-evidence || CINEMA_EXPORT_STATUS=$?
 if [ "$CINEMA_TEST_STATUS" -ne 0 ]; then exit "$CINEMA_TEST_STATUS"; fi
 if [ "$CINEMA_OFFICIAL_STATUS" -ne 0 ]; then exit "$CINEMA_OFFICIAL_STATUS"; fi
+if [ "$CINEMA_RESULTS_STATUS" -ne 0 ]; then exit "$CINEMA_RESULTS_STATUS"; fi
 if [ "$CINEMA_EXPORT_STATUS" -ne 0 ]; then exit "$CINEMA_EXPORT_STATUS"; fi
 
 if [[ "$3" == *TvUiRegressionTest* ]]; then

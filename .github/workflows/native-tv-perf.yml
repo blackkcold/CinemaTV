@@ -1,0 +1,40 @@
+name: Native TV performance protocol
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  protocol:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Validate protocol and runner scripts
+        run: |
+          python3 -m unittest discover -s scripts/perf_common -p 'test_*.py' -v
+          python3 -m unittest discover -s scripts/native-tv-perf -p 'test_*.py' -v
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+      - name: Install compile SDK
+        run: |
+          SDKMANAGER=$(find "${ANDROID_HOME}/cmdline-tools" -type f -name sdkmanager | head -1)
+          test -n "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0"
+      - name: Compile the release acceptance test APK
+        run: |
+          gradle --no-daemon --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process \
+            -PcinematvNativeTvAcceptance=true :app:assembleReleaseAndroidTest
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-tv-acceptance-test-apk
+          path: app/build/outputs/apk/androidTest/release/*.apk
+          if-no-files-found: error

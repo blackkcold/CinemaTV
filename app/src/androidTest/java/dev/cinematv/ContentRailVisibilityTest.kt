@@ -427,7 +427,9 @@ class ContentRailVisibilityTest {
         nativeKey(KeyEvent.KEYCODE_DPAD_UP)
         // At this extreme size the hero can be outside lazy composition. Native
         // spatial focus may instead choose the always-attached top navigation.
-        val exit = isFocused() and (hasText("观看详情") or hasAnyAncestor(hasTestTag("tv-main-navigation")))
+        val exit = isFocused() and (hasText("观看详情") or hasText("查看全部")
+            or hasTestTag("hero-page-prev") or hasTestTag("hero-page-next")
+            or hasAnyAncestor(hasTestTag("tv-main-navigation")))
         val destination = rule.onNode(exit).assertIsFocused().fetchSemanticsNode().id
         rule.mainClock.autoAdvance = false
         rule.mainClock.advanceTimeBy(2_400)

@@ -31,6 +31,10 @@ val updatesEnabled = providers.gradleProperty("cinematvUpdatesEnabled").getOrEls
 val unsignedCandidate = providers.gradleProperty("cinematvUnsignedCandidate").getOrElse("false").toBooleanStrict()
 // Explicit test-only source selection. Never pull the debug UI hosts into release tests.
 val updateAcceptance = providers.gradleProperty("cinematvUpdateAcceptance").getOrElse("false").toBooleanStrict()
+val nativeTvAcceptance = providers.gradleProperty("cinematvNativeTvAcceptance").getOrElse("false").toBooleanStrict()
+require(!(updateAcceptance && nativeTvAcceptance)) {
+    "cinematvUpdateAcceptance and cinematvNativeTvAcceptance select different release test roots"
+}
 if (updateAcceptance) {
     require(unsignedCandidate && updatesEnabled && updateChannel == "dev") {
         "Update acceptance requires an unsigned, update-enabled dev release candidate"
@@ -57,9 +61,31 @@ if (updatesEnabled) {
     }
 }
 
+// A personal local build may bake a LibreTV endpoint so a private device starts connected.
+// It must never reach a public artifact: refused on Actions and in a publishable candidate,
+// and asserted against the decoded candidate manifest by scripts/updates/build-unsigned-candidate.sh.
+val personalDefaultNames = listOf("CINEMATV_LIBRETV_SERVER", "CINEMATV_LIBRETV_PASSWORD")
+val personalServer = System.getenv("CINEMATV_LIBRETV_SERVER").orEmpty()
+val personalPassword = System.getenv("CINEMATV_LIBRETV_PASSWORD").orEmpty()
+val personalBuild = personalDefaultNames.any { !System.getenv(it).isNullOrBlank() }
+require(System.getenv("GITHUB_ACTIONS") != "true" || !personalBuild) {
+    "Personal LibreTV defaults must never be configured in GitHub Actions"
+}
+if (unsignedCandidate) {
+    require(!personalBuild) {
+        "Personal LibreTV defaults must not be baked into a publishable unsigned candidate"
+    }
+}
+
+fun javaStringLiteral(value: String): String = "\"" + value
+    .replace("\\", "\\\\")
+    .replace("\"", "\\\"")
+    .replace("\n", "\\n")
+    .replace("\r", "\\r") + "\""
+
 android {
     namespace = "dev.cinematv"
-    if (updateAcceptance) testBuildType = "release"
+    if (updateAcceptance || nativeTvAcceptance) testBuildType = "release"
     compileSdk = 36
     defaultConfig {
         applicationId = "dev.cinematv"
@@ -73,6 +99,9 @@ android {
         require(versionCode!! in 1..2_100_000_000)
         buildConfigField("String", "UPDATE_CHANNEL", "\"$updateChannel\"")
         buildConfigField("boolean", "UPDATES_ENABLED", updatesEnabled.toString())
+        buildConfigField("String", "LIBRETV_DEFAULT_SERVER", javaStringLiteral(personalServer))
+        buildConfigField("String", "LIBRETV_DEFAULT_PASSWORD", javaStringLiteral(personalPassword))
+        manifestPlaceholders["privateBuild"] = personalBuild.toString()
         manifestPlaceholders["updateChannel"] = updateChannel
         manifestPlaceholders["channelIcon"] = if (updateChannel == "dev") "@mipmap/ic_launcher_dev" else "@mipmap/ic_launcher"
         manifestPlaceholders["channelRoundIcon"] = if (updateChannel == "dev") "@mipmap/ic_launcher_dev" else "@mipmap/ic_launcher_round"
@@ -117,9 +146,15 @@ android {
     sourceSets["main"].assets.srcDir(layout.buildDirectory.dir("generated/notoAssets"))
     if (updateAcceptance) {
         sourceSets["androidTest"].setRoot("src/updateAcceptance")
+    } else if (nativeTvAcceptance) {
+        sourceSets["androidTest"].setRoot("src/nativeTvAcceptance")
+        sourceSets["androidTest"].java.srcDir("src/perf")
     } else {
         sourceSets["androidTest"].assets.srcDir("$projectDir/schemas")
     }
+    // Shared recorder: debug target APK and the isolated benchmark; release never ships it.
+    sourceSets["debug"].java.srcDir("src/perf")
+    sourceSets["glassBenchmark"].java.srcDir("src/perf")
     sourceSets["glassBenchmark"].res.srcDir("src/debug/res")
     packaging { resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" } }
 }
@@ -152,11 +187,15 @@ dependencies {
     implementation("io.coil-kt.coil3:coil-network-okhttp:3.3.0")
     // Explicit API use for cancellable JSON requests; matches Coil 3.3.0's existing transport.
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("org.jsoup:jsoup:1.18.3")
+    implementation("org.nanohttpd:nanohttpd:2.3.1")
+    implementation("com.google.zxing:core:3.5.3")
     val media3 = "1.11.1"
     implementation("androidx.media3:media3-exoplayer:$media3")
     implementation("androidx.media3:media3-exoplayer-hls:$media3")
     implementation("androidx.media3:media3-exoplayer-dash:$media3")
     implementation("androidx.media3:media3-ui:$media3")
+    implementation("androidx.media3:media3-session:$media3")
     val room = "2.8.4"
     implementation("androidx.room:room-runtime:$room")
     implementation("androidx.room:room-ktx:$room")
@@ -225,3 +264,11 @@ val verifyRecommendationCore by tasks.registering {
     }
 }
 tasks.named("preBuild") { dependsOn(verifyRecommendationCore) }
+
+// The live parser probe needs captured pages and is skipped otherwise. CI forbids
+// skipped tests, so it stays out of the default unit-test task unless explicitly asked for.
+tasks.withType(org.gradle.api.tasks.testing.Test::class.java).configureEach {
+    if (!providers.gradleProperty("doubanLiveProbe").isPresent) {
+        filter { excludeTestsMatching("dev.cinematv.data.douban.public.LiveDoubanParserProbeTest") }
+    }
+}

@@ -82,6 +82,12 @@ def contracts(node, directory, url, fixture, check, diagnostics):
         check('detail title and complete attribution retained', detail['videoInfo']['title'] == item['vod_name'] and detail['videoInfo']['desc'] == item['vod_content'])
         _, cached = call(path, cookie=cookie)
         check('cached detail equality', cached == detail)
+        alternate_source = {**source, 'key': 'second-client-local-key'}
+        _, second_client = call('/api/detail?' + urlencode({'id': UUID, 'source': json.dumps(alternate_source)}), cookie=cookie)
+        check('detail cache retains first client key for same source URL',
+              second_client['videoInfo']['sourceKey'] == source['key'] and
+              second_client['videoInfo']['sourceUrl'] == source['url'] and
+              second_client['episodes'] == detail['episodes'])
         headers, _ = call('/api/auth', method='DELETE', cookie=cookie)
         check('logout expires synthetic cookie', 'Max-Age=0' in headers.get('set-cookie', ''))
         _, auth = call('/api/auth')
@@ -89,10 +95,12 @@ def contracts(node, directory, url, fixture, check, diagnostics):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--version', choices=sorted(base.RELEASES), default='2.21.1')
     for arg in ['archive', 'sums', 'node', 'node-archive', 'output']:
         parser.add_argument('--' + arg, type=Path, required=True)
     parser.add_argument('--fixture-url', required=True)
     args = parser.parse_args()
+    base.select_release(args.version)
     evidence = {'schemaVersion': 1, 'startedAt': datetime.now(timezone.utc).isoformat(), 'result': 'failed', 'scope': 'controlled static fixture positive protocol parsing only', 'upstreamVersion': base.VERSION, 'upstreamCommit': base.COMMIT, 'archiveSha256': base.SHA256, 'nodeVersion': 'v22.23.4', 'nodeArchiveSha256': NODE_SHA256, 'checks': [], 'limitations': ['Not a dynamic CMS/search/pagination/ID-filtering service', 'No unknown-ID correctness asserted', 'No Android/device/home-service acceptance or full-film decode', 'No Douban endpoint or arbitrary source requested', 'Upstream SSRF/auth/fetch unchanged; process loopback-only and ephemeral']}
     def check(name, predicate):
         if not predicate:

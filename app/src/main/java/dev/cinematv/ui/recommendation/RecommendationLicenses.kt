@@ -25,7 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import dev.cinematv.ui.GlassAction
+import dev.cinematv.ui.tv.components.GlassAction
 import dev.cinematv.ui.tv.components.CinemaGlassSurface
 import dev.cinematv.ui.tv.focus.trackTvContentFocus
 import kotlinx.coroutines.Dispatchers

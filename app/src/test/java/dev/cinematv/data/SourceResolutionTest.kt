@@ -215,7 +215,8 @@ class SourceResolutionTest {
     }
 
     @Test fun invalidAndCredentialedUrlsAreNotPlayable() {
-        for (url in listOf("", "https:", "javascript:alert(1)", "file:///tmp/video", "https://user:secret@example.com/a")) {
+        for (url in listOf("", "https:", "javascript:alert(1)", "file:///tmp/video", "https://user:secret@example.com/a",
+            "https://example.test:99999/list", "https://example.test:0/list")) {
             assertFalse(url, SourceResolutionPolicy.usableUrl(url))
         }
         assertTrue(SourceResolutionPolicy.usableUrl("https://example.com/video?token=synthetic"))

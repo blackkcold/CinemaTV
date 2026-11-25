@@ -1,0 +1,13 @@
+{
+  "name": "CinemaTV synthetic TVBOX parser fixture",
+  "sites": [
+    {"name": "Synthetic direct VOD", "type": 1, "api": "https://example.com/api.php/provide/vod"},
+    {"name": "Duplicate VOD", "type": 1, "api": "https://example.com/api.php/provide/vod"},
+    {"name": "Unsupported engine", "type": 3, "api": "csp_SyntheticNeverExecuted"},
+    {"name": "Unsupported XML", "type": 0, "api": "https://example.com/unsupported.xml"}
+  ],
+  "lives": [
+    {"name": "Synthetic direct live", "type": 0, "url": "https://example.com/cinematv-audit.m3u"},
+    {"name": "Unsupported text", "type": 0, "url": "https://example.com/unsupported.txt"}
+  ]
+}

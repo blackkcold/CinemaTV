@@ -31,9 +31,11 @@ def prepare(directory):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--version', choices=sorted(base.RELEASES), default='2.21.1')
     parser.add_argument('--directory', type=Path, required=True)
     parser.add_argument('--report', type=Path, required=True)
     args = parser.parse_args()
+    base.select_release(args.version)
     node = prepare(args.directory)
     args.report.write_text(json.dumps({'result': 'passed', 'libreTvArchiveSha256': base.SHA256, 'nodeArchiveSha256': NODE_SHA256, 'scope': 'Pinned artifact/manifest verification before runtime extraction; not protocol acceptance'}, indent=2) + '\n')
     print('Verified official LibreTV and Node artifacts; runtime ready')

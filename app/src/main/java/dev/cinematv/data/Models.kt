@@ -44,6 +44,8 @@ data class MediaItem(
     val ratingLicenseExpiresAt: Long = 0L,
     /** False when a source result did not identify movie versus series. */
     val mediaTypeKnown: Boolean = true,
+    /** True only for a score read from a public page without a licence declaration. */
+    val ratingPublic: Boolean = false,
     val catalogProvider: String = "",
     val catalogAttribution: String = "",
     /** Epoch milliseconds; expiry covers the entire licensed catalog metadata record. */
@@ -52,7 +54,16 @@ data class MediaItem(
     val episodeIds: List<String> = emptyList(),
     /** True only when a successful detail response supplied an authoritative playlist, even empty. */
     val playlistKnown: Boolean = false
-)
+) {
+    /**
+     * Per-instance memo for the provider+id digest. Kept outside the data-class
+     * constructor so it never participates in equals/hashCode/copy; [Transient]
+     * keeps it out of Java serialization.
+     */
+    @kotlin.jvm.Transient
+    @kotlin.jvm.Volatile
+    internal var cachedEntryId: String? = null
+}
 
 data class TvChannel(
     val id: String,
@@ -74,7 +85,11 @@ data class ServerStatus(
     val verified: Boolean,
     val sources: List<TvSource>,
     val liveSources: List<LiveSource>,
-    val version: String
+    val version: String,
+    /** Non-secret response receipt; a queued status cannot outlive a newer login. */
+    val connection: LibreTvConnection? = null,
+    val sessionRevision: Long? = null,
+    val defaultSubscriptions: List<SourceSubscription> = emptyList()
 )
 
 data class SourceProbe(val reachable: Boolean, val latencyMs: Long, val message: String)

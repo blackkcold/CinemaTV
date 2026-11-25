@@ -9,6 +9,8 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import androidx.core.view.WindowCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -23,6 +25,10 @@ import dev.cinematv.ui.*
 import dev.cinematv.ui.typography.CinemaNotoProvider
 import dev.cinematv.ui.mobile.MobileRootApp
 import dev.cinematv.ui.shared.CinemaBrandSession
+import dev.cinematv.perf.NativeGlassProbe
+import dev.cinematv.ui.tv.components.LocalGlassDrawDiagnostics
+import dev.cinematv.ui.tv.components.LocalGlassDrawScope
+import dev.cinematv.ui.tv.components.LocalProductionGlassObserver
 import dev.cinematv.ui.tv.design.GlassQuality
 import dev.cinematv.ui.tv.TvRootApp
 
@@ -34,6 +40,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        dev.cinematv.diagnostics.DiagnosticLog.install(this)
+        lifecycleScope.launch { dev.cinematv.data.douban.DoubanDeveloperOptions.get(this@MainActivity).initialize() }
         val isTv = (resources.configuration.uiMode and Configuration.UI_MODE_TYPE_MASK) ==
             Configuration.UI_MODE_TYPE_TELEVISION
         networkManager = getSystemService(ConnectivityManager::class.java)
@@ -60,13 +68,22 @@ class MainActivity : ComponentActivity() {
             )
         }
         setContent {
+            val glassProbe = NativeGlassProbe.enabled
             CinemaNotoProvider {
-                CompositionLocalProvider(LocalOpticalGlass provides model.opticalGlassEnabled) {
-                    BackHandler(enabled = model.page != Page.HOME) { model.back() }
+                CompositionLocalProvider(
+                    LocalOpticalGlass provides model.opticalGlassEnabled,
+                    LocalProductionGlassObserver provides
+                        if (glassProbe) ({ NativeGlassProbe.onObservation(it) }) else null,
+                    LocalGlassDrawDiagnostics provides if (glassProbe) NativeGlassProbe.diagnostics else null,
+                    LocalGlassDrawScope provides if (glassProbe) "root" else null,
+                ) {
+                    // TV hybrid/native detours and playback own their Back order in one host.
+                    BackHandler(enabled = !isTv && model.page != Page.HOME) { model.back() }
                     CinemaBrandSession(
                         reducedMotion = model.reducedMotion,
                         lowCost = model.glassQuality == GlassQuality.BASIC,
                     ) {
+                        // TV has one native route owner; the phone UI stays independent.
                         if (isTv) TvRootApp(model) else MobileRootApp(model)
                     }
                 }
@@ -78,6 +95,11 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         if (!firstResume && model.repo.isConnected) model.refreshConnection()
         firstResume = false
+    }
+
+    override fun onStop() {
+        dev.cinematv.diagnostics.DiagnosticLog.flush()
+        super.onStop()
     }
 
     override fun onDestroy() {
