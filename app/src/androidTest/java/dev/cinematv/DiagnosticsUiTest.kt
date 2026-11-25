@@ -81,8 +81,10 @@ private fun <R : TestRule, A : ComponentActivity> AndroidComposeTestRule<R, A>.f
 
 private fun <R : TestRule, A : ComponentActivity> AndroidComposeTestRule<R, A>.settingsPage() {
     runOnIdle { ViewModelProvider(activity)[CinemaViewModel::class.java].navigate(Page.SETTINGS) }
-    waitForTag("settings-section:developer")
-    onNodeWithTag("settings-section:developer").performClick()
+    // The phone settings render the diagnostics entry inline; the TV settings keep it in the
+    // developer section behind the section rail.
+    waitUntil(WAIT_MS) { present("diagnostics-entry") || present("settings-section:developer") }
+    if (!present("diagnostics-entry")) onNodeWithTag("settings-section:developer").performClick()
     waitForTag("diagnostics-entry")
 }
 
