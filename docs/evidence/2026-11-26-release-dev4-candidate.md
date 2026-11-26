@@ -71,6 +71,22 @@
 
 `scripts/tests` 契约套件（`test_unsigned_candidates` + `test_release_docs`）**20/20 通过**，其中 Dev 预留断言已随账本改为 `code 17` / `0.9.0-dev.4`。
 
+### 后端与 Python 门禁（本轮补跑）
+
+| 套件 | 命令 | 结果 |
+|---|---|---|
+| `backend/tv-bff` | `npm --prefix backend/tv-bff test` | **78/78 通过**，0 fail |
+| `scripts/tests` 全量 | `python3 -m unittest discover -s scripts/tests` | `203 tests`，`4 failures + 42 errors` — **本机既有环境问题，非本版引入** |
+
+Python 全量套件的失败全部归于两个与本版无关的原因，均已取证：
+
+1. `test_merge_ui_evidence` 等：`ValueError: Invalid evidence parent: /var`。构建工作树位于 `$TMPDIR`（`/private/var/...`），`scripts/merge-ui-evidence.py` 的证据路径校验拒绝了该前缀。属工作树位置导致，与源码无关。
+2. `test_device_qa_harness` 系列（42 errors）：依赖 `timeout`、AVD 与设备工具链的本机运行环境，本机未提供。
+
+**对照证据：** 在**未改动的基线提交 `9bd1a4b`**（主检出目录，非临时工作树）上运行同一条命令，得到**完全相同**的 `Ran 203 tests ... FAILED (failures=4, errors=42)` 与相同报错。因此这些失败不是本版引入的回归，也不构成本版的通过或失败证据。
+
+本版相关且可在本机生效的 Python 契约（`test_unsigned_candidates` + `test_release_docs`）20/20 通过；CI 的 `no-node` 与 `Dev audit` 工作流包含其余 Python 门禁且已通过。
+
 ## 生产签名（未完成）
 
 固定身份证书 SHA-256 应为
