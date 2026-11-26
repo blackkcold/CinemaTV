@@ -16,9 +16,9 @@ fi
 CHANNEL=${1:-stable}
 case "$CHANNEL" in
   stable) VERSION_NAME=0.9.0; VERSION_CODE=16; OUTPUT=candidate ;;
-  # Codes 12 (v0.8.0-dev.2), 13 (archived TV Web build) and 14 (v0.9.0-dev.2)
-  # are already public.
-  dev) VERSION_NAME=0.9.0-dev.3; VERSION_CODE=15; OUTPUT=candidate-dev ;;
+  # Codes 12 (v0.8.0-dev.2), 13 (archived TV Web build), 14 (v0.9.0-dev.2)
+  # and 15 (v0.9.0-dev.3) are already public; 16 (v0.9.0) is the highest.
+  dev) VERSION_NAME=0.9.0-dev.4; VERSION_CODE=17; OUTPUT=candidate-dev ;;
   *) echo 'Usage: build-unsigned-candidate.sh [stable|dev]'; exit 2 ;;
 esac
 if [ -e "$OUTPUT" ]; then
