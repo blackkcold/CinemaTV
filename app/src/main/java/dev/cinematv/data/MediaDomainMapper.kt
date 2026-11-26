@@ -54,12 +54,44 @@ object MediaDomainMapper {
     fun workId(item: MediaItem): String {
         val kind = mediaKind(item)
         // Unknown namespaces are not allowed to silently join works.
+        //
+        // This is PERSISTED identity: `workId` feeds `seasonId`, library records and manual work
+        // associations. It is deliberately byte-identical to the released baseline, so it uses an
+        // exact map lookup — no namespace case folding, no key trimming. `MediaIdentity.trustedId`
+        // normalizes namespaces for the search display path only; adopting that here would change
+        // the stored workId of any record with a non-literal namespace key and orphan its seasons
+        // and associations. Do not "unify" the two.
         for (namespace in listOf("tmdb", "imdb", "douban")) {
             val external = item.metadataIds[namespace]?.trim().orEmpty()
             if (external.isNotBlank()) return id("work", namespace, kind, external)
         }
         return id("work", "source", entryId(item))
     }
+
+    /**
+     * The stable selection identity of one provider listing.
+     *
+     * Built from the listing identity only — the source URL (hashed) plus the provider's listing
+     * ID, both already inside [entryId] — because every other field is filled in later:
+     * [dev.cinematv.data.LibreTvRepository.fetchDetail] populates `episodeIds` and re-derives
+     * `seasonNumber` from the detail response. A key that hashed those would differ for the same
+     * listing between the search snapshot and the loaded detail, which duplicates the source row,
+     * lets the current source be offered against itself, and breaks "switch back to the source I
+     * just left".
+     *
+     * Two listings of one source (different provider IDs) and identically-numbered listings of
+     * different sources still hash differently. Season and episode identity remain in [seasonId]
+     * and [episodeId], which own playback and progress; this key never participates in either.
+     *
+     * Limitation, deliberate: two seasons exposed under a single provider listing ID are one
+     * selectable source here. Season choice stays the work/season navigation's job, and enrichment
+     * must never fabricate a second version of one listing.
+     */
+    fun versionId(item: MediaItem): String = id("version", entryId(item))
+
+    /** A short, delimiter-free digest for display keys; never reversible to the input. */
+    internal fun shortDigest(value: String): String =
+        hex(MessageDigest.getInstance("SHA-256").digest(value.toByteArray(Charsets.UTF_8))).take(16)
 
     fun seasonId(item: MediaItem): String = id("season", workId(item), item.seasonNumber?.toString() ?: "unknown")
     /** Only unique, provider-supplied evidence is authoritative. Never normalize signed URLs. */

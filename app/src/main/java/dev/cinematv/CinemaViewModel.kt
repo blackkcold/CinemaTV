@@ -3,6 +3,7 @@ package dev.cinematv
 import android.app.Application
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
@@ -60,6 +61,11 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
     var section by mutableStateOf(Page.HOME)
         private set
     private var detailSessionKey by mutableStateOf("")
+    /**
+     * Source choices seeded from a search display group. Kept only while the detail screen keeps
+     * showing a member of that group, so switching sources does not erase the list.
+     */
+    private var detailSourceSeed by mutableStateOf<List<MediaItem>>(emptyList())
     val focusRoute: String get() = if (page == Page.DETAIL) "DETAIL:$detailSessionKey" else page.name
     var featured by mutableStateOf<List<MediaItem>>(emptyList())
         private set
@@ -271,7 +277,26 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
         private set
     var searchHits by mutableStateOf<List<SearchHit>>(emptyList())
         private set
+    /**
+     * Attribution of the current display groups only. Search screens read this; Home keeps
+     * [catalogAttribution], so a Douban credit from a search cannot decorate the home rails.
+     */
+    var searchAttribution by mutableStateOf("")
+        private set
+    /**
+     * Old display-group key → new key for the last rebuild. The search grid reads it once to move
+     * a bookmark/focus target when streaming evidence merges or splits groups.
+     */
+    var searchGroupRemap by mutableStateOf<Map<String, String>>(emptyMap())
+        private set
     private var completedSearchQuery = ""
+    /**
+     * Bumped only when the user asks for a new result set: a submitted query or a filter
+     * that actually changed. Streaming increments and chart refreshes keep the generation,
+     * so they never pull the viewer back to the top of the results.
+     */
+    var searchPresentationGeneration by mutableIntStateOf(0)
+        private set
     private var searchGeneration = 0L
     private var chartJob: Job? = null
     private var chartGeneration = 0L
@@ -293,12 +318,12 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
 
     /** Select or clear a curated public tag. No account, cookie or BFF is involved. */
     fun selectDoubanTag(tag: String?) {
-        updateSearchFilters(searchFilters.copy(
-            doubanTag = tag,
-            doubanTopOnly = false,
-            ratingSource = "Douban",
-            minRating = null
-        ))
+        // Clearing the tag returns to a neutral rating state: no hidden "Douban source"
+        // filter may survive a "全部" selection.
+        updateSearchFilters(
+            if (tag == null) searchFilters.withRatingMode(SearchRatingMode.Any)
+            else searchFilters.withRatingMode(SearchRatingMode.DoubanTag, tag)
+        )
     }
 
     private fun loadDoubanTag(tag: String) {
@@ -697,8 +722,13 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
         }
         // Douban is a separate chain; its public score and rank never decorate a home card.
         val offline = repo.localItems().map { it.withoutDoubanHomeBadges() }
-        val movieInput = catalogMovies.ifEmpty { offline.filter { !it.isTv } }.toList()
-        val seriesInput = catalogSeries.ifEmpty { offline.filter { it.isTv } }.toList()
+        // Cold start is movie-first, series-second, but only for entries whose media type
+        // is actually known. An untyped catalog/library entry is never promoted to a movie;
+        // it stays searchable and out of both HOME shelves.
+        val movieInput = catalogMovies.filter { it.mediaTypeKnown && !it.isTv }
+            .ifEmpty { offline.filter { it.mediaTypeKnown && !it.isTv } }.toList()
+        val seriesInput = catalogSeries.filter { it.mediaTypeKnown && it.isTv }
+            .ifEmpty { offline.filter { it.mediaTypeKnown && it.isTv } }.toList()
         recommendationJob = viewModelScope.launch {
             // Coalesce Room/catalog updates; ranking must never block D-pad or playback input.
             delay(50)
@@ -834,9 +864,14 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
         }
     }
 
-    fun onMediaFocus(item: MediaItem, region: String = "general", position: Int = 0) {
+    /**
+     * [focusKey] lets a page publish its own stable display key (the search grid uses the group
+     * key). It defaults to the member identity so every other caller is unchanged.
+     */
+    fun onMediaFocus(item: MediaItem, region: String = "general", position: Int = 0,
+        focusKey: String = item.presentationKey) {
         val route = page
-        focusCoordinator.remember(route.name, region, item.presentationKey, position)
+        focusCoordinator.remember(route.name, region, focusKey, position)
         backdropJob?.cancel()
         backdropJob = viewModelScope.launch {
             delay(if (reducedMotion) 0 else 210)
@@ -899,7 +934,57 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
 
     fun open(item: MediaItem) = openDetail(item, preserveWorkRoute = false)
 
-    private fun openDetail(item: MediaItem, preserveWorkRoute: Boolean) {
+    /**
+     * Select another source/version of the work already open in DETAIL.
+     *
+     * Bounded entry point: only a candidate the current detail screen actually offers may be
+     * chosen, and only by its version identity — no arbitrary item, no provider JSON. Switching
+     * keeps the confirmed candidate set (including the source being left) so every member stays
+     * reachable and the previous choice can be selected again; each member keeps its own episode
+     * and progress identity because the record itself is unchanged.
+     */
+    fun selectDetailSource(versionId: String) {
+        if (page != Page.DETAIL) return
+        val current = selected ?: return
+        val currentKey = MediaDomainMapper.versionId(current)
+        // Only a currently confirmed candidate is selectable; a stale id is a harmless no-op.
+        val candidate = alternatives.firstOrNull { MediaDomainMapper.versionId(it) == versionId }
+            ?: return
+        if (versionId == currentKey) return
+        // Rebuild the candidate pool from what is already confirmed here (group seed, offered
+        // list and the source being left). Unknown or unlicensed records are never admitted.
+        val seed = mergeSourceVersions(
+            (detailSourceSeed + alternatives + current)
+                .filter { CatalogLicensePolicy.isAvailable(it) })
+        openDetail(candidate, preserveWorkRoute = true, seedAlternatives = seed)
+    }
+
+    /**
+     * Open a displayed search group at the member the user actually saw.
+     *
+     * The group's other members are offered as source choices, but the clicked member stays the
+     * selected one: its episodes, progress and source identity must not change because another
+     * source happened to be grouped with it.
+     */
+    private fun openSearchHit(hit: SearchHit) =
+        openDetail(hit.item, preserveWorkRoute = false, seedAlternatives = hit.alternatives)
+
+    /**
+     * Open a group by its display key.
+     *
+     * The grid passes only the key: resolving the clicked member and its source seed stays inside
+     * the data layer, so no member list, provider record or playback URL crosses the click path.
+     */
+    fun openSearchGroup(groupKey: String) {
+        val hit = searchHits.firstOrNull { it.displayKey == groupKey } ?: return
+        openSearchHit(hit)
+    }
+
+    private fun openDetail(
+        item: MediaItem,
+        preserveWorkRoute: Boolean,
+        seedAlternatives: List<MediaItem> = emptyList(),
+    ) {
         invalidatePlayback()
         backdropJob?.cancel()
         detailJob?.cancel()
@@ -908,10 +993,26 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
         val connection = repo.connectionContext()
         selectedRecommendationReason = recommendationReasons[item.presentationKey].orEmpty()
         if (!preserveWorkRoute) detailSessionKey = item.presentationKey
+        // Switching to another member of the same displayed group must not hide its other
+        // sources. A fresh entry from any other surface starts empty unless the caller seeded it.
+        val pool = when {
+            seedAlternatives.isNotEmpty() -> seedAlternatives
+            preserveWorkRoute -> detailSourceSeed
+            else -> emptyList()
+        }
+        val continuing = preserveWorkRoute && pool.isNotEmpty() &&
+            pool.any { MediaDomainMapper.versionId(it) == MediaDomainMapper.versionId(item) }
+        // A source switch inside DETAIL keeps the confirmed pool; a plain entry from any list,
+        // search result or recommendation clears whatever seed the previous detail screen had.
+        detailSourceSeed = when {
+            seedAlternatives.isNotEmpty() -> seedAlternatives
+            continuing -> pool
+            else -> emptyList()
+        }
         page = Page.DETAIL
         selected = repo.library.snapshot.applyProgress(item)
         resolutionStatus = ""
-        alternatives = emptyList()
+        alternatives = usableSeedAlternatives(item, detailSourceSeed + item)
         busy = true
         detailJob = viewModelScope.launch {
             try {
@@ -949,14 +1050,82 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
                 val items = repo.searchSnapshot(item.title, connection).items
                 ensureActive()
                 if (generation == detailGeneration && repo.isCurrentConnection(connection) &&
-                    selected?.presentationKey == item.presentationKey)
-                    alternatives = items.filter { sameSourceCandidate(item, it) }.distinctBy { it.source?.url }
+                    selected?.presentationKey == item.presentationKey) {
+                    // One row per provider listing. A confirmed group candidate stays reachable
+                    // even when this query cannot find it again; the current source is never
+                    // listed as an option against itself.
+                    val discovered = items.filter { sameSourceCandidate(item, it) }
+                    val selectedKey = MediaDomainMapper.versionId(item)
+                    alternatives = mergeSourceVersions(
+                        (detailSourceSeed + alternatives + discovered)
+                            .filter { CatalogLicensePolicy.isAvailable(it) })
+                        .filter { MediaDomainMapper.versionId(it) != selectedKey }
+                }
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (error: Exception) {
+                // A failed query keeps the sources already confirmed on this screen.
                 if (generation == detailGeneration && repo.isCurrentConnection(connection)) connectionError(error, connection)
             } finally { if (generation == detailGeneration && repo.isCurrentConnection(connection)) busy = false }
         }
     }
+
+    /**
+     * Group members the detail screen may offer as source choices.
+     *
+     * Only records that carry a real source and are still licensed are offered; the clicked item
+     * itself is not duplicated. De-duplication uses the provider listing identity, so a search
+     * snapshot and its resolved detail record collapse to one row while two listings of one
+     * source stay separately selectable.
+     */
+    private fun usableSeedAlternatives(
+        selectedItem: MediaItem,
+        seed: List<MediaItem>,
+        nowMs: Long = System.currentTimeMillis(),
+    ): List<MediaItem> {
+        if (seed.isEmpty()) return emptyList()
+        val selectedKey = MediaDomainMapper.versionId(selectedItem)
+        return mergeSourceVersions(seed.filter { CatalogLicensePolicy.isAvailable(it, nowMs) })
+            .filter { MediaDomainMapper.versionId(it) != selectedKey }
+    }
+
+    /**
+     * Collapse records of one provider listing into a single selectable source.
+     *
+     * A search snapshot and a resolved detail record for the same listing hash to the same
+     * [MediaDomainMapper.versionId]. A resolved record wins over an unresolved listing snapshot
+     * (a snapshot carries no playlist at all, which is missing data, not a reduction). Between two
+     * resolved records the **later** input wins, never the one with more episodes: an upstream
+     * revision may legitimately drop episodes, and episode count is not freshness.
+     *
+     * Order contract, verified at every call site: each caller concatenates old → new
+     * (`detailSourceSeed + alternatives + current`, `detailSourceSeed + item`,
+     * `detailSourceSeed + alternatives + discovered`). `current` is the listing most recently
+     * resolved by `repo.detail`; `discovered` is the newest search snapshot. First-appearance
+     * order of the output is kept so a streaming rebuild does not reorder the source row.
+     * Nothing is invented: this only picks between records already present.
+     */
+    private fun mergeSourceVersions(items: List<MediaItem>): List<MediaItem> {
+        val byKey = linkedMapOf<String, MediaItem>()
+        items.filter { it.source != null }
+            .forEach { item ->
+                val key = MediaDomainMapper.versionId(item)
+                val existing = byKey[key]
+                // `items` is old → new, so a later resolved record replaces an earlier one.
+                byKey[key] = if (existing == null || shouldPrefer(item, existing)) item else existing
+            }
+        return byKey.values.toList()
+    }
+
+    /**
+     * `candidate` arrives after `current`; decide which record represents the listing.
+     *
+     * A record without an authored playlist is missing data, never a deliberate reduction, so a
+     * resolved record always beats an unresolved one. When both are resolved, or both are not,
+     * the later record wins: an upstream revision may legitimately drop episodes, and episode
+     * count is not freshness.
+     */
+    private fun shouldPrefer(candidate: MediaItem, current: MediaItem): Boolean =
+        if (candidate.playlistKnown != current.playlistKnown) candidate.playlistKnown else true
 
     private fun sameSourceCandidate(item: MediaItem, candidate: MediaItem): Boolean {
         if (item.source?.url == candidate.source?.url && item.id == candidate.id) return true
@@ -1021,10 +1190,13 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
     }
 
     fun updateSearchFilters(filters: SearchFilters) {
+        // An unchanged filter is not a new result set: no generation bump, no rebuild churn.
+        if (filters == searchFilters) return
         val wasTop = searchFilters.doubanTopOnly
         val wasDouban = RatingPolicy.normalizeProvider(searchFilters.ratingSource.orEmpty()) == "douban"
         val previousTag = searchFilters.doubanTag
         searchFilters = filters
+        searchPresentationGeneration++
         val isDouban = RatingPolicy.normalizeProvider(filters.ratingSource.orEmpty()) == "douban"
         if (filters.doubanTag != previousTag) {
             if (filters.doubanTag == null) {
@@ -1035,7 +1207,13 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
         rebuildSearch()
         if (filters.doubanTopOnly && !wasTop) loadLicensedChart()
         else if (!isDouban) {
-            chartGeneration++; chartJob?.cancel(); chartLoading = false; rebuildSearch()
+            // Dropping the chart is not a second result set. `rebuildSearch` reads neither
+            // `chartGeneration`, `chartJob` nor `chartLoading`, so a second call would take the
+            // same inputs and publish the same hits while overwriting `searchGroupRemap` with
+            // `remap(x, x)`, which is always empty: that erases the real old-key -> new-key
+            // mapping the search grid needs to move a focused group across an asynchronous
+            // merge. Drop the chart state without a rebuild; the rebuild above already ran.
+            chartGeneration++; chartJob?.cancel(); chartLoading = false
         } else if (!wasDouban && filters.doubanTag == null && movieChart.items.isEmpty() && !chartLoading) loadLicensedChart()
     }
 
@@ -1118,7 +1296,8 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
     private fun rebuildSearch() {
         val chartOnly = searchFilters.doubanTopOnly
         val doubanSource = RatingPolicy.normalizeProvider(searchFilters.ratingSource.orEmpty()) == "douban"
-        searchHits = SearchIndex.search(completedSearchQuery,
+        val previousHits = searchHits
+        val nextHits = SearchIndex.search(completedSearchQuery,
             // Saved titles can still contribute aliases/source alternatives, but an
             // old saved rank must not reappear in a newly fetched chart snapshot.
             library = repo.localItems().let { if (chartOnly) it.map { item -> item.copy(doubanTopRank = null) } else it },
@@ -1128,6 +1307,13 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
                     (if (searchFilters.doubanTag != null) doubanList else emptyList()))
                     .distinctBy { it.presentationKey },
             remote = remoteSearch, filters = searchFilters, limit = 1000)
+        searchHits = nextHits
+        // Only a key that actually changed is worth migrating; an unchanged rebuild is a no-op.
+        searchGroupRemap = SearchAggregator.remap(previousHits, nextHits)
+        // Every displayed group's members carry their own credit; a group representative may be a
+        // non-Douban member in a neutral search, so read the members rather than `results`.
+        searchAttribution = nextHits.flatMap { it.alternatives }.map { it.catalogAttribution }
+            .filter(String::isNotBlank).distinct().joinToString("\n")
         results = searchHits.map { it.item }
         catalogAttribution = (if (chartOnly) results else featured + tvShows + results).map { it.catalogAttribution }
             .filter(String::isNotBlank).distinct().joinToString("\n")
@@ -1162,6 +1348,8 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
         seriesChart = CatalogChartSnapshot()
         chartNotice = ""
         val generation = ++searchGeneration
+        // A submitted query is a new result set even when its text repeats the last one.
+        searchPresentationGeneration++
         val connection = repo.connectionContext()
         completedSearchQuery = wd
         remoteSearch = emptyList()
@@ -1492,6 +1680,7 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
             Page.DETAIL -> section
             else -> Page.HOME
         }
+        if (page == Page.DETAIL || page == Page.PLAYER) detailSourceSeed = emptyList()
         dev.cinematv.diagnostics.DiagnosticLog.verbose("ui.back", fields = mapOf(
             "from" to page.name.lowercase(), "to" to target.name.lowercase()
         ))

@@ -24,6 +24,7 @@ import dev.cinematv.CinemaViewModel
 import dev.cinematv.Page
 import dev.cinematv.data.LibraryStatus
 import dev.cinematv.data.EpisodePlaybackAction
+import dev.cinematv.data.MediaDomainMapper
 import dev.cinematv.ui.tv.components.GlassAction
 import dev.cinematv.ui.shared.*
 import dev.cinematv.ui.tv.components.CinemaGlassSurface
@@ -146,10 +147,20 @@ fun DetailScreen(model: CinemaViewModel) {
         }
         if (model.alternatives.isNotEmpty()) item(key = "sources") {
             Column(Modifier.padding(top = 26.dp)) {
-                Text("可用片源", color = TvColors.Text, fontSize = 20.sp, modifier = Modifier.padding(start = layout.gutter))
+                // "来源" makes no playability claim: no liveness probe backs this list.
+                Text("来源", color = TvColors.Text, fontSize = 20.sp, modifier = Modifier.padding(start = layout.gutter))
                 LazyRow(Modifier.focusRestorer(), contentPadding = PaddingValues(horizontal = layout.gutter, vertical = 14.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    items(model.alternatives.distinctBy { it.presentationKey }, key = { it.presentationKey }) { option ->
-                        GlassAction(option.source?.name ?: "片源", Modifier.width(160.dp).height(42.dp)) { model.open(option) }
+                    // Version identity, not the provider URL: one provider may expose several
+                    // versions, and a URL-keyed list silently collapsed them.
+                    val options = sourceOptionLabels(
+                        model.alternatives.distinctBy { MediaDomainMapper.versionId(it) })
+                    items(options, key = { option -> MediaDomainMapper.versionId(option.first) }) { option ->
+                        val versionId = MediaDomainMapper.versionId(option.first)
+                        GlassAction(option.second, Modifier.width(160.dp).height(42.dp),
+                            // Every confirmed candidate stays selectable, so a user can return
+                            // to the source they left. Selection goes through the bounded
+                            // detail-source entry, never a fresh open that would drop the group.
+                            onClick = { model.selectDetailSource(versionId) })
                     }
                 }
             }

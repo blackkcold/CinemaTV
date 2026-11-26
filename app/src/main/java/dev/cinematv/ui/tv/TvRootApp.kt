@@ -47,9 +47,16 @@ fun TvRootApp(model: CinemaViewModel, onSceneDecoded: (String?) -> Unit = {}) {
         val savedPages = rememberSaveableStateHolder()
         val registry = remember { TvFocusRegistry() }
         val navigation = remember { FocusRequester() }
+        val navigationDown = remember { TvNavigationDownRelay() }
+        val searchChrome = remember { TvSearchChromeState() }
         val content = remember(model.focusRoute) { FocusRequester() }
-        val navigationFocusOwner = remember(model) {
-            TvNavigationFocusOwner { model.page !in listOf(Page.DETAIL, Page.PLAYER, Page.SETTINGS) }
+        val navigationFocusOwner = remember(model, searchChrome) {
+            TvNavigationFocusOwner {
+                model.page !in listOf(Page.DETAIL, Page.PLAYER, Page.SETTINGS) &&
+                    // While SEARCH browses results, the navigation must not exist at all:
+                    // hidden means unreachable, not transparent.
+                    !(model.page == Page.SEARCH && searchChrome.browsing)
+            }
         }
         val focusObserver = LocalTvFocusOwnerObserver.current
         // Measurement lane only: a volatile read in production, the applied-state timeline
@@ -65,10 +72,21 @@ fun TvRootApp(model: CinemaViewModel, onSceneDecoded: (String?) -> Unit = {}) {
         val artworkItems = remember(model.featured, model.tvShows) { model.featured + model.tvShows }
         val showNav = navigationFocusOwner.available
         LaunchedEffect(showNav) { if (!showNav) { navigationFocusOwner.update(false); navigationHasFocus = false } }
+        // The SEARCH page only publishes an intent; the root decides when it stops being valid.
+        // DETAIL/PLAYER are SEARCH's own children: keeping Browsing across them stops the
+        // return from flashing the expanded header. Any other route clears it immediately,
+        // so a DETAIL opened from HOME never inherits a stale search state.
+        LaunchedEffect(model.page, model.section) {
+            val keepsSearchChrome = model.page == Page.SEARCH ||
+                (model.page in listOf(Page.DETAIL, Page.PLAYER) && model.section == Page.SEARCH)
+            if (!keepsSearchChrome) searchChrome.reset()
+        }
         CompositionLocalProvider(LocalTvFocusRegistry provides registry, LocalNavigationFocus provides navigation,
             LocalContentFocus provides content, LocalNavigationHasFocus provides (navigationHasFocus && showNav),
             LocalNavigationFocusOwner provides navigationFocusOwner,
             LocalTvContentFocusOwner provides navigationFocusOwner,
+            LocalTvNavigationDown provides navigationDown,
+            LocalTvSearchChrome provides searchChrome,
             LocalBackdropArt provides decodedArt,
             LocalProductionGlassScene provides glassScene,
             LocalPerfProbePage provides model.page.name) {

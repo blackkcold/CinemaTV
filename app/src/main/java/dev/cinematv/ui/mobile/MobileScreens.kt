@@ -61,10 +61,12 @@ import dev.cinematv.data.LibraryStatus
 import dev.cinematv.data.ChannelIdentity
 import dev.cinematv.data.EpisodePlaybackAction
 import dev.cinematv.data.MediaItem
+import dev.cinematv.data.MediaDomainMapper
 import dev.cinematv.data.SearchFilters
 import dev.cinematv.ui.shared.metadataLine
 import dev.cinematv.ui.shared.doubanRankLabel
 import dev.cinematv.ui.shared.cardMetadataLine
+import dev.cinematv.ui.shared.sourceOptionLabels
 import dev.cinematv.ui.shared.ManualWorkAssociationPanel
 import dev.cinematv.ui.shared.WorkNavigationPanel
 import dev.cinematv.ui.shared.TmdbLogo
@@ -179,8 +181,9 @@ private fun MobileHeading(title: String, subtitle: String? = null) {
 }
 
 @Composable
-private fun MobileMediaCard(item: MediaItem, model: CinemaViewModel, modifier: Modifier = Modifier) {
-    Column(modifier.clickable { model.open(item) }, verticalArrangement = Arrangement.spacedBy(7.dp)) {
+private fun MobileMediaCard(item: MediaItem, model: CinemaViewModel, modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null) {
+    Column(modifier.clickable { onClick?.invoke() ?: model.open(item) }, verticalArrangement = Arrangement.spacedBy(7.dp)) {
         Box(
             Modifier.fillMaxWidth().aspectRatio(.72f).clip(RoundedCornerShape(12.dp))
                 .background(Color(0xFF343945))
@@ -357,7 +360,7 @@ private fun MobileSearch(model: CinemaViewModel) {
             fontSize = 11.sp, modifier = Modifier.padding(horizontal = 20.dp))
         if (model.catalogStatus.isNotBlank()) Text(model.catalogStatus, color = Muted,
             fontSize = 11.sp, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
-        if (model.catalogAttribution.isNotBlank()) Text(model.catalogAttribution, color = Muted,
+        if (model.searchAttribution.isNotBlank()) Text(model.searchAttribution, color = Muted,
             fontSize = 10.sp, modifier = Modifier.padding(horizontal = 20.dp))
         if (model.searchHistory.isNotEmpty()) {
             Text("最近搜索", color = Muted, fontSize = 13.sp,
@@ -374,8 +377,8 @@ private fun MobileSearch(model: CinemaViewModel) {
         if (model.searchStage.isNotBlank()) Text(model.searchStage, color = Muted, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 20.dp))
         if (model.busy || model.chartLoading) LinearProgressIndicator(Modifier.fillMaxWidth())
         Text(
-            if (model.busy || model.chartLoading) "正在逐源搜索 · 已找到 " + model.results.size + " 部"
-            else "搜索结果 · " + model.results.size,
+            if (model.busy || model.chartLoading) "正在逐源搜索 · 已找到 " + model.searchHits.size + " 部"
+            else "搜索结果 · " + model.searchHits.size,
             Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
             color = Muted, fontSize = 13.sp
         )
@@ -383,7 +386,7 @@ private fun MobileSearch(model: CinemaViewModel) {
             enabled = !model.searchCatalogLoading, onClick = { model.loadMoreSearchCatalog() }, modifier = Modifier.padding(horizontal = 16.dp)) {
             Text(if (model.searchCatalogLoading) "加载目录中…" else "加载更多目录")
         }
-        if (model.results.isEmpty()) {
+        if (model.searchHits.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(if (model.busy || model.chartLoading) "正在获取结果..." else "请输入关键词搜索",
                     color = Muted)
@@ -394,8 +397,12 @@ private fun MobileSearch(model: CinemaViewModel) {
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
-            items(model.results, key = { (it.source?.key ?: "") + ":" + it.id }) { item ->
-                MobileMediaCard(item, model)
+            // Display-group keys mirror the TV grid, so the same work is one row on both
+            // surfaces and a streaming merge does not change a row's identity.
+            items(model.searchHits, key = { it.displayKey }) { hit ->
+                // Display the presentation copy: a neutral search may hide a Douban badge there.
+                // The click still opens the authoritative group record by key.
+                MobileMediaCard(hit.presentation, model, onClick = { model.openSearchGroup(hit.displayKey) })
             }
         }
     }
@@ -444,14 +451,16 @@ private fun MobileDetail(model: CinemaViewModel) {
                     modifier = Modifier.testTag("mobile-play-restart")) { Text("从头播放") }
             }
             MobileGlassOutlinedButton(onClick = { showAlternates = !showAlternates; model.findAlternatives() }) {
-                Text("选择片源")
+                Text("选择来源")
             }
             if (showAlternates) {
-                model.alternatives.forEach { alternate ->
-                    TextButton(onClick = { model.open(alternate) }) {
-                        Text(alternate.source?.name ?: alternate.title)
+                // Version identity, not the provider URL, and a readable label per version.
+                sourceOptionLabels(model.alternatives.distinctBy { MediaDomainMapper.versionId(it) })
+                    .forEach { (alternate, label) ->
+                        val versionId = MediaDomainMapper.versionId(alternate)
+                        // Same bounded entry as TV: switching keeps every confirmed candidate.
+                        TextButton(onClick = { model.selectDetailSource(versionId) }) { Text(label) }
                     }
-                }
             }
             WorkNavigationPanel(model, tv = false)
             ManualWorkAssociationPanel(model, tv = false)

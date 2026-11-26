@@ -34,10 +34,18 @@ import dev.cinematv.ui.tv.design.*
 import dev.cinematv.ui.tv.focus.*
 
 @Composable
-fun ContentRail(title: String, items: List<MediaItem>, model: CinemaViewModel, portrait: Boolean = false, continueWatching: Boolean = false, entryRequester: FocusRequester? = null, action: (@Composable () -> Unit)? = null) {
+fun ContentRail(title: String, items: List<MediaItem>, model: CinemaViewModel, portrait: Boolean = false, continueWatching: Boolean = false, entryRequester: FocusRequester? = null, action: (@Composable () -> Unit)? = null,
+    /** Stable semantic key for bookmarks; the title is display copy and may change. */
+    regionKey: String? = null,
+    /**
+     * Asked only from a focused card, only for Up/Down. Return `true` to consume the key.
+     * Navigating to an off-screen row needs the parent column prepared first, so the page
+     * decides; any other owner keeps its key when this returns `false`.
+     */
+    onVerticalMove: ((Int) -> Boolean)? = null) {
     if (items.isEmpty()) return
     val layout = LocalTvLayout.current
-    val region = "rail:$title"
+    val region = regionKey ?: "rail:$title"
     val state = rememberTvListState(model, region)
     val scope = rememberCoroutineScope()
     val registry = LocalTvFocusRegistry.current
@@ -46,7 +54,10 @@ fun ContentRail(title: String, items: List<MediaItem>, model: CinemaViewModel, p
     val focusOwner = LocalNavigationFocusOwner.current
     val navigationHasFocus by rememberUpdatedState(LocalNavigationHasFocus.current)
     val saved = remember { model.focusCoordinator.restore(model.focusRoute, region) }
-    val itemKeys = items.map { it.presentationKey }
+    // `presentationKey` is derived only from `MediaItem` constructor fields (id, source url,
+    // media type), so an equal list always yields equal keys: caching cannot go stale when the
+    // data changes. The list itself stays the cache key, never the rail title or route.
+    val itemKeys = remember(items) { items.map { it.presentationKey } }
     val currentKeys by rememberUpdatedState(itemKeys)
     RegisterLazyFocusRegion(model, region, state, itemKeys)
     var activeKey by remember { mutableStateOf(saved ?: itemKeys.first()) }
@@ -144,6 +155,15 @@ fun ContentRail(title: String, items: List<MediaItem>, model: CinemaViewModel, p
                         }
                         .onPreviewKeyEvent { event ->
                             if (event.type != KeyEventType.KeyDown) false
+                            else if (event.key == Key.DirectionUp || event.key == Key.DirectionDown) {
+                                // The page owns the vertical ladder: it may need to scroll the
+                                // parent column and compose the destination row before a focus
+                                // target exists. Only consume the key when it accepted it.
+                                cancelMovement()
+                                visibilityTrace("vertical-key:${event.key}")
+                                visibilityJob?.cancel()
+                                onVerticalMove?.invoke(if (event.key == Key.DirectionUp) -1 else 1) == true
+                            }
                             else if (event.key !in listOf(Key.DirectionLeft, Key.DirectionRight)) {
                                 // Vertical navigation, activation and Back retain their
                                 // existing owners, but invalidate an unfinished move.

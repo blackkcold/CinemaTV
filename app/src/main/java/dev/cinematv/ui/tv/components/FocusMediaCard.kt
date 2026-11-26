@@ -54,7 +54,13 @@ fun FocusMediaCard(
     portrait: Boolean = false,
     selected: Boolean = false,
     continueWatching: Boolean = false,
-    showCaption: Boolean = true
+    showCaption: Boolean = true,
+    /**
+     * A page-specific caption line. Null keeps the existing home/library text byte-for-byte;
+     * the search grid passes [searchMetadataLine] so grouped sources read as "N 个来源" without
+     * changing the wording of every other surface.
+     */
+    metadataOverride: String? = null,
 ) {
     var focused by remember(item.presentationKey) { mutableStateOf(false) }
     var loading by remember(item.poster, item.backdrop) { mutableStateOf(false) }
@@ -155,8 +161,11 @@ fun FocusMediaCard(
         if (showCaption) {
           Text(item.title, color = TvColors.Text, fontSize = 15.sp, lineHeight = 20.sp, fontWeight = FontWeight.Medium,
             maxLines = 1, overflow = TextOverflow.Ellipsis)
-        val fullMetadata = item.metadataLine().ifBlank { if (item.isTv) "剧集" else "电影" }
-        Text(item.cardMetadataLine().ifBlank { fullMetadata }, color = TvColors.Secondary,
+        // A blank override is not a caption: fall back exactly as before, so a search card with
+        // no rating/year/category never renders an empty metadata line.
+        val override = metadataOverride?.takeIf(String::isNotBlank)
+        val fullMetadata = override ?: item.metadataLine().ifBlank { if (item.isTv) "剧集" else "电影" }
+        Text(override ?: item.cardMetadataLine().ifBlank { fullMetadata }, color = TvColors.Secondary,
             modifier = Modifier.semantics { text = AnnotatedString(fullMetadata) },
             fontSize = 11.sp, lineHeight = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
