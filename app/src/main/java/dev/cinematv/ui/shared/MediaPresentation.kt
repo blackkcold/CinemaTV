@@ -20,6 +20,43 @@ fun MediaItem.metadataLine(): String = listOf(
 fun MediaItem.doubanRankLabel(): String? =
     doubanTopRank?.takeIf { it in 1..250 }?.let { "TOP $it" }
 
+/**
+ * Search-only caption. It names the number of **grouped sources**, which is not a count of
+ * verified-playable sources: no liveness probe backs this line.
+ */
+fun MediaItem.searchMetadataLine(): String = listOf(
+    RatingPolicy.score(this)?.let { "★ ${rating.trim()} ${ratingSource.ifBlank { "来源评分" }}" }.orEmpty(),
+    year, category,
+    if (sourceCount > 1) "$sourceCount 个来源" else ""
+).filter(String::isNotBlank).joinToString(" · ")
+
+/**
+ * A readable label for one selectable source/version. It never contains a URL or a credential.
+ * [MediaDomainMapper.versionId] stays the identity; this is display text only.
+ */
+fun MediaItem.sourceOptionLabel(): String = buildString {
+    append(source?.name?.takeIf(String::isNotBlank) ?: if (source == null) "元数据目录" else "片源")
+    if (isTv) seasonNumber?.let { append(" · 第 $it 季") }
+}
+
+/**
+ * Labels for a source row. A repeated label gets a "版本 N" suffix so two versions of one
+ * provider are distinguishable; a single occurrence keeps the plain name.
+ */
+fun sourceOptionLabels(items: List<MediaItem>): List<Pair<MediaItem, String>> {
+    val base = items.map { it.sourceOptionLabel() }
+    val counts = base.groupingBy { it }.eachCount()
+    val seen = mutableMapOf<String, Int>()
+    return items.mapIndexed { index, item ->
+        val label = base[index]
+        if ((counts[label] ?: 0) > 1) {
+            val ordinal = (seen[label] ?: 0) + 1
+            seen[label] = ordinal
+            item to "$label · 版本 $ordinal"
+        } else item to label
+    }
+}
+
 /** Narrow cards keep a valid score and its actual source ahead of optional detail. */
 fun MediaItem.cardMetadataLine(): String = listOf(
     RatingPolicy.score(this)?.let { "★ ${rating.trim()} ${ratingSource.ifBlank { "来源评分" }}" }.orEmpty(),

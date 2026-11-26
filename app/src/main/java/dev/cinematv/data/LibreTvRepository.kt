@@ -22,6 +22,7 @@ import java.net.URL
 import java.net.URLEncoder
 import java.util.concurrent.ConcurrentHashMap
 import java.time.Instant
+import java.util.Locale
 import java.util.concurrent.TimeUnit
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -158,6 +159,11 @@ class LibreTvRepository(context: Context, val library: LocalMediaLibrary = Local
                 attribution = attribution, acquisition = acquisition, licenseExpiresAt = expiry, licenseRejected = true)
             val items = parseArray(root.optJSONArray("items")) { item ->
                 val title = item.optString("title").trim()
+                // A catalog entry's media type must be explicit. Missing or illegal values
+                // stay unknown instead of defaulting to "movie"; unknown entries are kept
+                // searchable but never enter a HOME shelf.
+                val type = item.optString("type").trim().lowercase(Locale.ROOT)
+                val mediaTypeKnown = type == "movie" || type == "tv"
                 val provider = item.optString("provider").ifBlank { root.optString("provider") }
                 val ratingSource = item.optString("ratingSource").takeUnless { it == "null" }.orEmpty()
                 val validRating = item.optDouble("ratingScale", 0.0) == 10.0 &&
@@ -167,7 +173,8 @@ class LibreTvRepository(context: Context, val library: LocalMediaLibrary = Local
                     id = "catalog:$provider:${item.optString("id")}", title = title,
                     poster = item.optString("poster"), backdrop = item.optString("backdrop"),
                     year = item.optString("year"), description = plainProviderText(item.optString("overview")),
-                    category = item.optString("category"), isTv = item.optString("type") == "tv",
+                    category = item.optString("category"), isTv = type == "tv",
+                    mediaTypeKnown = mediaTypeKnown,
                     rating = if (validRating) item.optString("rating") else "",
                     ratingSource = if (validRating) ratingSource else "",
                     aliases = strings(item.opt("aliases")), actors = strings(item.opt("actors")),

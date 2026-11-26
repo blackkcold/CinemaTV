@@ -13,6 +13,11 @@ import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
@@ -43,8 +48,17 @@ private val NAV_ICONS = listOf(
 @Composable
 fun FloatingNavigation(model: CinemaViewModel, onFocusWithin: (Boolean) -> Unit, modifier: Modifier = Modifier) {
     val layout = LocalTvLayout.current
+    val navigationDown = LocalTvNavigationDown.current
     Row(modifier.fillMaxWidth().padding(horizontal = layout.gutter)
-        .onFocusChanged { onFocusWithin(it.hasFocus) }.focusGroup(),
+        .onFocusChanged { onFocusWithin(it.hasFocus) }
+        // The page decides where Down lands: HOME rows may be off-screen and need the
+        // parent column prepared before focus. Consume only when the page accepted it;
+        // otherwise the existing focusProperties { down = content } path stays intact.
+        .onPreviewKeyEvent { event ->
+            event.type == KeyEventType.KeyDown && event.key == Key.DirectionDown &&
+                navigationDown.handle()
+        }
+        .focusGroup(),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
         CinemaBrandStartup(Modifier.width(120.dp).height(29.dp))
         MainNavigationTabs(model)

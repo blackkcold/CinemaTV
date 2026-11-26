@@ -285,6 +285,33 @@ class SearchIndexTest {
         assertTrue(SearchIndex.search("", catalog = chart, filters = top, limit = 0, nowMs = now).isEmpty())
     }
 
+    /**
+     * A neutral search may hide a Douban badge, but only from the display copy.
+     *
+     * `SearchHit.item` is what DETAIL opens and what the library caches; a field stripped there
+     * reaches `MediaSnapshotMerger` and, because the catalog attribution is legitimately kept,
+     * reads as an authoritative update that erases the stored score, rank and rating licence.
+     */
+    @Test fun neutralPresentationNeverRewritesTheAuthoritativeRecord() {
+        val licensed = film.copy(catalogProvider = "Fixture", catalogAttribution = "Fixture credit",
+            catalogLicenseExpiresAt = 2_000L)
+        val hit = SearchIndex.search("星际穿越", catalog = listOf(licensed), nowMs = now).single()
+        assertEquals(licensed, hit.item)
+        assertEquals("", hit.presentation.rating)
+        assertEquals("", hit.presentation.ratingSource)
+        assertNull(hit.presentation.doubanTopRank)
+        assertEquals(0L, hit.presentation.ratingLicenseExpiresAt)
+        // Attribution and the artwork licence are required credit, not a rating badge.
+        assertEquals("Fixture credit", hit.presentation.catalogAttribution)
+        assertEquals(2_000L, hit.presentation.catalogLicenseExpiresAt)
+        // An authorized Douban filter shows the score, so display and authority agree again.
+        val douban = SearchIndex.search("星际穿越", catalog = listOf(licensed),
+            filters = SearchFilters(ratingSource = "douban"), nowMs = now).single()
+        assertEquals(douban.item, douban.presentation)
+        assertEquals("9.4", douban.presentation.rating)
+        assertEquals(10, douban.presentation.doubanTopRank)
+    }
+
     @Test fun chartRankPrecedesRelevanceAndEqualRanksUseMatchScore() {
         val ranked = film.copy(id = "ranked", title = "Needle", year = "2025", aliases = emptyList(),
             actors = emptyList(), doubanTopRank = 2)
