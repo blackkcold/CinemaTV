@@ -220,3 +220,79 @@ The three failing screens use inline `fontSize = X.sp` with no `lineHeight`, so 
 from font metrics and a face change shifts text vertically. `TvType` styles carry explicit line
 heights and are unaffected. Converging those inline sizes onto `TvType` (§5.5 of the theme plan) is
 what removes this sensitivity; it is out of scope for the font change.
+
+## Two-track theme refresh · 2026-11-27
+
+Both viewports are refreshed from **one** run: `tv-smoke` run `45942087491`, source
+`6fe7aa13953afa72bae8d52d974f0d63ba716073`, artifacts `15174690731` (`tv1080`) and
+`15174735855` (`tv4k`). Refreshing both from a single run is what the 2026-11-26 section
+required and what keeps the two viewports comparable.
+
+**The source run remains failed.** Its golden stage failed on five of six screens in each
+viewport, and this review accepts the captures only after measuring why. The run is recorded
+as failed in the manifest via its `workflowRun`, not retroactively marked green.
+
+### Why five of six screens move
+
+Two accepted product changes, not capture noise:
+
+- The CJK variable-collection change of 2026-11-26: real 400/500/600 SemiBold replaces a
+  synthesised bold stroke. Ink bounding boxes keep `Δwidth = 0` and `Δheight = −1` on the
+  tracked strings, so no reflow, wrap, tracking or size change is involved; only stroke
+  rendering and the ink position inside the line box move.
+- S1's stable region keys and single version list. `03-detail` lifts its action row because
+  the ad-hoc source list became one version list; the row height, labels and focus ring are
+  unchanged, and the entries that disappeared were the same source listed twice.
+
+| screen | tv1080 mean/changed | tv4k mean/changed | gate |
+|---|---|---|---|
+| `01-home.png` | 0.009651 / 0.019043 | 0.010335 / 0.020610 | pass before this refresh |
+| `03-detail.png` | 0.041035 / 0.101510 | 0.040131 / 0.095046 | **fail** (mean and changed) |
+| `05-movies.png` | 0.032156 / 0.103752 | 0.032629 / 0.104475 | **fail** |
+| `06-series.png` | 0.048506 / 0.120633 | 0.049258 / 0.122982 | **fail** |
+| `07-discovery.png` | 0.012371 / 0.025694 | 0.013447 / 0.027741 | pass before this refresh |
+| `11-settings.png` | 0.113564 / 0.408916 | 0.112414 / 0.404749 | **fail** (structural, see below) |
+
+The limits are **not** relaxed: every comparison here and in CI still uses mean ≤ 0.020 and
+changed ≤ 0.08.
+
+### `11-settings` never matched this branch, and its port mask had drifted
+
+The superseded settings baseline came from source `8532f98`, which is **not** an ancestor of
+`dev-compose`: `95376a5` ("0.9.0 candidate without the personal-account experiment") removed the
+Douban developer entry from this line before the baseline was taken elsewhere. The old capture
+therefore still shows a `开发者选项 · Dev` badge that this product no longer renders, and the whole
+content column sat lower. That structural difference, not the theme, is the bulk of 0.40 changed.
+
+The ephemeral-port mask had the same problem. `UiFixtureServer` binds `ServerSocket(0)`, so the
+port in the URL row is random on every run, and the mask exists to cover it. With the content
+lifted, the old box `[455, 262, 515, 298]` landed on empty background while the real port — measured
+at normalised `y 225-239`, `x 464-494` by differencing two independent captures — stayed visible.
+The mask is now `[455, 218, 515, 254]`: **same 60×36 size, same x band, moved only in y**, so it
+still follows its input without expanding. Without this move the next run would fail again on a
+different random port.
+
+### Reproducibility: same platform, two independent runs
+
+Accepting a capture is only meaningful if the capture is a stable function of the product. Two
+independent `tv-smoke` runs on the same platform (`tv1080` API33 x86_64 1920×1080 @320;
+`tv4k` API33 x86_64 3840×2160 @640) were differenced with the reviewed masks:
+
+- `tv1080` runs `45925465321` vs `45942087491`: `01-home`, `03-detail`, `05-movies`, `06-series`,
+  `07-discovery` are **pixel-identical** (`mean = 0.000000`).
+- `tv4k` runs `45925465321` vs `45942087491`: same five screens, `mean ≤ 0.000014`, max channel
+  delta 4/255.
+
+**Not verified:** `tv4k/11-settings.png` had no second same-platform capture, because the earlier
+run lacked that screen (the regression aborting `TvUiRegressionTest` was still present). Its new
+baseline is asserted by measurement and geometry, **not** by replay, and this section does not
+claim otherwise. The next `[ui-qa]` run is the first opportunity to confirm it.
+
+### The local AVD is not a golden judge
+
+A local AVD (API34, arm64) and the CI emulator (API33, x86_64) rasterise text and background
+gradients differently: differencing the same product code across the two gave `03-detail` 0.060953
+and `07-discovery` 0.037919 while three other screens stayed at ~0.0001. Those are platform
+differences, not defects, and a local capture cannot become a baseline — it has no `workflowRun`.
+Every number above therefore comes from CI captures, and local AVD runs were used only to locate
+which assertion was failing, never as evidence that a golden passes.
