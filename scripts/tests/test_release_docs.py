@@ -9,7 +9,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 STABLE_RELEASE = 'https://github.com/blackkcold/CinemaTV/releases/tag/v0.9.0'
-DEV_RELEASE = 'https://github.com/blackkcold/CinemaTV/releases/tag/v0.9.0-dev.3'
+DEV_RELEASE = 'https://github.com/blackkcold/CinemaTV/releases/tag/v0.9.0-dev.4'
 
 
 class ReleaseDocsTest(unittest.TestCase):
@@ -50,9 +50,9 @@ class ReleaseDocsTest(unittest.TestCase):
 
     def test_upgrade_preference_and_downgrade_limits_remain_explicit(self):
         install = self.read('docs/INSTALL.md')
-        for value in ('Stable 未明确保存渠道选择时', '当前 Stable code 16 已高于 Dev code 15',
-                      '反向降级需要等待更高的 Dev code', '卸载',
-                      '升级前明确渠道偏好', 'code 15'):
+        for value in ('Stable 未明确保存渠道选择时', '当前 Dev code 17 已高于 Stable code 16',
+                      '反向从 Dev 降回 Stable 需要等待更高的 Stable code', '卸载',
+                      '升级前明确渠道偏好', 'code 17'):
             self.assertIn(value, install)
         channels = self.read('docs/UPDATE_CHANNELS.md')
         self.assertNotIn('Updates retain Room data and preferences.', channels)
