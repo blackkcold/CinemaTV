@@ -254,16 +254,16 @@ versionCode sequence:
 | Invocation | Channel | Version | Code | Output | Published |
 |---|---|---|---|---|---|
 | no argument (unchanged default), or `stable` | stable | `0.9.0` | `16` | `candidate/` | yes, `v0.9.0` |
-| `dev` | dev | `0.9.0-dev.5` | `18` | `candidate-dev/` | reserved, signing pending |
+| `dev` | dev | `0.9.0-dev.5` | `18` | `candidate-dev/` | yes, `v0.9.0-dev.5` |
 
 The stable candidate is built from `main`, which carries the accepted `dev-compose`
 payload and still refuses the Douban personal-account sources. The dev candidate is
 built from `dev-compose` and may include that dev-only experiment, matching the Gradle
 channel guard. Codes 10 (`v0.8.0`), 12 (`v0.8.0-dev.2`), 13 (the archived TV Web build),
-14 (`v0.9.0-dev.2`), 15 (`v0.9.0-dev.3`) and 16 (`v0.9.0`) are public. Code 16 is the
-highest published stable build and code 17 (`v0.9.0-dev.4`) the highest published Dev
-build, so code 18 is reserved for the next Dev candidate and no other candidate may
-reuse it.
+14 (`v0.9.0-dev.2`), 15 (`v0.9.0-dev.3`), 16 (`v0.9.0`), 17 (`v0.9.0-dev.4`) and
+18 (`v0.9.0-dev.5`) are public. Code 16 is the highest published stable build and
+code 18 the highest published Dev build, so 19 is the next reservation and no other
+candidate may reuse it.
 
 The dedicated stable and dev CI jobs check out the exact workflow SHA (the tested
 merge commit on a PR), not a moving branch. Each builds release bytes with the
