@@ -30,10 +30,10 @@ data class TvTextStyle(
 )
 
 object TvType {
-    val display = TvTextStyle(44, 52, FontWeight.Bold, (-.5).sp)
-    val hero = TvTextStyle(42, 48, FontWeight.Bold, (-.5).sp)
+    val display = TvTextStyle(44, 52, FontWeight.SemiBold, (-.5).sp)
+    val hero = TvTextStyle(42, 48, FontWeight.SemiBold, (-.5).sp)
     val h1 = TvTextStyle(32, 38, FontWeight.SemiBold, (-.3).sp)
-    val h2 = TvTextStyle(22, 28, FontWeight.Bold)
+    val h2 = TvTextStyle(22, 28, FontWeight.SemiBold)
     val h3 = TvTextStyle(20, 26, FontWeight.SemiBold)
     val body = TvTextStyle(15, 22, FontWeight.Normal)
     val label = TvTextStyle(14, 18, FontWeight.SemiBold)

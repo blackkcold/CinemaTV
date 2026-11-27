@@ -51,7 +51,7 @@ class ProductionGlassTestActivity : ComponentActivity() {
                 SideEffect {
                     isTv = landscape
                     fontLoadFailures = fonts.failedAssets
-                    bundledFontsReady = fonts.regional.size == NotoRegion.entries.size && fonts.failedAssets.isEmpty()
+                    bundledFontsReady = fonts.isReady
                 }
                 CompositionLocalProvider(
                     LocalGlassDrawDiagnostics provides glassDraws,

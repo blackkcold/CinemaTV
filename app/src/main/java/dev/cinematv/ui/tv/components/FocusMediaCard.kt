@@ -68,6 +68,7 @@ fun FocusMediaCard(
     val interactions = remember { MutableInteractionSource() }
     val pressed by interactions.collectIsPressedAsState()
     val motion = rememberFocusPressMotion(focused, pressed)
+    val visual = LocalTvVisual.current
     val observer = LocalPosterMotionObserver.current
     val perfPage = LocalPerfProbePage.current
     SideEffect { observer?.onComposition(item.presentationKey) }
@@ -97,8 +98,17 @@ fun FocusMediaCard(
         val landscape = landscapeArt(item)
         LayeredPosterFrame(motion, focused,
             Modifier.fillMaxWidth().aspectRatio(if (portrait) 2f / 3 else 16f / 9),
+            cardDepth = visual.cardDepth,
+            cardShadow = visual.cardShadow,
             artwork = {
-                AmbientArtwork(Modifier.matchParentSize(), item.title.hashCode())
+                // AmbientArtwork is a procedural gradient, not a film still. Two branches below
+                // cover it completely with a full-bleed image; drawing it there is invisible
+                // work. The third branch ("no landscape, has poster") draws the poster as a
+                // 43% right-hand strip over a translucent scrim, so the gradient stays visible
+                // on the left — it must keep being drawn exactly as before.
+                val coveredByFullBleedArt =
+                    (portrait && item.poster.isNotBlank()) || (!portrait && landscape != null)
+                if (!coveredByFullBleedArt) AmbientArtwork(Modifier.matchParentSize(), item.title.hashCode())
                 if (portrait || landscape != null) {
                     val image = if (portrait) item.poster else landscape
                     if (!image.isNullOrBlank()) AsyncImage(
@@ -117,7 +127,7 @@ fun FocusMediaCard(
             }) {
             if (!portrait && landscape == null) {
                 Text(item.title, color = TvColors.Text, fontSize = 20.sp, lineHeight = 25.sp,
-                    fontWeight = FontWeight.Bold, maxLines = 3, overflow = TextOverflow.Ellipsis,
+                    fontWeight = FontWeight.SemiBold, maxLines = 3, overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.align(Alignment.CenterStart).fillMaxWidth(.59f).padding(15.dp)
                         .posterTitleMotion(motion))
             }

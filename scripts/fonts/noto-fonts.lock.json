@@ -2,16 +2,22 @@
   "schema": 1,
   "fonts": [
     {
-      "name": "NotoSansCJK-Regular.ttc",
-      "url": "https://raw.githubusercontent.com/notofonts/noto-cjk/f8d157532fbfaeda587e826d4cd5b21a49186f7c/Sans/OTC/NotoSansCJK-Regular.ttc",
-      "size": 19484784,
-      "sha256": "b76b0433203017ca80401b2ee0dd69350349871c4b19d504c34dbdd80541690a"
+      "name": "NotoSansCJK-VF.ttf.ttc",
+      "url": "https://raw.githubusercontent.com/notofonts/noto-cjk/f8d157532fbfaeda587e826d4cd5b21a49186f7c/Sans/Variable/OTC/NotoSansCJK-VF.ttf.ttc",
+      "size": 38089916,
+      "sha256": "2abbfc7ff74a086cf2c1f5be6130528791cfd2c8b83466db5a1463aa63252ca7"
     },
     {
       "name": "NotoSans-Regular.ttf",
       "url": "https://raw.githubusercontent.com/notofonts/noto-fonts/ffebf8c1ee449e544955a7e813c54f9b73848eac/hinted/ttf/NotoSans/NotoSans-Regular.ttf",
       "size": 569208,
       "sha256": "b85c38ecea8a7cfb39c24e395a4007474fa5a4fc864f6ee33309eb4948d232d5"
+    },
+    {
+      "name": "NotoSans-Medium.ttf",
+      "url": "https://raw.githubusercontent.com/notofonts/noto-fonts/ffebf8c1ee449e544955a7e813c54f9b73848eac/hinted/ttf/NotoSans/NotoSans-Medium.ttf",
+      "size": 566428,
+      "sha256": "7bbe267354704c6ad18bde24b1dbc756c8e4380ca1c3f3c25c45ec5c4471510b"
     },
     {
       "name": "NotoSans-Bold.ttf",

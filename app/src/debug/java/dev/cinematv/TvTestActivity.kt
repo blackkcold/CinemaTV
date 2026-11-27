@@ -43,7 +43,7 @@ class TvTestActivity : ComponentActivity() {
                     val fonts = LocalCinemaNoto.current
                     SideEffect {
                         fontLoadFailures = fonts.failedAssets
-                        bundledFontsReady = fonts.regional.size == NotoRegion.entries.size && fonts.failedAssets.isEmpty()
+                        bundledFontsReady = fonts.isReady
                     }
                     TvRootApp(model) { decodedScene = it }
                 }

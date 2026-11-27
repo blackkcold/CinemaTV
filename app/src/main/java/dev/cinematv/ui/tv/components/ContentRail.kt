@@ -111,7 +111,7 @@ fun ContentRail(title: String, items: List<MediaItem>, model: CinemaViewModel, p
     Column(Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 12.dp)) {
         Row(Modifier.fillMaxWidth().padding(start = layout.gutter, end = layout.gutter, bottom = 4.dp),
             verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-            Text(title, color = TvColors.Text, fontSize = 22.sp, fontWeight = FontWeight.Bold,
+            Text(title, color = TvColors.Text, fontSize = 22.sp, fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.weight(1f))
             action?.invoke()
         }

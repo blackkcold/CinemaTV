@@ -7,6 +7,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import dev.cinematv.ui.tv.design.LocalTvEffects
+import dev.cinematv.ui.tv.design.LocalTvVisual
 
 /** Values are read by layer/draw callbacks, never by the card's composition. */
 @Stable
@@ -33,7 +34,15 @@ fun rememberFocusPressMotion(
     quality: PosterMotionQuality = PosterMotionQuality.LAYERED,
 ): FocusPressMotion {
     // ProductionGlassProvider already observes animator scale and lifecycle once.
-    val policy = PosterMotionPolicy(LocalTvEffects.current.reducedMotion, quality)
+    val effects = LocalTvEffects.current
+    val visual = LocalTvVisual.current
+    val policy = PosterMotionPolicy(
+        reducedMotion = effects.reducedMotion,
+        quality = quality,
+        focusScale = visual.focusScale,
+        actionFocusScale = visual.actionFocusScale,
+    )
+    // Policy owns the scale; this must not re-derive it, or the policy tests stop meaning anything.
     val scale = animateFloatAsState(
         policy.scale(focused, pressed),
         if (policy.enabled) spring(PosterMotionTokens.FOCUS_DAMPING, PosterMotionTokens.FOCUS_STIFFNESS) else snap(),

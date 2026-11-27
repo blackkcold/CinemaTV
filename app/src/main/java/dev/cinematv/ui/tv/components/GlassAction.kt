@@ -43,7 +43,9 @@ import dev.cinematv.ui.Ivory
 import dev.cinematv.ui.icons.CinemaIcon
 import dev.cinematv.ui.icons.CinemaSymbol
 import dev.cinematv.ui.tv.design.LocalTvEffects
+import dev.cinematv.ui.tv.design.LocalTvVisual
 import dev.cinematv.ui.tv.design.TvHeight
+import dev.cinematv.ui.tv.design.glassLevelFor
 import dev.cinematv.ui.tv.focus.trackTvContentFocus
 import dev.cinematv.ui.typography.CinemaTvText as Text
 
@@ -89,7 +91,8 @@ fun GlassAction(
         if (effects.reducedMotion) snap() else spring(.65f, 320f), label = "action-focus")
     val press by animateFloatAsState(if (pressed) 1f else 0f,
         if (effects.reducedMotion) snap() else spring(.55f, 380f), label = "action-press")
-    val scale = if (effects.reducedMotion) 1f else 1f + .045f * focus - .035f * press
+    val actionScale = LocalTvVisual.current.actionFocusScale
+    val scale = if (effects.reducedMotion) 1f else 1f + (actionScale - 1f) * focus - .035f * press
     Box(
         modifier = modifier
             .heightIn(min = TvHeight.button)
@@ -104,8 +107,10 @@ fun GlassAction(
     ) {
         // Transform the background through the engine's inverse-layer support;
         // never scale a shared ancestor whose coordinates the source cannot invert.
+        // The backend ceiling comes from the semantic role, never from a hardcoded tier:
+        // a DIALOG or PLAYER_OVERLAY action must not request optics its contract forbids.
         Box(Modifier.matchParentSize().cinemaGlassMaterial(focus = focus, press = press,
-            selected = selected, prominent = prominent, level = dev.cinematv.ui.tv.design.GlassRenderMode.FULL,
+            selected = selected, prominent = prominent, level = glassLevelFor(role),
             role = role, layerBlock = { scaleX = scale; scaleY = scale }))
         Row((if (label.isEmpty()) GlassActionIconPadding else GlassActionLabelPadding)
             .graphicsLayer { scaleX = scale; scaleY = scale },

@@ -75,9 +75,12 @@ class LibreTvRepository(context: Context, val library: LocalMediaLibrary = Local
     val opticalGlassEnabled get() = prefs.getBoolean("optical_glass", false)
     val reducedMotion get() = prefs.getBoolean("reduced_motion", false)
     val glassQuality get() = prefs.getString("glass_quality", if (opticalGlassEnabled) "ENHANCED" else "AUTO") ?: "AUTO"
+    /** Persisted visual language. Only the preference is stored; the resolved theme is not. */
+    val visualTheme get() = prefs.getString("visual_theme", "AUTO") ?: "AUTO"
 
     fun setReducedMotion(enabled: Boolean) { prefs.edit().putBoolean("reduced_motion", enabled).apply() }
     fun setGlassQuality(quality: String) { prefs.edit().putString("glass_quality", quality).apply() }
+    fun setVisualTheme(theme: String) { prefs.edit().putString("visual_theme", theme).apply() }
 
     fun setOpticalGlass(enabled: Boolean) {
         prefs.edit().putBoolean("optical_glass", enabled).apply()

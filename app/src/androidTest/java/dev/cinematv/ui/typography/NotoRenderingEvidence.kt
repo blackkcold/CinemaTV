@@ -20,8 +20,9 @@ import org.json.JSONObject
 internal object NotoRenderingEvidence {
     // Must agree with scripts/fonts/noto-fonts.lock.json; evidence rejects a substituted asset.
     private val expectedHashes = mapOf(
-        "NotoSansCJK-Regular.ttc" to "b76b0433203017ca80401b2ee0dd69350349871c4b19d504c34dbdd80541690a",
+        "NotoSansCJK-VF.ttf.ttc" to "2abbfc7ff74a086cf2c1f5be6130528791cfd2c8b83466db5a1463aa63252ca7",
         "NotoSans-Regular.ttf" to "b85c38ecea8a7cfb39c24e395a4007474fa5a4fc864f6ee33309eb4948d232d5",
+        "NotoSans-Medium.ttf" to "7bbe267354704c6ad18bde24b1dbc756c8e4380ca1c3f3c25c45ec5c4471510b",
         "NotoSans-Bold.ttf" to "c976e4b1b99edc88775377fcc21692ca4bfa46b6d6ca6522bfda505b28ff9d6a",
     )
     private data class Sample(val label: String, val asset: String, val index: Int,
@@ -29,18 +30,22 @@ internal object NotoRenderingEvidence {
 
     fun capture(context: Context) {
         val samples = listOf(
-            Sample("SC", "NotoSansCJK-Regular.ttc", 2, "zh-Hans-CN", "骨直令 漢汉 「中文」，。"),
-            Sample("TC", "NotoSansCJK-Regular.ttc", 3, "zh-Hant-TW", "骨直令 漢汉 「中文」，。"),
-            Sample("HK", "NotoSansCJK-Regular.ttc", 4, "zh-Hant-HK", "骨直令 漢汉 「中文」，。"),
-            Sample("JP", "NotoSansCJK-Regular.ttc", 0, "ja-JP", "骨直令 漢字 かな カナ「」。"),
-            Sample("KR", "NotoSansCJK-Regular.ttc", 1, "ko-KR", "骨直令 漢字 한글 「」。"),
+            Sample("SC", "NotoSansCJK-VF.ttf.ttc", 2, "zh-Hans-CN", "骨直令 漢汉 「中文」，。"),
+            Sample("TC", "NotoSansCJK-VF.ttf.ttc", 3, "zh-Hant-TW", "骨直令 漢汉 「中文」，。"),
+            Sample("HK", "NotoSansCJK-VF.ttf.ttc", 4, "zh-Hant-HK", "骨直令 漢汉 「中文」，。"),
+            Sample("JP", "NotoSansCJK-VF.ttf.ttc", 0, "ja-JP", "骨直令 漢字 かな カナ「」。"),
+            Sample("KR", "NotoSansCJK-VF.ttf.ttc", 1, "ko-KR", "骨直令 漢字 한글 「」。"),
             Sample("Latin regular", "NotoSans-Regular.ttf", 0, "en", "CinemaTV Aa09 Éé Ω Ж ()!"),
+            Sample("CJK semi-bold", "NotoSansCJK-VF.ttf.ttc", 2, "zh-Hans-CN", "骨直令 漢汉 「中文」，。", 600),
+            Sample("Latin medium", "NotoSans-Medium.ttf", 0, "en", "CinemaTV Aa09 Éé Ω Ж ()!", 500),
             Sample("Latin bold", "NotoSans-Bold.ttf", 0, "en", "CinemaTV Aa09 Éé Ω Ж ()!", 700),
         )
         val folder = File(InstrumentationRegistry.getArguments().getString("additionalTestOutputDir")
             ?: requireNotNull(context.getExternalFilesDir(null)).absolutePath,
             "ui-evidence/noto").apply { check(isDirectory || mkdirs()) }
-        val bitmap = Bitmap.createBitmap(1200, 1640, Bitmap.Config.ARGB_8888)
+        // Height follows the sample count: a fixed height silently clipped once a weight specimen
+        // was added, and the failure surfaced as a Bitmap bounds exception rather than as evidence.
+        val bitmap = Bitmap.createBitmap(1200, 48 + samples.size * 224 + 48, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         val background = Color.rgb(18, 20, 25)
         canvas.drawColor(background)
@@ -63,7 +68,11 @@ internal object NotoRenderingEvidence {
                     descriptor.startOffset
                 }
                 val typeface = checkNotNull(Typeface.Builder(context.assets, "fonts/${sample.asset}")
-                    .setTtcIndex(sample.index).setWeight(sample.weight).setItalic(false).build()) {
+                    .setTtcIndex(sample.index)
+                    // A variable collection defaults to wght=100; without this the specimen
+                    // would silently rasterise Thin and the evidence would describe the wrong face.
+                    .setFontVariationSettings("'wght' ${sample.weight}")
+                    .setWeight(sample.weight).setItalic(false).build()) {
                     "Native load failed: ${sample.asset} index=${sample.index}"
                 }
                 val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG).apply {

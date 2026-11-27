@@ -4,6 +4,8 @@ import android.content.Intent
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
 import dev.cinematv.NotoTestActivity
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
@@ -98,8 +100,75 @@ class NotoFontsDeviceTest {
         val assets = InstrumentationRegistry.getInstrumentation().targetContext.assets
         val fonts = NotoFontCache.load(assets)
         assertTrue("Failed fonts: ${fonts.failedAssets}", fonts.failedAssets.isEmpty())
-        assertEquals(NotoRegion.entries.toSet(), fonts.regional.keys)
+        // Only the device's primary region is built up front, so the cold start parses the
+        // collection once rather than once per region per weight.
+        assertTrue("expected exactly one prepared region, got ${fonts.regional.keys}",
+            fonts.regional.size == 1)
+        val prepared = fonts.regional.keys.first()
+        assertEquals(
+            "the prepared region must be the one the device locale resolves to",
+            NotoRegionPolicy.resolve(null, listOf(java.util.Locale.getDefault().toLanguageTag())),
+            prepared,
+        )
+        // Every other region must still be reachable on demand, not silently missing.
+        for (region in NotoRegion.entries) {
+            val family = NotoFontCache.familyFor(assets, region)
+            assertNotNull("region $region is not reachable on demand", family)
+            assertNotSame(
+                "region $region fell back to the system face instead of the bundled collection",
+                FontFamily.SansSerif, family,
+            )
+        }
         assertSame(fonts, NotoFontCache.load(assets))
+    }
+
+    @Test fun everyWeightResolvesToItsOwnRealFace() = runBlocking {
+        // The regression this locks: `fvar` defaults to wght=100, and a builder that omits the
+        // axis renders Thin. A descriptor whose members all claim Normal also collapses every
+        // weight onto the first face. Both failures draw without any error, so they are asserted
+        // rather than reviewed.
+        val assets = InstrumentationRegistry.getInstrumentation().targetContext.assets
+        NotoFontCache.load(assets)
+        val region = NotoRegionPolicy.resolve(null, listOf(java.util.Locale.getDefault().toLanguageTag()))
+        val (weights, faces) = NotoFontCache.familyForTest(assets, region).let { family ->
+            val declared = (family as? androidx.compose.ui.text.font.FontListFontFamily)?.fonts
+                ?: error("expected a FontListFontFamily for $region, got $family")
+            declared.map { it.weight }.toSet() to declared.map { (it as PreloadedNotoFont).typeface }
+        }
+        assertEquals("a family must carry exactly the three declared weights", 3, weights.size)
+        assertEquals(
+            "family weights must be distinct or the matcher collapses them",
+            setOf(FontWeight.Normal, FontWeight.Medium, FontWeight.SemiBold),
+            weights,
+        )
+        assertEquals("weights resolved to duplicate faces", faces.size, faces.distinct().size)
+        fun inkCoverage(typeface: android.graphics.Typeface): Int {
+            val bitmap = android.graphics.Bitmap.createBitmap(96, 96, android.graphics.Bitmap.Config.ARGB_8888)
+            val canvas = android.graphics.Canvas(bitmap)
+            canvas.drawColor(android.graphics.Color.BLACK)
+            val paint = android.graphics.Paint().apply {
+                this.typeface = typeface
+                textSize = 72f
+                color = android.graphics.Color.WHITE
+                isAntiAlias = true
+            }
+            canvas.drawText("鬱", 4f, 80f, paint)
+            var ink = 0
+            for (y in 0 until 96) for (x in 0 until 96) {
+                if (android.graphics.Color.red(bitmap.getPixel(x, y)) > 96) ink++
+            }
+            bitmap.recycle()
+            return ink
+        }
+        val coverage = faces.map(::inkCoverage)
+        assertTrue(
+            "all three weights render identical ink ($coverage); the wght axis did not apply",
+            coverage.distinct().size >= 2,
+        )
+        assertTrue(
+            "heaviest weight does not cover more ink than the lightest ($coverage)",
+            coverage.last() > coverage.first(),
+        )
     }
 
     @Test fun unavailableAssetsFallBackWithoutCrashing() {

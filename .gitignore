@@ -20,3 +20,6 @@ node_modules/
 .DS_Store
 __pycache__/
 .cache/cinematv-noto-fonts/
+# Device-QA output: screenshots, golden comparisons, A/B captures and receipts.
+# Every workflow that writes here uploads it as an artifact; none of it is source.
+qa/

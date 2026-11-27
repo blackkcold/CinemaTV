@@ -40,6 +40,7 @@ fun Modifier.cinemaGlassMaterial(
     layerBlock: (GraphicsLayerScope.() -> Unit)? = null,
 ): Modifier {
     val effects = LocalTvEffects.current
+    val visual = LocalTvVisual.current
     val source = currentProductionGlassScene()
     val failure = LocalProductionGlassFailure.current
     val diagnostics = LocalGlassDrawDiagnostics.current
@@ -53,10 +54,19 @@ fun Modifier.cinemaGlassMaterial(
         GlassQuality.BACKDROP -> GlassRenderMode.BLUR
         GlassQuality.ENHANCED -> GlassRenderMode.FULL
     }
-    val renderLevel = effectiveGlassLevel(platformMode, level)
+    // Two independent caps, each only able to lower the platform decision: the semantic
+    // role of this surface, then the visual theme's ceiling. Cinema's ceiling is FULL, so
+    // this composes to exactly the previous result.
+    val renderLevel = effectiveGlassLevel(effectiveGlassLevel(platformMode, level), visual.maxGlass)
     val live = source != null && failure?.failed != true && renderLevel != GlassRenderMode.BASIC
     val full = live && renderLevel == GlassRenderMode.FULL && Build.VERSION.SDK_INT >= 33
-    val safe: DrawScope.() -> Unit = { drawSafeGlass(radius, emphasis, press, prominent) }
+    // The opaque theme face: one fill plus a 1dp boundary, no offscreen pass, no effect node.
+    // It replaces the glass face entirely rather than stacking on top of it.
+    val opaqueFace = visual.panelFill.alpha > 0f
+    val safe: DrawScope.() -> Unit = {
+        if (opaqueFace) drawOpaqueFace(radius, visual, emphasis, press, prominent)
+        else drawSafeGlass(radius, emphasis, press, prominent)
+    }
     if (!live) return then(if (layerBlock == null) Modifier else Modifier.graphicsLayer(layerBlock))
         .drawWithContent {
             safe(); drawContent()
@@ -125,6 +135,27 @@ internal fun DrawScope.drawSafeGlass(radius: Dp, focus: Float, press: Float, pro
         cornerRadius = CornerRadius((r - inset).coerceAtLeast(0f)), style = Stroke((.65f + .2f * focus).dp.toPx()))
 }
 
+/**
+ * The Poster theme's face: one opaque fill and a 1dp hairline, nothing else.
+ *
+ * No offscreen buffer, no blur, no lens, no shadow. Focus and press are expressed by
+ * brightening the fill and the hairline, so the control still reads as focused at 3 m without
+ * acquiring the depth language the theme deliberately dropped.
+ */
+internal fun DrawScope.drawOpaqueFace(radius: Dp, visual: TvVisual, focus: Float, press: Float, prominent: Boolean) {
+    val r = minOf(radius.toPx(), size.height / 2, size.width / 2)
+    val lifted = maxOf(focus, if (prominent) .35f else 0f)
+    val fill = lerp(visual.panelFill, Color(0xFF1C1C21), lifted * .85f + press * .15f)
+    drawRoundRect(fill, cornerRadius = CornerRadius(r))
+    val inset = .5.dp.toPx()
+    val border = visual.panelBorder.copy(
+        alpha = (visual.panelBorder.alpha + lifted * .55f + press * .15f).coerceIn(0f, 1f),
+    )
+    drawRoundRect(border, topLeft = Offset(inset, inset),
+        size = Size((size.width - 2 * inset).coerceAtLeast(0f), (size.height - 2 * inset).coerceAtLeast(0f)),
+        cornerRadius = CornerRadius((r - inset).coerceAtLeast(0f)), style = Stroke(1.dp.toPx()))
+}
+
 /** Compatibility surface for render tests and non-interactive material specimens. */
 @Composable
 fun GlassControlMaterial(focused: Boolean, pressed: Boolean, selected: Boolean,
@@ -141,11 +172,24 @@ fun GlassControlMaterial(focused: Boolean, pressed: Boolean, selected: Boolean,
 @Composable
 internal fun Modifier.cinemaNavigationLens(backdrop: Backdrop?, layerBlock: GraphicsLayerScope.() -> Unit): Modifier {
     val failure = LocalProductionGlassFailure.current
+    val visual = LocalTvVisual.current
+    // The navigation lens is the richest optic in the app; a theme that caps the backend
+    // below FULL must keep its opaque face instead of acquiring a lens it did not ask for.
     val full = currentProductionGlassScene() != null && backdrop != null &&
-        LocalTvEffects.current.glass == GlassQuality.ENHANCED && Build.VERSION.SDK_INT >= 33 && failure?.failed != true
+        LocalTvEffects.current.glass == GlassQuality.ENHANCED &&
+        Build.VERSION.SDK_INT >= 33 && failure?.failed != true &&
+        visual.maxGlass == GlassRenderMode.FULL
     val safe: DrawScope.() -> Unit = {
-        drawRoundRect(Color.White.copy(.12f), cornerRadius = CornerRadius(size.height / 2))
-        drawRoundRect(Color.White.copy(.25f), cornerRadius = CornerRadius(size.height / 2), style = Stroke(.65.dp.toPx()))
+        if (visual.navigationFill.alpha > 0f) {
+            // Poster navigation: an opaque bar with a hairline. Labels stay legible over any
+            // hero because the bar itself is the contrast guarantee, not the artwork.
+            val h = size.height / 2
+            drawRoundRect(visual.navigationFill, cornerRadius = CornerRadius(h))
+            drawRoundRect(visual.panelBorder, cornerRadius = CornerRadius(h), style = Stroke(1.dp.toPx()))
+        } else {
+            drawRoundRect(Color.White.copy(.12f), cornerRadius = CornerRadius(size.height / 2))
+            drawRoundRect(Color.White.copy(.25f), cornerRadius = CornerRadius(size.height / 2), style = Stroke(.65.dp.toPx()))
+        }
     }
     if (!full) return graphicsLayer(layerBlock).drawWithContent { safe(); drawContent() }
     val failureSafe: DrawScope.() -> Unit = { drawSafeGlass(50.dp, .4f, 0f, true) }

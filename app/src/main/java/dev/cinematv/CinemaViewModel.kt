@@ -23,6 +23,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.coroutineScope
 import dev.cinematv.ui.tv.design.GlassQuality
+import dev.cinematv.ui.tv.design.VisualTheme
 import dev.cinematv.ui.shared.presentationKey
 import dev.cinematv.ui.shared.WorkNavigationProjection
 import dev.cinematv.playback.PlaybackSession
@@ -42,8 +43,11 @@ class CinemaViewModel(application: Application, val repo: LibreTvRepository) : A
         private set
     var glassQuality by mutableStateOf(runCatching { GlassQuality.valueOf(repo.glassQuality) }.getOrDefault(GlassQuality.AUTO))
         private set
+    var visualTheme by mutableStateOf(runCatching { VisualTheme.valueOf(repo.visualTheme) }.getOrDefault(VisualTheme.AUTO))
+        private set
 
     fun updateReducedMotion(enabled: Boolean) { repo.setReducedMotion(enabled); reducedMotion = enabled }
+    fun updateVisualTheme(theme: VisualTheme) { repo.setVisualTheme(theme.name); visualTheme = theme }
     fun updateGlassQuality(quality: GlassQuality) {
         repo.setGlassQuality(quality.name)
         glassQuality = quality

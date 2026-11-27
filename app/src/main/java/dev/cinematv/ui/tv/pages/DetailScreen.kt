@@ -99,7 +99,7 @@ fun DetailScreen(model: CinemaViewModel) {
                 GlassAction("← 返回", Modifier.width(96.dp).height(36.dp), icon = CinemaSymbol.Back) { model.back() }
                 Spacer(Modifier.height((layout.height * .07f).coerceAtLeast(15.dp)))
                 Text(item.title, color = TvColors.Text, fontSize = 44.sp, lineHeight = 50.sp,
-                    fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth(.76f))
+                    fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth(.76f))
                 Text(item.metadataLine().ifBlank { if (item.isTv) "剧集" else "电影" }, color = TvColors.Accent, fontSize = 14.sp)
                 TvAboutSection(
                     description = item.description.ifBlank {

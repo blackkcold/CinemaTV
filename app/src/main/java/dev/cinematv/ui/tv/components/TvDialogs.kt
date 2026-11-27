@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import dev.cinematv.ui.tv.design.TvColors
+import dev.cinematv.ui.tv.design.TvGlassRole
 import dev.cinematv.ui.tv.design.TvSpace
 import dev.cinematv.ui.tv.design.TvText
 import dev.cinematv.ui.tv.design.TvType
@@ -74,8 +75,11 @@ fun TvConfirmDialog(
         TvText(title, style = TvType.h2, color = TvColors.Text)
         TvText(message, style = TvType.body, color = TvColors.Secondary)
         TvActionRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(TvSpace.sm, Alignment.End)) {
-            GlassAction(cancelLabel, Modifier.focusRequester(cancelFocus), onClick = onDismiss)
-            GlassAction(confirmLabel, Modifier, prominent = true, onClick = onConfirm)
+            // DIALOG role, not the ACTION default: a dialog is its own window with no scene to
+            // sample, so its buttons must declare the role whose ceiling is Basic. Previously
+            // they requested FULL and relied on the missing scene to fall back implicitly.
+            GlassAction(cancelLabel, Modifier.focusRequester(cancelFocus), role = TvGlassRole.DIALOG, onClick = onDismiss)
+            GlassAction(confirmLabel, Modifier, prominent = true, role = TvGlassRole.DIALOG, onClick = onConfirm)
         }
     }
 }

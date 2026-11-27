@@ -143,3 +143,80 @@ poster focus ring.
 Reviewed at tv1080: the pill keeps the artwork's warmth and shows the sky through it, every
 tab label is legible, the selected lens stays distinct, and the filter row keeps its focus
 outline. Masks and normalization are unchanged.
+
+## Font variable-collection refresh · 2026-11-26
+
+**No baseline is refreshed in this change.** This section records a measured font change whose
+goldens are **not yet accepted**: the CI run that must produce the new captures has not been
+requested yet. Every existing golden byte, mask, the mean-error limit (0.020) and the
+changed-pixel limit (0.08) remain exactly as reviewed before.
+
+### What changed
+
+- CJK payload: `NotoSansCJK-Regular.ttc` (single 400 face per region; any request at 600 or above
+  was synthesised by Skia's fake-bold stroke) replaced by `NotoSansCJK-VF.ttf.ttc`, a variable
+  collection instantiating real 400/500/600. `FontSynthesis.None` is now set on the design
+  type scale so a missing weight renders as the nearest real face instead of a synthetic stroke.
+- `TvType.display`, `TvType.hero` and `TvType.h2` moved from `FontWeight.Bold` to `SemiBold`. 700
+  is not in the approved §5.4 weight table, and with a 400/500/600 family Compose would have
+  matched it down to 600 anyway — silently, while claiming a weight the face does not have.
+- Latin gains a real Medium (`NotoSans-Medium.ttf`) so 500 is no longer a fallback to 400.
+
+### Evidence: local A/B, not CI
+
+Same AVD (Google TV API34, arm64, 1920×1080 @320, `-gpu host`,
+`GLES: ... OpenGL ES 3.0 (4.1 Metal - 90.5)`), same synthetic fixture, `pm clear` before each run.
+A = clean `bbb3061` build (static TTC). B = this change. Comparison by
+`scripts/compare-ui-goldens.py` with its default limits.
+
+| screen | mean | changed | gate |
+|---|---|---|---|
+| `01-home.png` | 0.009651 | 0.019041 | pass |
+| `03-detail.png` | 0.023273 | 0.063773 | **fail** (mean > 0.020) |
+| `05-movies.png` | 0.032165 | 0.103939 | **fail** |
+| `06-series.png` | 0.048516 | 0.120822 | **fail** |
+| `07-discovery.png` | 0.012613 | 0.026300 | pass |
+| `11-settings.png` | — | — | **not captured** |
+
+Three of six exceed the gate. They are **not** claimed as passing, and the limits are **not**
+relaxed to make them pass.
+
+### Nature of the difference (measured, not inferred)
+
+Ink bounding boxes of fixed strings on the failing screens: `Δwidth = 0`, `Δheight = −1` for both
+hero and subtitle on `05-movies` and `06-series`. Zero width change across four measurements rules
+out reflow, wrapping, tracking change or a size change: glyph advance is identical. What moved is
+stroke weight and the vertical position of ink inside the line box (10–18 px up), from the changed
+face metrics. A 2× side-by-side of hero and subtitle shows open counters and clean strokes in B
+versus the synthesised, half-filled counters in A. The direction is the improvement §5.4 specifies.
+
+### Why `11-settings` is not captured
+
+`TvUiRegressionTest` aborts at `TvUiRegressionTest.kt:297` on an assertion that predates both this
+change and S1 (`git diff 9bd1a4b HEAD -- TvUiRegressionTest.kt` is empty for that file). `11-settings`
+is captured after that point, so neither A nor B reaches it. It is recorded as **unverified**, never
+as passing.
+
+### `tv4k` is not measured by this refresh
+
+`design/ui/goldens/tv4k/` carries the same six tracked screens and is equally affected: the face
+change is resolution-independent, so the same three screens are expected to move there too. The A/B
+above was captured only at 1920x1080 (`tv1080`), so **no tv4k claim is made here** — it is
+unmeasured, not passing and not failing. The `tv-smoke` run that produces the new tv1080 captures
+must also run the `tv4k` lane, and both viewports are refreshed from that single run rather than
+accepting one and leaving the other stale.
+
+### Accepted only through CI
+
+A local AVD capture has no `workflowRun`, so writing it here would either fail
+`scripts/tests/test_golden_provenance.py` or require inventing a run id. Following the precedent
+already recorded above ("The source run remains failed"), the refreshed baselines must come from a
+CI `tv-smoke` run whose golden stage fails on these three screens, with the captures reviewed and
+the failing run recorded as failed in the manifest and here.
+
+### Follow-up, not fixed here
+
+The three failing screens use inline `fontSize = X.sp` with no `lineHeight`, so line height comes
+from font metrics and a face change shifts text vertically. `TvType` styles carry explicit line
+heights and are unaffected. Converging those inline sizes onto `TvType` (§5.5 of the theme plan) is
+what removes this sensitivity; it is out of scope for the font change.

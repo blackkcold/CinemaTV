@@ -69,8 +69,13 @@ class GlassActionLayoutTest {
         // composition. No system-font frame or async font swap enters the baseline.
         val assets = InstrumentationRegistry.getInstrumentation().targetContext.assets
         fonts = runBlocking { NotoFontCache.load(assets) }
-        assertTrue("Failed bundled fonts: ${fonts.failedAssets}", fonts.failedAssets.isEmpty())
-        assertEquals(NotoRegion.entries.toSet(), fonts.regional.keys)
+        // Readiness must mean the up-front load succeeded, not that every lazy region exists.
+        assertTrue("Bundled fonts failed or no region was prepared: ${fonts.failedAssets}",
+            fonts.isReady)
+        // And what this test lays out with must be a real bundled family, not the system fallback;
+        // a fallback face would silently invalidate every metric this test asserts.
+        assertTrue("Primary region fell back to the system font",
+            fonts.cjk(fonts.regional.keys.first()) is androidx.compose.ui.text.font.FontListFontFamily)
     }
 
     private fun button(tag: String) = compose.onNodeWithTag(tag)

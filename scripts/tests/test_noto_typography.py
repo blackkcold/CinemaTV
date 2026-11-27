@@ -10,8 +10,18 @@ ROOT = Path(__file__).resolve().parents[2]
 class NotoTypographyContractTest(unittest.TestCase):
     def test_downloads_are_immutable_size_bounded_and_hashed(self):
         lock = json.loads((ROOT / 'scripts/fonts/noto-fonts.lock.json').read_text())
-        self.assertEqual(len(lock['fonts']), 3)
-        self.assertLess(sum(x['size'] for x in lock['fonts']), 21_000_000)
+        names = {entry['name'] for entry in lock['fonts']}
+        # The CJK payload is one variable collection plus three Latin weights: Regular, Medium
+        # and Bold. Medium exists so Latin 500 is a real face instead of a synthetic one.
+        self.assertEqual(
+            names,
+            {'NotoSansCJK-VF.ttf.ttc', 'NotoSans-Regular.ttf', 'NotoSans-Medium.ttf', 'NotoSans-Bold.ttf'},
+        )
+        # Size ceiling: the variable collection is ~38 MB, so the old 21 MB bound no longer
+        # describes the approved set. Pin the real total rather than an aspirational one.
+        total = sum(x['size'] for x in lock['fonts'])
+        self.assertLess(total, 40_000_000)
+        self.assertGreater(total, 39_000_000)
         for entry in lock['fonts']:
             self.assertRegex(entry['url'], r'^https://raw\.githubusercontent\.com/notofonts/[^/]+/[a-f0-9]{40}/')
             self.assertRegex(entry['sha256'], r'^[a-f0-9]{64}$')
@@ -21,21 +31,32 @@ class NotoTypographyContractTest(unittest.TestCase):
                       'total > expectedSize', 'startParameter.offline', 'instanceFollowRedirects = false',
                       'deadline', 'connectTimeout', 'readTimeout', "File.createTempFile(name + '.', '.part', cacheDirectory)"):
             self.assertIn(guard, script)
+        # Replacing an asset must also retire the file it replaced, or the APK ships both.
+        self.assertIn('Retired unlisted Noto asset', script)
 
     def test_cjk_uses_weight_aware_descriptor_and_compose_regression(self):
         source = ROOT / 'app/src/main/java/dev/cinematv/ui/typography'
         loader = (source / 'CinemaNoto.kt').read_text()
-        self.assertIn('FontFamily(PreloadedNotoFont(typeface))', loader)
+        # Weight must be a real descriptor field, not a family of one implicit face: three
+        # declared weights are what make Compose's matcher select a specific instance.
+        self.assertIn('PreloadedNotoFont(typeface, weight)', loader)
         self.assertNotIn('else FontFamily(typeface)', loader)
+        self.assertIn('setFontVariationSettings("\'wght\' $axis")', loader)
         descriptor = (source / 'PreloadedNotoFont.kt').read_text()
-        self.assertIn('override val weight: FontWeight = FontWeight.Normal', descriptor)
+        # The weight is a constructor parameter now; a fixed Normal collapsed every weight to the
+        # first face, which renders without any error.
+        self.assertIn('override val weight: FontWeight', descriptor)
+        self.assertNotIn('override val weight: FontWeight = FontWeight.Normal', descriptor)
         self.assertIn('(font as PreloadedNotoFont).typeface', descriptor)
         self.assertNotIn('Typeface.Builder', descriptor)
         self.assertNotIn('assets.open', descriptor)
         regression = (ROOT / 'app/src/androidTest/java/dev/cinematv/ui/typography/NotoComposeWeightEvidence.kt').read_text()
         for required in ('CinemaText(', 'CinemaTvText(', 'FontSynthesis.None',
                          'bold.isBold', 'NotoCompositorCapture.capture(', 'boldInk > normalInk',
-                         'regular/no-synthesis pixels differ', 'boundsInWindow'):
+                         # The weight guarantee moved from pixel identity to face identity plus ink
+                         # ordering: with real 400/500/600 instances, "synthesis disabled" resolves
+                         # to the declared SemiBold face and legitimately differs from regular.
+                         'declaredSemiBold.typeface, noSynthesis', 'boundsInWindow'):
             self.assertIn(required, regression)
         self.assertNotIn('isFakeBoldText', regression)
         self.assertNotIn('captureToImage', regression)
@@ -186,7 +207,11 @@ class NotoTypographyContractTest(unittest.TestCase):
         self.assertIn('CinemaNotoProvider {', (source / 'MainActivity.kt').read_text())
         host = (ROOT / 'app/src/debug/java/dev/cinematv/TvTestActivity.kt').read_text()
         self.assertIn('CinemaNotoProvider {', host)
-        self.assertIn('bundledFontsReady = fonts.regional.size == NotoRegion.entries.size', host)
+        # Readiness has one definition. The host must not re-derive "every region present":
+        # regions are built lazily, so that wait can never complete and the screenshot phase
+        # simply times out.
+        self.assertIn('bundledFontsReady = fonts.isReady', host)
+        self.assertNotIn('regional.size == NotoRegion.entries.size', host)
         regression = (ROOT / 'app/src/androidTest/java/dev/cinematv/TvUiRegressionTest.kt').read_text()
         self.assertIn('private fun awaitBundledFonts()', regression)
         self.assertIn('private fun screenshot(name: String, waitForArt: Boolean = true) {\n        awaitBundledFonts()', regression)

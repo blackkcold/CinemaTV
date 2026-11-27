@@ -31,6 +31,11 @@ class TvTokensTest {
             assertEquals(level.weight, style.fontWeight)
             assertEquals(level.tracking, style.letterSpacing)
         }
-        assertEquals(FontWeight.Bold, TvType.h2.toTextStyle().fontWeight)
+        assertEquals(FontWeight.SemiBold, TvType.h2.toTextStyle().fontWeight)
+        // 700 is deliberately absent from the type scale: the bundled CJK family declares
+        // 400/500/600, so a Bold token would be matched down to 600 while claiming a weight the
+        // face does not have. Each level states the weight it actually renders.
+        assertEquals(FontWeight.SemiBold, TvType.display.toTextStyle().fontWeight)
+        assertEquals(FontWeight.SemiBold, TvType.hero.toTextStyle().fontWeight)
     }
 }

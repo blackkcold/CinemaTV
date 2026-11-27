@@ -29,7 +29,7 @@ import dev.cinematv.ui.tv.pages.*
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun TvRootApp(model: CinemaViewModel, onSceneDecoded: (String?) -> Unit = {}) {
-    CinemaTvTheme(model.reducedMotion, model.glassQuality) {
+    CinemaTvTheme(model.reducedMotion, model.glassQuality, model.visualTheme) {
       PosterMotionProvider(resetKey = model.focusRoute) { posterInput ->
         val keyboard = LocalSoftwareKeyboardController.current
         val imeVisible = WindowInsets.isImeVisible

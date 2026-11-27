@@ -55,7 +55,9 @@ tasks.register('prepareNotoFonts') {
         }
         for (def font : lock.fonts) {
             String name = font.name
-            if (!name.matches('[A-Za-z0-9-]+\\.(ttf|ttc)')) {
+            // Suffixes may be double (`NotoSansCJK-VF.ttf.ttc`): the variable collection keeps the
+            // container extension plus the face-type extension, and both are part of its name.
+            if (!name.matches('[A-Za-z0-9-]+(\\.[A-Za-z0-9]+)*\\.(ttf|ttc)')) {
                 throw new GradleException("Invalid font filename: ${name}")
             }
             long expectedSize = font.size as long
@@ -123,6 +125,20 @@ tasks.register('prepareNotoFonts') {
                 connection.disconnect()
                 temporary.delete()
             }
+        }
+        // Retire assets that the lock no longer names. Gradle deletes stale outputs only when
+        // task history is absent; after an incremental run an old font file would otherwise stay
+        // packaged and ship dead weight (a replaced 19 MB collection is not a rounding error).
+        Set<String> locked = lock.fonts.collect { it.name as String } as Set<String>
+        File[] existing = directory.listFiles() ?: new File[0]
+        def staleNames = existing.findAll { f ->
+            f.isFile() && f.name.matches('(?i).*\\.(ttf|ttc)') && !locked.contains(f.name)
+        }
+        for (def stale : staleNames) {
+            if (!stale.delete() && stale.exists()) {
+                throw new GradleException("Cannot retire unlisted Noto asset: ${stale.name}")
+            }
+            logger.lifecycle("Retired unlisted Noto asset: ${stale.name}")
         }
     }
 }
