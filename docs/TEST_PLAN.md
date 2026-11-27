@@ -172,6 +172,28 @@ Fill the checklist by hand and keep the result in `docs/evidence/<date>-t-gate.m
 A signature mismatch stops the run: never uninstall or clear data to work around it, and never
 relabel a phone or emulator result as TV evidence.
 
+## Two contracts that look like product bugs
+
+Both have already cost a release lane a week of red runs. They are platform behaviour, not defects.
+
+**HOME Back has two legitimate implementations.** With no local state to pop, the system either
+finishes the activity or moves its task to the background, and which one you get depends on the
+image. The API33 Google TV image takes the second — its device log shows
+`ActivityTaskManager: moveTaskToBack` and lifecycle goes `PAUSED` → `STOPPED` with
+`isFinishing` never becoming true, while the local API34 Google TV AVD takes the first. Assert
+the contract — the app leaves the foreground and no second press is needed — not
+`isFinishing`. Poll that state with `runOnMainSync` on the instrumentation thread: once the app
+is backgrounded the Compose clock is no longer idle, so `rule.waitUntil` throws
+`ComposeNotIdleException` instead of answering.
+
+**Television identity is declared in one of two ways.** `ro.build.characteristics` is one
+source, not the only one: the API33 Google TV system image reports `emulator` there and declares
+itself through `android.hardware.type.television` and `android.software.leanback_only`. A gate
+that requires the property alone fails closed on a truthful television build, which is how the
+only production-TV lane stayed red while the product behaved correctly. Accept both sources;
+pair `android.software.leanback` with a check that the device is not a phone, since Leanback is
+also present on some phones.
+
 ## Failure triage
 
 - Re-run once with the same artifact before suspecting the code; record both runs.
