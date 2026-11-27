@@ -79,7 +79,16 @@ fun TvRootApp(model: CinemaViewModel, onSceneDecoded: (String?) -> Unit = {}) {
         LaunchedEffect(model.page, model.section) {
             val keepsSearchChrome = model.page == Page.SEARCH ||
                 (model.page in listOf(Page.DETAIL, Page.PLAYER) && model.section == Page.SEARCH)
-            if (!keepsSearchChrome) searchChrome.reset()
+            if (!keepsSearchChrome) {
+                searchChrome.reset()
+                // Browsing intent and its focus bookmark are one visit's state: the page
+                // cannot tell "returned from DETAIL" from "entered from LIVE" on its own,
+                // because both arrive with browsing = false. Dropping the bookmark here is
+                // what keeps the two apart — a child return keeps it (the return restores
+                // the opened result), every other route ends the visit (the next entry is a
+                // fresh no-bookmark entry and lands on the query field).
+                model.focusCoordinator.forget(Page.SEARCH.name)
+            }
         }
         CompositionLocalProvider(LocalTvFocusRegistry provides registry, LocalNavigationFocus provides navigation,
             LocalContentFocus provides content, LocalNavigationHasFocus provides (navigationHasFocus && showNav),

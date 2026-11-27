@@ -14,6 +14,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import dev.cinematv.ui.shared.metadataLine
 import dev.cinematv.ui.shared.presentationKey
+import dev.cinematv.ui.tv.focus.HomeRegions
 import dev.cinematv.ui.tv.motion.PosterMotionTokens
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -139,6 +140,21 @@ class ContentRailVisibilityTest {
         if (settle) rule.waitForIdle()
     }
 
+    /**
+     * Advance the paused clock until a page-owned vertical move lands.
+     *
+     * The page owns the vertical ladder: it scrolls the parent column, waits for the
+     * destination row to compose, then requests focus two frames later. That is
+     * deliberately asynchronous, so a test that pauses `mainClock` must pump frames
+     * instead of assuming the focus move already happened when the key returns.
+     */
+    private fun pumpFrames(count: Int = 8) {
+        repeat(count) {
+            rule.mainClock.advanceTimeByFrame()
+            rule.waitForIdle()
+        }
+    }
+
     private fun focusedCardMatcher(index: Int) = hasContentDescription(featuredAtEntry[index].title) and isFocused()
     private fun focusedCard(index: Int) = rule.onNode(focusedCardMatcher(index))
 
@@ -148,7 +164,10 @@ class ContentRailVisibilityTest {
             assertEquals(Page.HOME, model.page)
             assertEquals("Featured position changed after the remote traversal began",
                 featuredAtEntry[index].catalogId, model.featured[index].id)
-            assertEquals("rail:为你精选", model.focusCoordinator.last("HOME")?.region)
+            // The region is a bookmark key, not display copy: HomeScreen publishes
+            // `HomeRegions.FEATURED` ("rail:featured") so a title change cannot invalidate
+            // saved focus. Asserting the literal display string here locked the old title in.
+            assertEquals(HomeRegions.FEATURED, model.focusCoordinator.last("HOME")?.region)
             assertEquals(featuredAtEntry[index].presentationKey, model.focusCoordinator.last("HOME")?.itemKey)
         }
     }
@@ -316,9 +335,13 @@ class ContentRailVisibilityTest {
             rule.waitForIdle()
             observe("before-up")
             nativeKey(KeyEvent.KEYCODE_DPAD_UP, settle = false)
+            // Up is a page-owned move now: it scrolls the column and focuses the hero
+            // after the destination composes, so the paused clock has to advance for it.
+            pumpFrames()
             rule.onNodeWithText("观看详情").assertIsFocused()
             observe("hero-focused")
             nativeKey(KeyEvent.KEYCODE_DPAD_UP, settle = false)
+            pumpFrames()
             rule.onNodeWithText("精选").assertIsFocused()
             observe("navigation-focused")
             val atNavigation = pageScroll()

@@ -294,7 +294,10 @@ class TvUiRegressionTest {
         key(KeyEvent.KEYCODE_BACK)
         assertEquals(Page.SEARCH, model.page)
         assertTrue(model.results.isNotEmpty())
-        rule.onNodeWithTag("search-field-shell").assertIsFocused()
+        // The return restores the item DETAIL was opened from, not the query field:
+        // a browse result set never owns the editor (SearchScreen). Asserting the
+        // shell here would pin the pre-S1 behaviour and stop checking the restore.
+        rule.onNodeWithContentDescription(server.title(0)).assertIsFocused()
         // Leave the restored editor immediately, including its pending IME show.
         // The destination must recover without a test-only keyboard dismissal.
         rule.runOnIdle { model.navigate(Page.LIVE) }

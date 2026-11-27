@@ -212,13 +212,20 @@ internal object NotoComposeWeightEvidence {
             assertTrue("$label regular specimen is blank", normalInk > 25_500L)
             assertTrue("$label Bold did not add stroke coverage: $boldInk <= $normalInk", boldInk > normalInk)
             // The family declares real 400/500/600 instances, so a Bold request resolves to the
-            // genuine SemiBold face in BOTH synthesis modes. Identical ink here is the correct
-            // outcome and the proof that no synthetic bolding happened: if synthesis were being
-            // applied to a lighter face, disabling it would change the render.
-            assertEquals(
+            // genuine SemiBold face in BOTH synthesis modes and the two renders must agree.
+            // They are not guaranteed bit-identical: the specimens are separate nodes, so text
+            // rasterisation may differ by a few luminance levels. API29 measured 8 ink units out
+            // of 2,164,436 (3.7e-6) across 1,822 pixels whose largest channel delta was 3/255.
+            // Bound the difference by the signal it has to detect instead of by exactness: a
+            // synthesised stroke moves the whole regular->bold distance (~5.5e5 units), so 1% of
+            // that still catches synthesis while tolerating rasterisation jitter.
+            val strokeSignal = boldInk - normalInk
+            val synthesisDelta = kotlin.math.abs(boldInk - disabledInk)
+            assertTrue(
                 "$label Bold request rendered differently with synthesis disabled " +
-                    "($boldInk vs $disabledInk); a synthesised stroke is still reaching the output",
-                boldInk, disabledInk,
+                    "($boldInk vs $disabledInk, delta=$synthesisDelta of stroke signal $strokeSignal); " +
+                    "a synthesised stroke is still reaching the output",
+                synthesisDelta * 100L < strokeSignal,
             )
             // And the resolved face must be heavier than regular, or Bold silently degraded to 400.
             assertTrue(
