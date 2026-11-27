@@ -203,3 +203,23 @@ also present on some phones.
   job log and re-run; they are not product failures and are not counted as passes.
 - A flaky test is fixed by removing the timing assumption; if it cannot be made
   deterministic, the assertion is narrowed and the gap is written down.
+
+### Known flaky: tv4k `TvRecommendationDashboardTest`
+
+`RecommendationDashboardUiTest.kt:48` waits 15 s for `model.focused != null`. That value is only
+assigned inside `loadHome()` after it joins the asynchronous recommendation build, so the wait is
+inherently waiting for the ranker rather than for a route transition.
+
+Measured A/B on the same commit and lane, from the JUnit XML of each run:
+
+| Run | Result | Test wall time |
+|---|---|---|
+| `45960680901` (full CI) | failed at the 15 s wait | 31.982 s |
+| `45966092461` (re-run) | passed, continued past it | 58.989 s |
+
+The passing run is the slower one, so "4K software rendering is too slow" is not established:
+the failing run only looks shorter because it aborts at the timeout. The XML records one wall
+time per test case and nothing per statement, so there is no measurement of how long this
+particular wait actually needs. **Do not raise the 15 s budget on this evidence** — a wider
+budget would hide the race instead of removing it. The durable fix is to wait on a deterministic
+signal (the recommendation build completing) rather than on a producer that runs after it.
