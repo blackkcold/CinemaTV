@@ -76,6 +76,28 @@ class QaResultsAuditTest(unittest.TestCase):
         self.assertEqual(1, result.returncode)
         self.assertIn("not-tv", result.stdout)
 
+    def test_declared_television_features_satisfy_the_identity(self):
+        # The API33 Google TV system image reports `emulator` in ro.build.characteristics and
+        # declares its television identity through the platform features instead. Accepting
+        # only the property kept the one production-TV lane red on a truthful TV build.
+        result = self.run_audit(
+            self.valid_xml(),
+            "--require-tv",
+            "--characteristics", "emulator",
+            "--features", "feature:android.hardware.type.television,feature:android.software.leanback_only",
+        )
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+
+    def test_telephone_features_do_not_satisfy_the_identity(self):
+        result = self.run_audit(
+            self.valid_xml(),
+            "--require-tv",
+            "--characteristics", "emulator",
+            "--features", "feature:android.hardware.type.watch,feature:android.software.leanback",
+        )
+        self.assertEqual(1, result.returncode)
+        self.assertIn("not-tv", result.stdout)
+
     def test_empty_results_fail_closed(self):
         with tempfile.TemporaryDirectory() as temp:
             result = subprocess.run(

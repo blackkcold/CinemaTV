@@ -193,6 +193,9 @@ if [ -d app/build/outputs/androidTest-results/connected ]; then
   if [ "${CINEMA_TARGET:-}" = "tvNative" ]; then
     CINEMA_RESULT_ARGS+=(--require-executed TvLaunchSmokeTest,MainActivityPathSmokeTest --forbid-skipped --require-tv)
     CINEMA_RESULT_ARGS+=(--characteristics "$(qa_adb shell getprop ro.build.characteristics | tr -d '\r')")
+    # The API33 Google TV image reports `emulator` in ro.build.characteristics and declares
+    # its television identity through these features instead; pass both sources.
+    CINEMA_RESULT_ARGS+=(--features "$(qa_adb shell pm list features 2>/dev/null | grep -E '^feature:(android\.hardware\.type\.television|android\.software\.leanback_only)$' | paste -sd, - | tr -d '\r')")
   fi
   run_stage results-audit timeout --kill-after=5s 30s python3 scripts/qa-results-audit.py \
     "${CINEMA_RESULT_ARGS[@]}" || CINEMA_RESULTS_STATUS=$?
