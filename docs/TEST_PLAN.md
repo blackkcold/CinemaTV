@@ -201,6 +201,18 @@ also present on some phones.
   without a review note.
 - Infrastructure failures (Maven 429, emulator attach, runner disk) are diagnosed from the
   job log and re-run; they are not product failures and are not counted as passes.
+- **A local-only failure is an environment difference until proven otherwise.** Before calling
+  it a repo defect, check whether CI runs the same suite and what it reports:
+  ```sh
+  grep -rn "unittest discover\|scripts/tests" .github/workflows/*.yml
+  gh api repos/<owner>/<repo>/actions/jobs/<apk-job-id>/logs | grep -E "Ran [0-9]+ tests|OK$"
+  ```
+  A suite that is green on CI and red on one workstation is describing the workstation. Report
+  the local failure as a host gap with its cause, and do not rewrite the fixture to make the
+  host pass: changing a harness that CI depends on, to satisfy an environment it never runs in,
+  edits the thing under test instead of the setup. This has already happened once here — a
+  macOS-only `TypeError` was "fixed" by replacing the fixture's real `timeout` propagation with
+  a local imitation, which changed what the assertions measure. It was reverted.
 - A flaky test is fixed by removing the timing assumption; if it cannot be made
   deterministic, the assertion is narrowed and the gap is written down.
 

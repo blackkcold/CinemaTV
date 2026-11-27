@@ -81,6 +81,7 @@ Device QA:
 - `docs/GLASS_PRODUCTION.md`: current glass doc; `docs/GLASS_V4.md`: V4 depth/lens contract, reconciled in G6.4.
 - `docs/UPDATE_CHANNELS.md`: external signing, versionCode ledger and channel safety.
 - `docs/TEST_PLAN.md`: the single test-plan entry point (layers, TV AVD, E-gate/T-gate boundaries, triage).
+- `docs/PROTECTED_BRANCHES.md`: how a change reaches a protected branch, how a bypass is identified, and what a bypass requires afterwards.
 
 ## Completion gate
 
