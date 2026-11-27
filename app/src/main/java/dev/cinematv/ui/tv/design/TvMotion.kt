@@ -9,7 +9,6 @@ enum class GlassQuality(val title: String) {
 data class TvEffects(val reducedMotion: Boolean = false, val glass: GlassQuality = GlassQuality.BASIC) {
     val focusMillis: Int get() = if (reducedMotion) 0 else 180
     val sceneMillis: Int get() = if (reducedMotion) 0 else 380
-    val focusScale: Float get() = if (reducedMotion) 1f else 1.065f
 }
 
 /** Conservative, deterministic policy; enhanced mode is an explicit opt-in. */

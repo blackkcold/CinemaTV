@@ -81,7 +81,12 @@ class GlassActionSelectionTest(unittest.TestCase):
             self.assertIn(required, ring)
         for forbidden in ("graphicsLayer", "saveLayer", "Offscreen", "drawBackdrop", "selected", "reducedMotion", "alpha =", "animate"):
             self.assertNotIn(forbidden, ring)
-        self.assertIn("val scale = if (effects.reducedMotion) 1f else 1f + .045f * focus - .035f * press", source)
+        # The scale must come from the semantic token, not a literal: a hardcoded 1.045 is exactly
+        # how the three inconsistent focus scales arose. The literal was replaced by
+        # TvVisual.actionFocusScale, so this asserts the derivation, not a magic number.
+        self.assertIn("val actionScale = LocalTvVisual.current.actionFocusScale", source)
+        self.assertIn("val scale = if (effects.reducedMotion) 1f else 1f + (actionScale - 1f) * focus - .035f * press", source)
+        self.assertNotIn(".045f * focus", source)
 
     def test_focus_regression_requires_compositor_pixels_and_native_touch_edges(self):
         source = NATIVE.read_text().split("fun nativeFocusRingRemainsVisibleWithReducedMotionAndKeepsTouchBounds()", 1)[1]

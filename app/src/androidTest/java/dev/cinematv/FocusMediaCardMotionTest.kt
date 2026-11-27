@@ -347,8 +347,13 @@ class FocusMediaCardMotionTest {
     @Test fun narrowPosterKeepsScoreAndSourceVisibleWithFullAccessibleMetadata() {
         first.value = first.value.copy(year = "2025", category = "剧情", rating = "8.0", ratingSource = "Synthetic")
         val fonts = runBlocking { NotoFontCache.load(InstrumentationRegistry.getInstrumentation().targetContext.assets) }
-        assertTrue("Failed bundled fonts: ${fonts.failedAssets}", fonts.failedAssets.isEmpty())
-        assertEquals(NotoRegion.entries.toSet(), fonts.regional.keys)
+        // Readiness must mean the up-front load succeeded, not that every lazy region exists.
+        assertTrue("Bundled fonts failed or no region was prepared: ${fonts.failedAssets}",
+            fonts.isReady)
+        // And what this test lays out with must be a real bundled family, not the system fallback;
+        // a fallback face would silently invalidate every metric this test asserts.
+        assertTrue("Primary region fell back to the system font",
+            fonts.cjk(fonts.regional.keys.first()) is androidx.compose.ui.text.font.FontListFontFamily)
         mount(portrait = true, fonts = fonts)
         val metadata = rule.onNodeWithText(first.value.metadataLine(), useUnmergedTree = true)
         fun assertVisibleScore() {

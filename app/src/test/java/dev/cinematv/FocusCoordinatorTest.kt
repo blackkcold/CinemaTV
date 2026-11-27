@@ -31,4 +31,27 @@ class FocusCoordinatorTest {
         memory.clear()
         assertNull(memory.restore("HOME", "rail"))
     }
+
+    /** A bookmark describes one visit; a finished route must not hand it to the next one. */
+    @Test fun forgetDropsOnlyTheFinishedRoute() {
+        val memory = FocusCoordinator()
+        memory.remember("SEARCH", "search-grid", "work:movie:2025:旷野之声", 4)
+        memory.remember("SEARCH", "search", "input")
+        memory.saveScroll("SEARCH", "results", 3, 120)
+        memory.remember("HOME", "rail:featured", "movie-6")
+
+        memory.forget("SEARCH")
+
+        // Every key of the finished route is gone: the bookmark, the per-region target and
+        // the scroll position. Restoring any of them would focus a result the user never
+        // opened in this visit.
+        assertNull(memory.last("SEARCH"))
+        assertNull(memory.restore("SEARCH", "search-grid"))
+        assertNull(memory.restore("SEARCH", "search"))
+        assertEquals(FocusCoordinator.ScrollPosition(), memory.scroll("SEARCH", "results"))
+
+        // Other routes are untouched: forgetting one visit must not clear the session.
+        assertEquals("movie-6", memory.restore("HOME", "rail:featured"))
+        assertEquals("rail:featured", memory.last("HOME")?.region)
+    }
 }

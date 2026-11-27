@@ -42,14 +42,35 @@ def verify(directory):
         if font['name'].endswith('.ttc'):
             assert data[:4] == b'ttcf'
             count = struct.unpack_from('>I', data, 8)[0]
-            assert count == 10
             offsets = struct.unpack_from('>' + 'I' * count, data, 12)
-            for i, region in enumerate(('JP', 'KR', 'SC', 'TC', 'HK')):
-                info = names(data, offsets[i])
-                assert info[1] == f'Noto Sans CJK {region}', info
-                assert '2.004' in info[5]
-            # Large glyph program is shared, not duplicated once per region.
-            assert len({table(data, offset, b'CFF ') for offset in offsets}) == 1
+            if 'Variable' in font['name'] or '-VF' in font['name']:
+                # Variable OTC: five proportional faces, no Mono faces, and weight comes from
+                # the `wght` axis rather than from separate static face files.
+                assert count == 5, count
+                for i, region in enumerate(('JP', 'KR', 'SC', 'TC', 'HK')):
+                    info = names(data, offsets[i])
+                    assert info[1].startswith(f'Noto Sans CJK {region}'), info
+                # A variable face stores outlines in glyf/gvar, not a shared CFF table.
+                assert table(data, offsets[0], b'glyf')
+                assert table(data, offsets[0], b'gvar')
+                fvar, _ = table(data, offsets[0], b'fvar')
+                _, _, axis_offset, axis_count = struct.unpack_from('>HHHH', data, fvar)
+                assert axis_count >= 1
+                axis_tag, axis_min, axis_default, axis_max, _, _ = struct.unpack_from(
+                    '>4siiiHH', data, fvar + axis_offset, )
+                assert axis_tag == b'wght', axis_tag
+                # The default is Thin, not Regular: a loader that forgets to set `wght`
+                # silently renders 100. This is the regression the font test guards.
+                assert axis_default == axis_min == 100 * 65536, (axis_min, axis_default)
+                assert axis_max == 900 * 65536, axis_max
+            else:
+                assert count == 10, count
+                for i, region in enumerate(('JP', 'KR', 'SC', 'TC', 'HK')):
+                    info = names(data, offsets[i])
+                    assert info[1] == f'Noto Sans CJK {region}', info
+                    assert '2.004' in info[5]
+                # Large glyph program is shared, not duplicated once per region.
+                assert len({table(data, offset, b'CFF ') for offset in offsets}) == 1
         else:
             assert data[:4] == b'\x00\x01\x00\x00'
             assert '2.008' in names(data, 0)[5]

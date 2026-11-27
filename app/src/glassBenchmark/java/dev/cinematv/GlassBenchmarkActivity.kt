@@ -98,7 +98,11 @@ class GlassBenchmarkActivity : ComponentActivity() {
             CinemaNotoProvider {
                 val fonts = LocalCinemaNoto.current
                 SideEffect {
-                    fontsReady = fonts.regional.size == NotoRegion.entries.size && fonts.failedAssets.isEmpty()
+                    // Single source of the readiness definition. This host is the E-gate benchmark
+                    // harness: a readiness condition that can never become true does not fail
+                    // loudly here, it silently yields no valid samples and reads as "the device is
+                    // slow". That is why this contract has exactly one definition.
+                    fontsReady = fonts.isReady
                     fontFailures = fonts.failedAssets
                 }
                 CompositionLocalProvider(

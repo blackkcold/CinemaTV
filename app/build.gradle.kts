@@ -262,6 +262,47 @@ val verifyRecommendationCore by tasks.registering {
 }
 tasks.named("preBuild") { dependsOn(verifyRecommendationCore) }
 
+/**
+ * Refuses to ship an APK whose packaged font set does not match the lock.
+ *
+ * `prepareNotoFonts` retires unlisted files and `mergeDebugAssets` copies whatever is there, but
+ * Gradle will happily reuse an APK that was assembled before the lock changed — the task graph is
+ * UP-TO-DATE, so the stale APK survives. That actually happened: goldens were captured from an
+ * APK that still contained the replaced 19 MB collection, which made every "the new font is fine"
+ * claim measure the old font.
+ *
+ * Wired to the assemble tasks rather than to a separate check so it cannot be forgotten: if the
+ * APK exists, its fonts are verified, and a mismatch fails the build.
+ */
+val verifyPackagedFonts by tasks.registering {
+    val apkDir = layout.buildDirectory.dir("outputs/apk")
+    val guardScript: java.io.File = rootProject.layout.projectDirectory.file("scripts/fonts/verify-packaged-fonts.py").asFile
+    doLast {
+        val apks = apkDir.get().asFile.walkTopDown()
+            .filter { it.isFile && it.name.endsWith(".apk") && !it.name.contains("androidTest") }
+            .toList()
+        if (apks.isEmpty()) {
+            throw GradleException("verifyPackagedFonts: no APK found under ${apkDir.get().asFile}")
+        }
+        apks.forEach { apk ->
+            val process = ProcessBuilder(
+                "python3", guardScript.absolutePath, "--apk", apk.absolutePath,
+            ).redirectErrorStream(true).start()
+            val text = process.inputStream.bufferedReader().readText()
+            val exit = process.waitFor()
+            text.trim().lineSequence().forEach { logger.lifecycle("  $it") }
+            if (exit != 0) {
+                throw GradleException("Packaged font verification failed for ${apk.name} (exit $exit)")
+            }
+            logger.lifecycle("verifyPackagedFonts: ${apk.name} passed")
+        }
+    }
+}
+
+// Fail the build, not a later review: verification runs after the APK is produced.
+tasks.matching { it.name in setOf("assembleDebug", "assembleRelease", "assembleGlassBenchmark") }
+    .configureEach { finalizedBy(verifyPackagedFonts) }
+
 // The live parser probe needs captured pages and is skipped otherwise. CI forbids
 // skipped tests, so it stays out of the default unit-test task unless explicitly asked for.
 tasks.withType(org.gradle.api.tasks.testing.Test::class.java).configureEach {

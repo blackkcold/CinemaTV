@@ -145,7 +145,15 @@ fun SettingsScreen(model: CinemaViewModel, initialSection: Int = 0) {
                                         GlassAction(quality.title, Modifier.width(102.dp).height(40.dp), selected = model.glassQuality == quality) { model.updateGlassQuality(quality) }
                                     }
                                 } }
-                                item { Text("当前生效：${LocalTvEffects.current.glass.title}。${dev.cinematv.ui.tv.components.LocalGlassStatus.current}", color = TvColors.Secondary, fontSize = 14.sp) }
+                                item { Text("界面主题", color = TvColors.Text, fontSize = 18.sp) }
+                                item { Row(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                                    // AUTO stays in the enum and remains the stored default (it
+                                    // resolves to Cinema), but it is not offered as a choice.
+                                    dev.cinematv.ui.tv.design.selectableVisualThemes.forEach { theme ->
+                                        GlassAction(theme.title, Modifier.width(102.dp).height(40.dp), selected = model.visualTheme == theme) { model.updateVisualTheme(theme) }
+                                    }
+                                } }
+                                item { Text("当前生效主题：${LocalTvVisual.current.theme.title}。${dev.cinematv.ui.tv.components.LocalGlassStatus.current}", color = TvColors.Secondary, fontSize = 14.sp) }
                                 item { Text("自动优先普通模糊，完整光学需 Android 13 及以上并手动选择；Android 12 支持普通模糊，更低版本使用基础材质。省电、低内存、热压或绘制失败可临时回落，不改保存偏好。减少动态只停用动效。仅采样实际 Compose 背景；视频与独立弹窗不参与。", color = TvColors.Secondary, fontSize = 13.sp, lineHeight = 21.sp) }
                             }
                             3 -> {

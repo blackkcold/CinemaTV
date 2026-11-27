@@ -22,7 +22,11 @@ EXPECTED_MASKS = {
     "05-movies.png": [[410, 482, 555, 530]],
     "06-series.png": [[410, 482, 555, 530]],
     "07-discovery.png": [[410, 482, 555, 530]],
-    "11-settings.png": [[410, 482, 555, 530], [455, 262, 515, 298]],
+    # The port mask follows the URL row. The 2026-11-27 refresh replaced the Douban
+    # developer entry with the theme row, which lifted the content; the old box had
+    # drifted onto empty background while the ephemeral ServerSocket(0) port stayed
+    # visible. Same 60x36 size and same x band: moved, never expanded.
+    "11-settings.png": [[410, 482, 555, 530], [455, 218, 515, 254]],
 }
 # Exact values from the individually reviewed 80a91e3 artifact bytes, not values
 # derived from the current manifest under test. Tuples are raw SHA, baseline SHA.
@@ -30,18 +34,18 @@ EXPECTED_MASKS = {
 # change. Each row keeps the raw capture SHA and the normalized baseline SHA.
 BASELINES = {
         "tv1080": {
-        "source": "8532f98a9d44fbac9b1e0f6eee97dfb4d5d1aa09",
-        "run": 45314161245,
-        "artifact": 14885387790,
-        "date": "2026-11-24",
+        "source": "6fe7aa13953afa72bae8d52d974f0d63ba716073",
+        "run": 45942087491,
+        "artifact": 15174690731,
+        "date": "2026-11-27",
         "size": [1920, 1080],
     },
 
         "tv4k": {
-        "source": "5034b64649dae2caae460826efaaa89f03ee451a",
-        "run": 45324367460,
-        "artifact": 14889319771,
-        "date": "2026-11-24",
+        "source": "6fe7aa13953afa72bae8d52d974f0d63ba716073",
+        "run": 45942087491,
+        "artifact": 15174735855,
+        "date": "2026-11-27",
         "size": [3840, 2160],
     },
 
@@ -49,33 +53,33 @@ BASELINES = {
 
 CAPTURES = {
         "tv1080": {
-        "01-home.png": ("23cf4aa6d06ed1c0afb43aa7cf5ab9b88be91e98f1e4e1adaad80421d3c3aa7b",
-                        "623cdb2a5e0a1043d19694a905d42596517ba31dbeb2ea6b14ac2145a0844d63"),
-        "03-detail.png": ("c839961a450c4d41a7fb1b57a24f167908a3554df2db7e43a3ad3950590f8c01",
-                        "c1bff5f28ddf8cbbad47eced5317ccc995c60522599e733816554a1faa725905"),
-        "05-movies.png": ("98c1c46091a2a3b820d0da0395720179ebf7b502a49a570a53f30a3f906a9e31",
-                        "2e4c81ec0f0c200bb746aeadd5da4892d31a6cc93b8ddaf99c0136e5c602a518"),
-        "06-series.png": ("660bbb5b37da21bee7eecf7a04fb0ddf45a70f93a6d5d6dabd09574affc5b026",
-                        "5fb5362e0d893824d5adf0ed487eddf89fc701dd1a951d1d5cdef4abb3012784"),
-        "07-discovery.png": ("399763ba433cf2e0ad0c20a1f4272465fcef7477d4b8f30feec63433dca9fd8d",
-                        "045152253d6e5b67a3a6441c4e3ea3e7578e6d1c6a688e217460744aa6bc471b"),
-        "11-settings.png": ("fe8f22905f593711961f3a702078e2d0cde627622c97ff87797a05863fcbe72b",
-                        "dbbed3132fead147017704f7764b74180af9b5ade2c167ecac9b0444202cfb5f"),
+        "01-home.png": ("c16836f0b53c77131161ba9fc66fdccaf821145f3297de5c88d3b52836a510c5",
+                        "555dd5023fb66f9f31909d01e0b2779fccae46b89caaa52fb2df3c2398736ce8"),
+        "03-detail.png": ("b39f3f5f8d5baa55bae211aa22c3506bf1cec56b8658b709595b4e211658eab0",
+                        "a23f40b7032b123de2fd67c60e3c4a491008fcf515935b2ab37bcfd771345ef6"),
+        "05-movies.png": ("7c7b05b2c3f74ce6d9f2cd5f73c9fdb8d56820986e6c39174380940e1c235e75",
+                        "85bdc6051b5c6162b1f54c08d15f275a605f267912bbaf5c2462a012c0e66195"),
+        "06-series.png": ("1f3c58f97ea078902eb8cffb1f9c6f29c121d29582526bf0eb7072b7b33595ce",
+                        "f6456c0033dfec859ac6dd62c74e09db63eba3fb0967ebfa01b363a6aeacf458"),
+        "07-discovery.png": ("8b3f6dacb6923f66c0e98f1ae2af7e05bf71ce0569957c38d28c2418bf60cded",
+                        "ee653c30f932864731d049c71c0bb2a6e6fc5b0d01e1967541d73dcf6c1bfb71"),
+        "11-settings.png": ("3048b420a7e07441338124bcd4c31dddb06665af0b0fb11bec05eacd4905cd90",
+                        "fd7ebc909973a92384e0e58e4395e6ab72557f688f6dab585ee266895253798a"),
     },
 
         "tv4k": {
-        "01-home.png": ("9e257f07157cb34a8fd2270844053629134ac0514160a5117aaa00773455f529",
-                        "1bc173beaa04d353167c17e412fe679f3c5443a95d322177be59b00fad50dcaa"),
-        "03-detail.png": ("d645aadc731bc0418a42e07cb1160b446c15533d2a775fb2a11a7fe829d96c7e",
-                        "ece633be82403ec24867521498642706c13e12280ddd650ae8aa1b8df6a0a5ce"),
-        "05-movies.png": ("615bfae4d72bb71aaef002c3ecbdf0ec3945206625c147022ff602b0aadaf065",
-                        "df290ae49b411889af160a95f125e613197fe61301915524524dfdbd32fb1bfe"),
-        "06-series.png": ("9a3a814aca47437e17bb1bb76110f0fd8462e086dfae907fe1f9bfc10575f9e2",
-                        "0234bc0bc937f1edecc107c1b99d02561f3c414b75bff70ae3d63cc7d2fe8414"),
-        "07-discovery.png": ("caddf5fe463c808cd89cc0d31614721d80ef1be0e6500b647d17ed9fd7e5a9e8",
-                        "87a38efa7fd77f4dc041decdb4ea94cb3aece6e42ee8ec6df7915bc9784d53ca"),
-        "11-settings.png": ("9bfd85dd0c61ca12caf38a24945879b5b3cdaf895ac477c25e75ae426480102c",
-                        "64f735fb15327e567aa32614af9dcb81c4b3980b89aec33798fe927c5583ee25"),
+        "01-home.png": ("a92438b55759d9f164ecafb666d1109973b4909f66444ba9f93a240f5e09fb0f",
+                        "a8a41e808614feba17250038a4e39e0465e7ea418ad3e70c7c95f1b702fbea27"),
+        "03-detail.png": ("bab388cfa7415c8e74abe7ff859bd4036baea4e8e222d0eca42567a28bda1a44",
+                        "f6648fc432b864ebc666e5621d497105a21fad4a252a19a9ff8bf79bfab17c6c"),
+        "05-movies.png": ("d8adf8b981b60ae1c1fd29027d45f2b0a0e942390b3eb07b2584845380a86f0c",
+                        "5b1ac4afe3c83313c6457a8efc9ad24c5ea55889983a786b6f2138be38356bb1"),
+        "06-series.png": ("8f24535d369ce58f1e06f9f1708c651ab2698ebccaff181665d866853cd3bad4",
+                        "228f33adbc78a3e8bb96e9a533f6858eef762c2eaf1e2fbbf541c823bdbedc4e"),
+        "07-discovery.png": ("bf6fa13db3706a0722f5d11eff97653ee55da6c52455c3db253e4e3ebfe0556a",
+                        "7050a176f33d241f46d8552370af8dc542f050caf7d5ac747744495dfa780700"),
+        "11-settings.png": ("cc481d7ec2aeaa3a3870ba0a77409e1470fc6165b8b7b4aaa07cf05113d5105d",
+                        "5e080d425a5e0648f2379492905a4430f46fdff9c99631f967fca5d84eeafaf3"),
     },
 
 }
@@ -235,13 +239,19 @@ class GoldenProvenanceTest(unittest.TestCase):
             self.assertEqual({row["file"]: row["masks"] for row in manifest["screens"]}, EXPECTED_MASKS)
 
     def test_settings_moves_existing_port_mask_without_expanding_it(self):
+        # The port mask has followed its input twice: 2026-11-05 put it at
+        # [455, 199, 515, 235], the 2026-11-06 settings refresh moved it to
+        # [455, 262, 515, 298], and the 2026-11-27 theme refresh moved it back up to
+        # [455, 218, 515, 254]. Each move is recorded so a later edit cannot quietly
+        # grow the masked area instead of following the URL row.
         original = [455, 199, 515, 235]
         for viewport in CAPTURES:
             row = next(row for row in read_manifest(viewport)["screens"] if row["file"] == "11-settings.png")
             self.assertEqual(len(row["masks"]), 2)
             self.assertEqual(row["masks"][0], [410, 482, 555, 530])
             relocated = row["masks"][1]
-            self.assertEqual([new - old for new, old in zip(relocated, original)], [0, 63, 0, 63])
+            # x band is fixed; only the y position follows the row the port is drawn on.
+            self.assertEqual([new - old for new, old in zip(relocated, original)], [0, 19, 0, 19])
             self.assertEqual((relocated[2] - relocated[0], relocated[3] - relocated[1]),
                              (original[2] - original[0], original[3] - original[1]))
 

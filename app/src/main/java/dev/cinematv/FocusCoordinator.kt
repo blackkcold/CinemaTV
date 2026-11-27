@@ -32,4 +32,19 @@ class FocusCoordinator {
         scrollPositions[route to region] ?: ScrollPosition()
 
     fun clear() { routes.clear(); regions.clear(); scrollPositions.clear() }
+
+    /**
+     * Drop every key remembered for [route], for a route whose browse context has ended.
+     *
+     * A bookmark describes the visit that created it. Keeping it past that visit makes the
+     * next entry restore a result the user never opened this time, while the page draws its
+     * expanded state — the page itself cannot tell "returned from DETAIL" from "entered
+     * from LIVE", because both arrive with the same `browsing` flag and the same bookmark.
+     */
+    fun forget(route: String) {
+        if (route.isBlank()) return
+        routes.remove(route)
+        regions.keys.removeAll { it.first == route }
+        scrollPositions.keys.removeAll { it.first == route }
+    }
 }

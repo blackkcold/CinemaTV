@@ -31,10 +31,24 @@ internal val LocalProductionSceneDecoded = staticCompositionLocalOf<((String?) -
 
 @Composable
 fun ProductionGlassProvider(requested: GlassQuality, reducedMotion: Boolean, content: @Composable () -> Unit) {
+    ProductionGlassProvider(requested, reducedMotion, VisualTheme.AUTO, content)
+}
+
+@Composable
+fun ProductionGlassProvider(
+    requested: GlassQuality,
+    reducedMotion: Boolean,
+    /** Visual language preference. Resolved here, where the capability snapshot already exists. */
+    visualTheme: VisualTheme,
+    content: @Composable () -> Unit,
+) {
     val environment = rememberGlassEnvironment(reducedMotion)
     val decision = resolveProductionGlass(requested, environment)
     val failure = remember { BackdropFailureState() }
     val mode = if (failure.failed) GlassRenderMode.BASIC else decision.mode
+    // Resolved from the same environment snapshot the glass decision used, so the theme and
+    // the backend can never disagree about what this device can do.
+    val visual = remember(visualTheme, environment) { visualFor(resolveVisualTheme(visualTheme, environment)) }
     val quality = when (mode) {
         GlassRenderMode.BASIC -> GlassQuality.BASIC
         GlassRenderMode.BLUR -> GlassQuality.BACKDROP
@@ -45,6 +59,7 @@ fun ProductionGlassProvider(requested: GlassQuality, reducedMotion: Boolean, con
     val status = if (failure.failed) "效果初始化或绘制失败，本次运行已回落基础材质。" else decision.reason.description
     CompositionLocalProvider(
         LocalTvEffects provides TvEffects(!decision.animationsEnabled, quality),
+        LocalTvVisual provides visual,
         LocalOpticalGlass provides (mode == GlassRenderMode.FULL),
         LocalProductionGlassFailure provides failure,
         LocalGlassStatus provides status,

@@ -22,17 +22,22 @@ fun LayeredPosterFrame(
     motion: FocusPressMotion,
     focused: Boolean,
     modifier: Modifier = Modifier,
+    /** Depth/shadow switches from the active visual theme. Never affects size or position. */
+    cardDepth: Boolean = true,
+    cardShadow: Boolean = true,
     artwork: @Composable BoxScope.() -> Unit,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val shape = RoundedCornerShape(12.dp)
     Box(modifier
         .graphicsLayer {
-            rotationX = motion.rotationX
-            rotationY = motion.rotationY
+            // Cinematic pose vs flat pose. Both are layer-only transforms, so switching the
+            // theme never changes the card's measured size or the rail's layout.
+            rotationX = if (cardDepth) motion.rotationX else 0f
+            rotationY = if (cardDepth) motion.rotationY else 0f
             cameraDistance = 900f * density
             // Focus changes this once; never animate shadow radius/elevation.
-            shadowElevation = if (focused) 16.dp.toPx() else 0f
+            shadowElevation = if (cardShadow && focused) 16.dp.toPx() else 0f
             this.shape = shape
             clip = false
         }
@@ -41,7 +46,7 @@ fun LayeredPosterFrame(
         Box(Modifier.fillMaxSize().posterArtworkMotion(motion), content = artwork)
         // A live, independent face sheen. Reduced Motion retains its static focus
         // material; neither artwork bitmaps nor typography are raster-cached here.
-        if (focused) Canvas(Modifier.matchParentSize()) {
+        if (focused && cardDepth) Canvas(Modifier.matchParentSize()) {
             val center = Offset(size.width * (.5f + motion.rotationY / 20f), -size.height * .45f)
             drawCircle(Brush.radialGradient(listOf(Color.White.copy(alpha = .18f), Color.Transparent),
                 center = center, radius = size.width), radius = size.width,

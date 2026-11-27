@@ -9,17 +9,25 @@ import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
 
 /**
- * Declares the cached regional face as a regular font in a FontListFontFamily.
- * FontFamily(Typeface) is an already-resolved face: Compose 1.10.6 deliberately
- * ignores requested weight/style on that path. A descriptor lets Compose apply
- * its normal synthetic bold/italic rules without another font file or disk read.
+ * Declares a cached regional face at a specific weight in a FontListFontFamily.
+ *
+ * `FontFamily(Typeface)` is an already-resolved face: Compose 1.10.6 deliberately ignores a
+ * requested weight/style on that path. A descriptor lets Compose's matcher choose between the
+ * weights we register, and `FontSynthesis.None` then makes a missing weight visible instead of
+ * silently faking it.
+ *
+ * [weight] must differ across the members of one family. If every member claims Normal, the
+ * matcher returns the first one for every request and all weight variation disappears — a
+ * failure that renders without any error.
  */
-internal class PreloadedNotoFont(val typeface: Typeface) : AndroidFont(
+internal class PreloadedNotoFont(
+    val typeface: Typeface,
+    override val weight: FontWeight,
+) : AndroidFont(
     loadingStrategy = FontLoadingStrategy.Blocking,
     typefaceLoader = Loader,
     variationSettings = FontVariation.Settings(),
 ) {
-    override val weight: FontWeight = FontWeight.Normal
     override val style: FontStyle = FontStyle.Normal
 
     private object Loader : TypefaceLoader {

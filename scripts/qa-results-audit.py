@@ -10,6 +10,23 @@ import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+# Declared television identity. `ro.build.characteristics` is one source, not the only one:
+# the API33 Google TV system image reports `emulator` there and declares itself through these
+# features instead, so requiring the property alone made the only production-TV lane fail
+# closed on a truthful television build.
+TELEVISION_FEATURES = (
+    "android.hardware.type.television",
+    "android.software.leanback_only",
+)
+
+
+def has_television_identity(characteristics, features):
+    """Whether the device declares itself a television, by property or by feature."""
+    if "tv" in characteristics.lower():
+        return True
+    listed = {item.strip().removeprefix("feature:") for item in features.split(",") if item.strip()}
+    return bool(listed.intersection(TELEVISION_FEATURES))
+
 
 def test_cases(path):
     root = ET.parse(path).getroot()
@@ -32,6 +49,7 @@ def main():
     parser.add_argument("--forbid-skipped", action="store_true")
     parser.add_argument("--require-tv", action="store_true")
     parser.add_argument("--characteristics", default="")
+    parser.add_argument("--features", default="")
     args = parser.parse_args()
 
     root = Path(args.results)
@@ -73,7 +91,7 @@ def main():
         if not any(selector_matches(selector, classname, name) for classname, name in seen):
             errors.append(f"missing:{selector}")
 
-    if args.require_tv and "tv" not in args.characteristics.lower():
+    if args.require_tv and not has_television_identity(args.characteristics, args.features):
         errors.append("not-tv")
 
     print(f"files={len(files)} tests={tests} failures={failures} errors={errors_count} skipped={skipped}")

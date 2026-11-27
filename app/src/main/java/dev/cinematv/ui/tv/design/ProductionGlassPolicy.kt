@@ -18,6 +18,13 @@ fun glassLevelFor(page: Page, role: TvGlassRole): GlassRenderMode = when (role) 
     TvGlassRole.DIALOG, TvGlassRole.PLAYER_OVERLAY -> GlassRenderMode.BASIC
 }
 
+/**
+ * Role-only form, for callers that do not own a route. [glassLevelFor] already ignores its
+ * page argument (proven by `GlassSurfacePolicyTest` iterating every page), so the two agree
+ * for every input; this overload exists so component code does not have to invent a page.
+ */
+fun glassLevelFor(role: TvGlassRole): GlassRenderMode = glassLevelFor(Page.HOME, role)
+
 /** Both the platform/user decision and the surface cap apply; the lower tier wins. */
 fun effectiveGlassLevel(platform: GlassRenderMode, cap: GlassRenderMode): GlassRenderMode =
     if (platform.ordinal <= cap.ordinal) platform else cap

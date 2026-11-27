@@ -23,10 +23,18 @@ data class PosterDirection(val x: Float = 0f, val y: Float = 0f) {
     companion object { val None = PosterDirection() }
 }
 
-/** [reducedMotion] includes the shared root's system animator, power and environment guards. */
+/**
+ * [reducedMotion] includes the shared root's system animator, power and environment guards.
+ *
+ * [focusScale] and [actionFocusScale] come from the active visual theme. They are parameters
+ * rather than lookups so this stays a pure policy object and its tests can pin both themes;
+ * pressed ratios stay proportional to [focusScale] so a press still reads as "pushed in".
+ */
 data class PosterMotionPolicy(
     val reducedMotion: Boolean,
     val quality: PosterMotionQuality = PosterMotionQuality.LAYERED,
+    val focusScale: Float = PosterMotionTokens.FOCUS_SCALE,
+    val actionFocusScale: Float = PosterMotionTokens.FOCUS_SCALE,
 ) {
     val enabled: Boolean get() = !reducedMotion
     val depthEnabled: Boolean get() = enabled && quality == PosterMotionQuality.LAYERED
@@ -34,11 +42,17 @@ data class PosterMotionPolicy(
     val artworkOverscanDp: Float get() =
         if (quality == PosterMotionQuality.LAYERED) PosterMotionTokens.ARTWORK_PARALLAX_DP else 0f
 
-    fun scale(focused: Boolean, pressed: Boolean): Float = when {
-        !enabled -> 1f
-        pressed -> if (focused) PosterMotionTokens.FOCUSED_PRESS_SCALE else PosterMotionTokens.TOUCH_PRESS_SCALE
-        focused -> PosterMotionTokens.FOCUS_SCALE
-        else -> 1f
+    /** The single source of the focus/press scale. Callers must not re-derive it. */
+    fun scale(focused: Boolean, pressed: Boolean, card: Boolean = true): Float {
+        if (!enabled) return 1f
+        val base = if (card) focusScale else actionFocusScale
+        val ratio = base / PosterMotionTokens.FOCUS_SCALE
+        return when {
+            pressed -> if (focused) PosterMotionTokens.FOCUSED_PRESS_SCALE * ratio
+            else PosterMotionTokens.TOUCH_PRESS_SCALE * ratio
+            focused -> base
+            else -> 1f
+        }
     }
 
     fun lift(focused: Boolean): Float = if (enabled && focused) PosterMotionTokens.FOCUS_LIFT_DP else 0f

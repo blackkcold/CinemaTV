@@ -106,7 +106,7 @@ class FocusBoundRelocationTest {
                 val fonts = LocalCinemaNoto.current
                 SideEffect {
                     fontFailures = fonts.failedAssets
-                    fontsReady = fonts.regional.size == NotoRegion.entries.size && fonts.failedAssets.isEmpty()
+                    fontsReady = fonts.isReady
                 }
                 CinemaTvTheme(reducedMotion = true, quality = GlassQuality.BASIC) {
                     Box(Modifier.fillMaxSize().onPreviewKeyEvent {

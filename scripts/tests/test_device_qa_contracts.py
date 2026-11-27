@@ -264,12 +264,16 @@ class DeviceQaContractTest(unittest.TestCase):
         self.assertNotIn('clearFocus(', root)
         test = (ROOT / 'app/src/androidTest/java/dev/cinematv/TvUiRegressionTest.kt').read_text()
         exit_search = test.split('assertEquals(Page.SEARCH, model.page)', 1)[1].split('screenshot("09-live")', 1)[0]
-        markers = ['rule.onNodeWithTag("search-field-shell").assertIsFocused()', 'model.navigate(Page.LIVE)',
+        # The return from DETAIL restores the opened result rather than the query field:
+        # a browse result set never owns the editor. The marker pins that, not the shell.
+        markers = ['rule.onNodeWithContentDescription(server.title(0)).assertIsFocused()',
+                   'model.navigate(Page.LIVE)',
                    'awaitHiddenImeAndFullScreen()', 'assertEquals(Page.LIVE, model.page)',
                    'rule.onNode(hasSetTextAction()).assertDoesNotExist()', 'key(KeyEvent.KEYCODE_DPAD_DOWN)']
         positions = [exit_search.index(marker) for marker in markers]
         self.assertEqual(positions, sorted(positions))
         self.assertNotIn('.hide()', exit_search)
+        self.assertNotIn('rule.onNodeWithTag("search-field-shell").assertIsFocused()', exit_search)
 
     def test_visible_search_ime_exit_preserves_live_channel_focus(self):
         source = (ROOT / 'app/src/androidTest/java/dev/cinematv/TvUiRegressionTest.kt').read_text()

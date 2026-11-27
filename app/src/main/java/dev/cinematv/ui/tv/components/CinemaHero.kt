@@ -45,7 +45,7 @@ fun CinemaHero(item: MediaItem?, model: CinemaViewModel, eyebrow: String = "", c
             if (eyebrow.isNotBlank()) Text(eyebrow, color = TvColors.Accent, fontSize = 12.sp, letterSpacing = 2.sp, fontWeight = FontWeight.SemiBold)
             Text(item?.title ?: "每个好故事\n都值得被看见", color = TvColors.Text,
                 fontSize = if (compact) 34.sp else 42.sp, lineHeight = if (compact) 40.sp else 48.sp,
-                fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
             Text(item?.metadataLine().orEmpty().ifBlank { ConnectionCopy.summary(state) },
                 color = TvColors.Text.copy(alpha = .75f), fontSize = 14.sp, lineHeight = 18.sp, maxLines = 1)
             if (!compact) Text(item?.description?.takeIf(String::isNotBlank) ?: "让故事占据大屏，让观影回归简单。",

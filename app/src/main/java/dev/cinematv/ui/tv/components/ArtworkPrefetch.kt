@@ -26,7 +26,15 @@ fun ArtworkPrefetch(items: List<MediaItem>, focused: MediaItem?) {
         }
     }
     DisposableEffect(urls) {
-        val requests = urls.map { context.imageLoader.enqueue(ImageRequest.Builder(context).data(it).size(960, 540).build()) }
+        // Same size as the consumer's request. Coil's memory cache key includes the size, so
+        // prefetching at a different size warms the disk cache only and the frame that needs
+        // the image still pays the decode.
+        val requests = urls.map {
+            context.imageLoader.enqueue(
+                ImageRequest.Builder(context).data(it)
+                    .size(BACKDROP_DECODE_WIDTH, BACKDROP_DECODE_HEIGHT).build(),
+            )
+        }
         onDispose { requests.forEach { it.dispose() } }
     }
 }

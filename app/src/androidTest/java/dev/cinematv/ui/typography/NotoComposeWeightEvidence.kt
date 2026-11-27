@@ -23,6 +23,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontListFontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontSynthesis
 import androidx.compose.ui.text.font.FontWeight
@@ -42,8 +43,9 @@ import org.junit.Assert.*
 
 /** Tests the real Compose descriptor/wrapper path, not manually fake-bolded Canvas text. */
 internal object NotoComposeWeightEvidence {
-    fun capture(compose: ComposeContentTestRule, activity: Activity, fonts: CinemaNotoFonts) {
+    suspend fun capture(compose: ComposeContentTestRule, activity: Activity, fonts: CinemaNotoFonts) {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val assets = context.assets
         val resolver = createFontFamilyResolver(context)
         val region = mutableStateOf(NotoRegion.SC)
         val tv = mutableStateOf(false)
@@ -85,13 +87,28 @@ internal object NotoComposeWeightEvidence {
             "ui-evidence/noto/compose-weight").apply { check(isDirectory || mkdirs()) }
         val evidence = JSONArray()
         for (useTv in listOf(false, true)) for (selected in NotoRegion.entries) {
-            val family = fonts.cjk(selected)
+            // The production entry point: familyFor builds and caches on demand, so all five
+            // regions yield the real family the app would use — not `cjk()`, which returns
+            // SansSerif for any region the up-front load did not prepare.
+            val family = NotoFontCache.familyFor(assets, selected)
+                ?: error("no family for ${selected.name}")
+            val declaredSemiBold = (
+                (family as? FontListFontFamily)?.fonts
+                    ?: error("expected FontListFontFamily for ${selected.name}")
+                ).first { it.weight == FontWeight.SemiBold } as PreloadedNotoFont
             val regular = resolver.resolve(family, FontWeight.Normal, FontStyle.Normal, FontSynthesis.All).value as Typeface
             val bold = resolver.resolve(family, FontWeight.Bold, FontStyle.Normal, FontSynthesis.All).value as Typeface
             val noSynthesis = resolver.resolve(family, FontWeight.Bold, FontStyle.Normal, FontSynthesis.None).value as Typeface
             assertFalse("${selected.name} regular is unexpectedly bold", regular.isBold)
             assertTrue("${selected.name} Compose resolver ignored Bold", bold.isBold)
-            assertFalse("${selected.name} ignored FontSynthesis.None", noSynthesis.isBold)
+            // The family now declares real 400/500/600 instances, so resolving Bold with synthesis
+            // disabled must land on the genuine 600 face. That face reports isBold=true because
+            // it is a heavy weight, not because anything was synthesised.
+            assertSame(
+                "${selected.name} synthesis disabled must use the declared SemiBold face, " +
+                    "not a synthesised one",
+                declaredSemiBold.typeface, noSynthesis,
+            )
             compose.waitForIdle()
             val nextEpoch = epoch.intValue + 1
             val frameEvidence = NotoCompositorCapture.settleFreshFrame(activity, drawTracker, nextEpoch) {
@@ -194,9 +211,34 @@ internal object NotoComposeWeightEvidence {
             )
             assertTrue("$label regular specimen is blank", normalInk > 25_500L)
             assertTrue("$label Bold did not add stroke coverage: $boldInk <= $normalInk", boldInk > normalInk)
-            assertEquals("$label disabling synthesis must render the regular face", normalInk, disabledInk)
+            // The family declares real 400/500/600 instances, so a Bold request resolves to the
+            // genuine SemiBold face in BOTH synthesis modes and the two renders must agree.
+            // They are not guaranteed bit-identical: the specimens are separate nodes, so text
+            // rasterisation may differ by a few luminance levels. API29 measured 8 ink units out
+            // of 2,164,436 (3.7e-6) across 1,822 pixels whose largest channel delta was 3/255.
+            // Bound the difference by the signal it has to detect instead of by exactness: a
+            // synthesised stroke moves the whole regular->bold distance (~5.5e5 units), so 1% of
+            // that still catches synthesis while tolerating rasterisation jitter.
+            val strokeSignal = boldInk - normalInk
+            val synthesisDelta = kotlin.math.abs(boldInk - disabledInk)
+            assertTrue(
+                "$label Bold request rendered differently with synthesis disabled " +
+                    "($boldInk vs $disabledInk, delta=$synthesisDelta of stroke signal $strokeSignal); " +
+                    "a synthesised stroke is still reaching the output",
+                synthesisDelta * 100L < strokeSignal,
+            )
+            // And the resolved face must be heavier than regular, or Bold silently degraded to 400.
+            assertTrue(
+                "$label Bold resolved to the regular face ($disabledInk <= $normalInk)",
+                disabledInk > normalInk,
+            )
             assertEquals("$label regular/no-synthesis dimensions differ", sizes.getValue("regular"), sizes.getValue("no-synthesis"))
-            assertEquals("$label regular/no-synthesis pixels differ", hashes.getValue("regular"), hashes.getValue("no-synthesis"))
+            // The pixel-identity assertion that used to live here assumed the family held only a
+            // 400 face, so "synthesis disabled" had to reproduce regular. With real 400/500/600
+            // instances, a Bold request with synthesis disabled resolves to the 600 face, and the
+            // raster legitimately differs from regular. Weight identity is asserted above via the
+            // resolved-face comparison and the ink ordering; keeping a pixel-identity check here
+            // would only re-state the pre-P3 world.
             evidence.put(sampleEvidence)
         }
         File(folder, "compose-weight.json").writeText(JSONObject()
